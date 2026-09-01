@@ -317,6 +317,11 @@ export class ConversationTurnService {
     });
   }
 
+  /** The running turn `runId` owns, for event attribution; undefined between dispatch and commit. */
+  runningTurnId(sessionId: SessionId, runId: RunId): TurnId | undefined {
+    return this.runningFor(sessionId, runId)?.turn.turnId;
+  }
+
   /** An adapter `error` while the run's turn is live; decides `failed` on a stop-less settle. */
   noteError(sessionId: SessionId, runId: RunId): void {
     const entry = this.runningFor(sessionId, runId);

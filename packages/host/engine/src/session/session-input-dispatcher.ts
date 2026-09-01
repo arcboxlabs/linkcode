@@ -41,7 +41,7 @@ export class SessionInputDispatcher {
         message: `Unknown slash command: /${input.name}`,
         reportedInConversation: true,
       });
-      this.events.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, session, error.message);
       return Effect.fail(error);
     }
     if (input.type === 'shell-command' && !session.capabilities.shellCommand) {
@@ -50,7 +50,7 @@ export class SessionInputDispatcher {
         message: 'Shell commands are not supported by this session',
         reportedInConversation: true,
       });
-      this.events.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, session, error.message);
       return Effect.fail(error);
     }
     if (startsTurn && session.turnInputActive) {
@@ -59,7 +59,7 @@ export class SessionInputDispatcher {
         message: `Session is busy: ${sessionId}`,
         reportedInConversation: true,
       });
-      this.events.rejectInput(sessionId, error.message);
+      this.events.rejectInput(sessionId, session, error.message);
       return Effect.fail(error);
     }
     const { events, records, resources, turns } = this;
@@ -75,7 +75,7 @@ export class SessionInputDispatcher {
           message: `Session is busy: ${sessionId}`,
           reportedInConversation: true,
         });
-        events.rejectInput(sessionId, error.message);
+        events.rejectInput(sessionId, session, error.message);
         return yield* Effect.fail(error);
       }
       let adapterInput: AgentInput = input;
@@ -120,14 +120,14 @@ export class SessionInputDispatcher {
       const dispatch = Effect.gen(function* () {
         // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
         if (promptMessageId !== undefined && input.type === 'prompt') {
-          events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
+          events.broadcast(sessionId, session, session.trackPrompt(promptMessageId, input.content));
           records.setTitleFromContent(sessionId, input.content);
         } else if (input.type === 'command' || input.type === 'shell-command') {
           const text =
             input.type === 'command'
               ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
               : `$ ${input.command}`;
-          events.broadcast(sessionId, [
+          events.broadcast(sessionId, session, [
             {
               type: 'user-message',
               messageId: nextMessageId(),
@@ -143,7 +143,7 @@ export class SessionInputDispatcher {
           ? session.interactions.beginResponse(responseInput)
           : undefined;
         if (responseInput && respondingAsk) {
-          events.broadcast(sessionId, [
+          events.broadcast(sessionId, session, [
             {
               type: 'prompt-response-status',
               requestId: responseInput.requestId,
@@ -167,19 +167,20 @@ export class SessionInputDispatcher {
               if (responseInput && respondingAsk) {
                 events.broadcast(
                   sessionId,
+                  session,
                   session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
                 );
               }
               if (promptMessageId !== undefined) {
-                events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
+                events.broadcast(sessionId, session, session.untrackPrompt(promptMessageId));
               }
-              if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
+              if (startsTurn) events.rejectInput(sessionId, session, error.publicMessage);
             }),
           ),
         );
         if (responseInput && respondingAsk) {
           const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-          if (resolution) events.broadcast(sessionId, [resolution]);
+          if (resolution) events.broadcast(sessionId, session, [resolution]);
         }
         // The provider accepted the dispatch: the turn flips to running and the default leaf moves.
         if (persisted !== undefined) yield* turns.commitRunning(persisted);
