@@ -10,6 +10,7 @@ import {
   SessionSidebar,
   SessionTitleMenu,
   useKeyboardShortcutLabel,
+  usePaneTransition,
 } from '@linkcode/ui';
 import {
   getChromeSurface,
@@ -19,6 +20,7 @@ import {
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
   AttachedTerminalPanel,
+  AutomationsView,
   getResourcesPanelPresentation,
   isAbsoluteFilePath,
   locateFileArtifact,
@@ -29,6 +31,7 @@ import {
   TerminalPanel,
   useBrowserHostRegistration,
   useCloudHosts,
+  useNavigationHistoryStore,
   useResourcesPanelStore,
   useSelectedHostStore,
   WorkspaceServicesMenu,
@@ -50,7 +53,6 @@ import { BrowserWebviewPane } from './browser/browser-webview-pane';
 import { DesktopChrome } from './chrome/chrome';
 import { DiffStatChip } from './chrome/diff-stat-chip';
 import { DESKTOP_CHROME_SPACER_CLASS } from './chrome/metrics';
-import { usePaneTransition } from './layout/pane-transition';
 import { DesktopPanelRegion } from './layout/panel-region';
 import { DesktopRightPanelRegion } from './layout/right-panel-region';
 import type { DesktopShellStyle } from './layout/shell-style';
@@ -172,6 +174,7 @@ export function DesktopShell({
     })),
   );
   const cloudAuth = useCloudAccount();
+  const automationsOpen = useNavigationHistoryStore((state) => state.overlay === 'automations');
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
   const toggleResources = useResourcesPanelStore((state) => state.toggle);
@@ -297,13 +300,15 @@ export function DesktopShell({
 
   const active = activeSession;
   const activeSessionId = active?.sessionId ?? null;
-  const resourcesAvailable = draft === null && active !== null && resourcesPanel !== undefined;
+  const resourcesAvailable =
+    !automationsOpen && draft === null && active !== null && resourcesPanel !== undefined;
   const resourcesPresentation = getResourcesPanelPresentation({
     available: resourcesAvailable,
     floatingSpaceAvailable,
     rightPanelOpen: rightPanel.open,
   });
-  const resourcesFloatingOpen = resourcesPresentation === 'floating' && resourcesOpen;
+  const resourcesFloatingOpen =
+    !automationsOpen && resourcesPresentation === 'floating' && resourcesOpen;
   const resourcesSurfaceOpen =
     (resourcesPresentation !== 'hidden' && resourcesOpen) ||
     (rightPanel.open && rightPanel.activeSection === 'resources');
@@ -750,6 +755,16 @@ export function DesktopShell({
         <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
           <DesktopWorkspace
             main={main}
+            workspaceOverlay={
+              automationsOpen ? (
+                <div className="flex h-full min-h-0 flex-col bg-background">
+                  <div aria-hidden className={`${DESKTOP_CHROME_SPACER_CLASS} shrink-0`} />
+                  <div className="min-h-0 flex-1">
+                    <AutomationsView onOpenSession={onSelectSession} />
+                  </div>
+                </div>
+              ) : undefined
+            }
             right={workspaceRight}
             bottom={workspaceBottom}
             expandedPanel={expandedPanel}
@@ -795,6 +810,7 @@ export function DesktopShell({
                   onPickDirectory={pickDirectory}
                   onOpenSearch={onOpenSearch}
                   onOpenAutomations={onOpenAutomations}
+                  automationsActive={automationsOpen}
                   searchShortcut={searchShortcut}
                   onRegisterWorkspace={onRegisterWorkspace}
                   onImportHistory={onImportHistory}

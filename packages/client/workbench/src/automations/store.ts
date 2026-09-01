@@ -12,9 +12,9 @@ export type AutomationsPane =
 
 interface AutomationsPaneState {
   tab: AutomationTab;
-  /** The schedule shown in the schedules detail pane; null falls back to the first item. */
+  /** The schedule shown in the schedules detail pane; null keeps the list collapsed. */
   selectedScheduleId: ScheduleId | null;
-  /** The loop shown in the loops detail pane; null falls back to the first item. */
+  /** The loop shown in the loops detail pane; null keeps the list collapsed. */
   selectedLoopId: LoopId | null;
   view: AutomationsPane;
   setTab: (tab: AutomationTab) => void;
@@ -23,6 +23,7 @@ interface AutomationsPaneState {
   startCreate: () => void;
   startCreateLoop: () => void;
   closeCreate: () => void;
+  collapse: () => void;
 }
 
 /**
@@ -42,6 +43,12 @@ export const useAutomationsViewStore = create<AutomationsPaneState>()((set) => (
   startCreate: () => set({ tab: 'schedules', view: { kind: 'create-schedule' } }),
   startCreateLoop: () => set({ tab: 'loops', view: { kind: 'create-loop' } }),
   closeCreate: () => set({ view: { kind: 'browse' } }),
+  collapse: () =>
+    set((state) =>
+      state.tab === 'schedules'
+        ? { selectedScheduleId: null, view: { kind: 'browse' } }
+        : { selectedLoopId: null, view: { kind: 'browse' } },
+    ),
 }));
 
 /** Imperative selection, for app-edge triggers that open the surface on a specific schedule. */

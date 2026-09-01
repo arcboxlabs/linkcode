@@ -1,5 +1,5 @@
-import type { SplitTransitionState } from '@renderer/shell/layout/pane-transition';
-import { reconcileTransition, settleTransition } from '@renderer/shell/layout/pane-transition';
+import type { SplitTransitionState } from '@linkcode/ui';
+import { reconcileTransition, settleTransition } from '@linkcode/ui';
 import { describe, expect, it } from 'vitest';
 
 function transition(overrides?: Partial<SplitTransitionState>): SplitTransitionState {

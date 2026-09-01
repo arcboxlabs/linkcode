@@ -1,4 +1,3 @@
-import { AutomationsRoute } from '@webview/routes/automations';
 import { RootLayout } from '@webview/routes/root-layout';
 import { AgentsSettings } from '@webview/routes/settings/agents';
 import { AppearanceSettings } from '@webview/routes/settings/appearance';
@@ -22,8 +21,10 @@ export function createWebviewRouter(
     {
       element: <RootLayout />,
       children: [
-        { index: true, element: <WorkbenchRoute /> },
-        { path: 'automations', element: <AutomationsRoute /> },
+        {
+          element: <WorkbenchRoute />,
+          children: [{ index: true }, { path: 'automations' }],
+        },
         {
           path: 'settings',
           element: <SettingsLayout />,

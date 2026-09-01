@@ -127,7 +127,7 @@
  * subtree every frame.) DesktopShell sets one axis-specific animation attribute only while
  * that axis is in flight, so sash drags and resting window resizes keep tracking live.
  * Row and column durations are independent so a bottom toggle cannot animate unrelated chrome
- * geometry. Keep duration/bezier in sync with SHELL_TRANSITION in pane-transition.ts.
+ * geometry. Keep duration/bezier in sync with @linkcode/ui's SHELL_TRANSITION.
  */
 .linkcode-desktop-shell[data-shell-horizontal-animating] {
   --lc-shell-horizontal-duration: 300ms;

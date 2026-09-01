@@ -17,6 +17,7 @@ export * from './im-channel-settings-panel';
 export * from './new-session-branch-picker';
 export * from './new-session-surface';
 export * from './notifications-settings-panel';
+export * from './pane-transition';
 export * from './plugins';
 export * from './providers/account-detail';
 export * from './providers/account-master-list';

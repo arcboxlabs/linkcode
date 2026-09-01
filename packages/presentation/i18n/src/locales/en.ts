@@ -13,7 +13,11 @@ export const en = {
     automations: {
       title: 'Automations',
       pageTitle: 'Automations',
+      description: 'Schedule agent work or run tasks in a loop until verification passes.',
       back: 'Back',
+      closeDetails: 'Close details',
+      searchPlaceholder: 'Search automations',
+      noMatches: 'No matching automations.',
       notFound: 'Automation not found',
       nameLabel: 'Name',
       namePlaceholder: 'Optional',
