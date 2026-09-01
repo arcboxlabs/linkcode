@@ -28,6 +28,7 @@ const HISTORY_ID = asHistoryId('hist-1');
 interface SharedHistory {
   events: AgentHistoryEvent[];
   failRead: boolean;
+  lastReadOpts?: AgentHistoryReadOptions;
 }
 
 /** Provider history double: canned corpus, optionally failing reads (the CODE-645 class). The
@@ -38,6 +39,7 @@ class HistoryFakeAdapter extends FakeAdapter {
   }
 
   override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    this.shared.lastReadOpts = opts;
     if (this.shared.failRead) {
       return Promise.reject(new Error('history_mode paginated is unsupported'));
     }
@@ -229,6 +231,8 @@ describe('conversation.read', () => {
     expect(result.events).not.toContainEqual(
       expect.objectContaining({ type: 'history-unavailable' }),
     );
+    // codex resolves its rollout home through the project env, so the read must carry the cwd.
+    expect(shared.lastReadOpts?.cwd).toBe('/repo');
   });
 
   it('serves the live tail with stamps, open asks, and no duplicated user echo', async () => {

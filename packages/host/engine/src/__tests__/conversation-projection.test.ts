@@ -146,6 +146,46 @@ describe('conversation projection live tail (CODE-35)', () => {
     expect(ask).toMatchObject({ turnId: liveTurnId, runId });
   });
 
+  it('orders the tail by stamp, never by journal append order', async () => {
+    const liveTurnId = 'turn-live' as TurnId;
+    const journals = new ConversationLiveJournals();
+    const journal = journals.open(sessionId);
+    journal.append(stamped(1, liveTurnId, chunk('msg-live', 'one ')));
+    journal.append(stamped(2, liveTurnId, chunk('msg-live', 'two')));
+    // An old-epoch straggler appended late sits after newer entries in the journal.
+    journal.append({
+      epoch: 2,
+      seq: 9,
+      runId,
+      turnId: liveTurnId,
+      ts: 1,
+      event: chunk('msg-old', 'stale'),
+    });
+
+    const { service, store } = await makeService({ journals, record: makeRecord(liveTurnId) });
+    await store.saveTurn({
+      turnId: liveTurnId,
+      sessionId,
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'pnpm test' },
+      runId,
+      state: 'running',
+      createdAt: 10,
+    });
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    const stamps = result.events.flatMap((item) =>
+      'event' in item && item.epoch !== undefined ? [[item.epoch, item.seq]] : [],
+    );
+    expect(stamps).toEqual([
+      [2, 9],
+      [3, 1],
+      [3, 2],
+    ]);
+  });
+
   it('cuts the tail at the last event of a settled path turn', async () => {
     const doneTurnId = 'turn-done' as TurnId;
     const liveTurnId = 'turn-live' as TurnId;

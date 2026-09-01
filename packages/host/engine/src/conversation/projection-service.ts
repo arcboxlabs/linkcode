@@ -4,13 +4,13 @@ import type {
   AgentEvent,
   AgentHistoryEvent,
   AgentHistoryId,
-  AgentKind,
   ContentBlock,
   ConversationGraphTurn,
   ConversationReadItem,
   ConversationTurn,
   ConversationWatermark,
   SessionId,
+  SessionRecord,
   TurnId,
 } from '@linkcode/schema';
 import {
@@ -135,7 +135,7 @@ export class ConversationProjectionService {
       }
       const leafTurnId = request.leafTurnId ?? record.activeLeafTurnId;
       const path = pathToLeaf(byId, leafTurnId);
-      const durable = yield* composeDurable(record.kind, request.sessionId, path);
+      const durable = yield* composeDurable(record, path);
       const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
       const { events, cursor } = pageReadItems(
         durable,
@@ -157,8 +157,7 @@ export class ConversationProjectionService {
   /** Host user rows for every path turn, provider assistant/tool events under the count gate,
    * placeholders where provider content is unavailable. */
   private composeDurable(
-    kind: AgentKind,
-    sessionId: SessionId,
+    record: SessionRecord,
     path: ConversationTurn[],
   ): Effect.Effect<ConversationReadItem[], OperationError> {
     const { records } = this;
@@ -170,10 +169,10 @@ export class ConversationProjectionService {
       // A failed turn expects no provider rows (nothing durable ran) and gets no placeholder.
       const expectsProvider = cold.filter((turn) => turn.state !== 'failed');
       const hasLiveTurn = path.length > cold.length;
-      const historyId = records.historyId(sessionId);
+      const historyId = records.historyId(record.sessionId);
       let partitions: ProviderPartition[] | undefined;
       if (historyId !== undefined && expectsProvider.length > 0) {
-        const corpus = yield* readProviderEvents(kind, historyId, sessionId);
+        const corpus = yield* readProviderEvents(record, historyId);
         if (corpus !== undefined) {
           const split = partitionAtUserRows(corpus);
           // Count gate (the §9 discipline): positional attribution only when provider user rows
@@ -280,6 +279,9 @@ export class ConversationProjectionService {
           event,
         });
       }
+      // The journal returns append order — a stale old-epoch straggler can sit after newer
+      // entries; the projection merges by stamp, never array order.
+      tail.sort(byStamp);
       if (journal.watermark !== undefined) watermark = journal.watermark;
     }
     // CODE-35 backstop: open interactive requests reach the reader even when their original
@@ -300,17 +302,18 @@ export class ConversationProjectionService {
   /** The full provider corpus behind the TTL cache, or undefined when unreadable — unsupported
    * harness, failed read (CODE-645), deleted transcript — so the caller degrades to prompt-only. */
   private readProviderEvents(
-    kind: AgentKind,
+    record: SessionRecord,
     historyId: AgentHistoryId,
-    sessionId: SessionId,
   ): Effect.Effect<AgentHistoryEvent[] | undefined> {
     const { history } = this;
+    const { cwd, kind, sessionId } = record;
     return Effect.gen(function* () {
       const events: AgentHistoryEvent[] = [];
       const seenCursors = new Set<string>();
       let cursor: string | undefined;
       do {
-        const result = yield* history.read(kind, { historyId, cursor, limit: 1000 });
+        // cwd is load-bearing for codex: its rollout home resolves through the project env.
+        const result = yield* history.read(kind, { historyId, cwd, cursor, limit: 1000 });
         for (let i = 0, len = result.events.length; i < len; i++) events.push(result.events[i]);
         cursor = result.cursor;
         if (cursor !== undefined) {
@@ -531,4 +534,13 @@ function truncateSummary(text: string): string {
 
 function byCreation(a: ConversationTurn, b: ConversationTurn): number {
   return a.createdAt - b.createdAt || a.turnId.localeCompare(b.turnId);
+}
+
+/** Lexicographic stamp order for journal-derived tail items (all stamped at sort time). */
+function byStamp(a: ConversationReadItem, b: ConversationReadItem): number {
+  if (!('event' in a) || !('event' in b)) return 0;
+  return compareConversationWatermarks(
+    { epoch: a.epoch ?? 0, seq: a.seq ?? 0 },
+    { epoch: b.epoch ?? 0, seq: b.seq ?? 0 },
+  );
 }
