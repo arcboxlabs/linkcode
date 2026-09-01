@@ -1,6 +1,6 @@
 import { setImmediate as nextLoopTurn } from 'node:timers/promises';
 import { asHistoryId } from '@linkcode/agent-adapter';
-import type { AgentInput, TurnId, WirePayload } from '@linkcode/schema';
+import type { AgentHistoryResumeOptions, AgentInput, TurnId, WirePayload } from '@linkcode/schema';
 import {
   AttachmentIdSchema,
   OperationIdSchema,
@@ -45,12 +45,39 @@ class HangingResumeAdapter extends FakeAdapter {
   }
 }
 
-/** First start is a normal adapter; the first relaunch hangs in resume; later ones are normal. */
-function hangSecondAdapter(): () => FakeAdapter {
+class GatedResumeAdapter extends FakeAdapter {
+  releaseResume: () => void = noop;
+
+  override resumeHistory(opts: AgentHistoryResumeOptions): Promise<void> {
+    this.resumedFrom = opts.historyId;
+    return new Promise((resolve) => {
+      this.releaseResume = resolve;
+    });
+  }
+}
+
+/** send() spans the whole turn (pi-style): the adapter emits `running` and resolves only later. */
+class WholeTurnSendAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    this.emit({ type: 'status', status: 'running' });
+    return new Promise<void>(noop);
+  }
+}
+
+class SilentHangingSendAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return new Promise<void>(noop);
+  }
+}
+
+/** First start is a normal adapter; the first relaunch is `make()`; later ones are normal. */
+function secondAdapter(make: () => FakeAdapter): () => FakeAdapter {
   let index = 0;
   return () => {
     index += 1;
-    return index === 2 ? new HangingResumeAdapter() : new FakeAdapter();
+    return index === 2 ? make() : new FakeAdapter();
   };
 }
 
@@ -374,7 +401,7 @@ describe('turn.submit saga', () => {
   });
 
   it('resolves the operation when the session stops mid-dispatch, and the next submit is not busy', async () => {
-    const h = await startedHarness(hangSecondAdapter());
+    const h = await startedHarness(secondAdapter(() => new HangingResumeAdapter()));
     await submitPrompt(h, 's1', 'first');
     h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
     h.adapter.emit({ type: 'status', status: 'idle' });
@@ -409,8 +436,8 @@ describe('turn.submit saga', () => {
     expect(nullthrow(h.adapters[2]).resumedFrom).toBe('native-1');
   });
 
-  it('discards a start interrupted by the submit timeout so the next submit relaunches', async () => {
-    const h = await startedHarness(hangSecondAdapter());
+  it('discards a start interrupted by the launch timeout so the next submit relaunches', async () => {
+    const h = await startedHarness(secondAdapter(() => new HangingResumeAdapter()));
     await submitPrompt(h, 's1', 'first');
     h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
     h.adapter.emit({ type: 'status', status: 'idle' });
@@ -427,20 +454,110 @@ describe('turn.submit saga', () => {
         operationId: OperationIdSchema.parse('op-s2'),
         input: { type: 'prompt', blocks: [{ type: 'text', text: 'wake up' }] },
       });
-      // Let the dispatch reach the hung resume, then fire the submit timeout as it stands today.
+      // Let the dispatch reach the hung resume, then fire the launch timeout as it stands today.
       while (h.adapters.length < 2) await nextLoopTurn();
-      await vi.advanceTimersByTimeAsync(120_000);
+      await vi.advanceTimersByTimeAsync(360_000);
       await pending;
     } finally {
       vi.useRealTimers();
     }
 
-    await vi.waitFor(() => expect(failure(h.sent, 's2').code).toBe('timeout'));
+    await vi.waitFor(() =>
+      expect(failure(h.sent, 's2')).toMatchObject({
+        code: 'timeout',
+        message: 'The provider did not start in time',
+      }),
+    );
     // The interrupted start was discarded — no registered zombie holding an unstarted adapter.
     await vi.waitFor(() => expect(nullthrow(h.adapters[1]).stopped).toBe(true));
 
     await submitPrompt(h, 's3', 'again');
     await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
     expect(nullthrow(h.adapters[2]).resumedFrom).toBe('native-1');
+  });
+
+  it('tolerates a launch slower than the dispatch timer but within the launch budget', async () => {
+    const h = await startedHarness(secondAdapter(() => new GatedResumeAdapter()));
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop-1', sessionId: h.sessionId });
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = submitPrompt(h, 's2', 'wake up');
+      while (h.adapters.length < 2) await nextLoopTurn();
+      // Past the retired flat 60s budget, well under the launch budget: the claude peak cold-start.
+      await vi.advanceTimersByTimeAsync(120_000);
+      const gated = h.adapters[1];
+      if (!(gated instanceof GatedResumeAdapter)) throw new Error('expected the gated adapter');
+      gated.releaseResume();
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const resumed = nullthrow(h.adapters[1]);
+    expect(resumed.resumedFrom).toBe('native-1');
+    expect(resumed.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'wake up' }] },
+    ]);
+    const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s2'));
+    expect(operation?.state).toBe('succeeded');
+  });
+
+  it('commits the turn when the dispatch timer fires while the adapter is visibly running', async () => {
+    const h = await startedHarness(() => new WholeTurnSendAdapter());
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = submitPrompt(h, 's1', 'long turn');
+      while (h.adapter.sentInputs.length === 0) await nextLoopTurn();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
+    const turnId = submittedTurnId(h.sent, 's1');
+    expect((await h.conversationStore.listTurns(h.sessionId))[0]).toMatchObject({
+      turnId,
+      state: 'running',
+    });
+    // Exactly one commit: the rescue's graph move, no second one from any surviving continuation.
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(1);
+
+    // The rescued turn settles through the adapter's own stop frame.
+    h.adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+    await settleEngineTasks();
+    expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('completed');
+    const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s1'));
+    expect(operation?.state).toBe('succeeded');
+  });
+
+  it('fails the dispatch timer when the adapter never reported running', async () => {
+    const h = await startedHarness(() => new SilentHangingSendAdapter());
+
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = submitPrompt(h, 's1', 'doomed');
+      while (h.adapter.sentInputs.length === 0) await nextLoopTurn();
+      await vi.advanceTimersByTimeAsync(60_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() =>
+      expect(failure(h.sent, 's1')).toMatchObject({
+        code: 'timeout',
+        message: 'The provider did not accept the turn in time',
+      }),
+    );
+    const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s1'));
+    expect(operation?.state).toBe('failed');
   });
 });

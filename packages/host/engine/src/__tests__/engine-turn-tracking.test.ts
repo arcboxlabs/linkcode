@@ -1,5 +1,10 @@
 import { asHistoryId } from '@linkcode/agent-adapter';
-import type { AgentHistoryCapabilities, AgentInput } from '@linkcode/schema';
+import type {
+  AgentHistoryCapabilities,
+  AgentInput,
+  ValidatedWireMessage,
+  WirePayload,
+} from '@linkcode/schema';
 import {
   MessageIdSchema,
   OperationIdSchema,
@@ -8,10 +13,14 @@ import {
   TurnIdSchema,
   textBlock,
 } from '@linkcode/schema';
+import type { Transport } from '@linkcode/transport';
+import { Effect } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { ConversationTurnService } from '../conversation/turn-service';
+import { SessionRecordRegistry } from '../session/session-record-registry';
 import { InMemorySessionStore } from '../session/session-store';
 import {
   FakeAdapter,
@@ -402,5 +411,57 @@ describe('legacy input turn tracking', () => {
       reportedInConversation: true,
     });
     expect(h.adapter.sentInputs).toHaveLength(0);
+  });
+});
+
+describe('commitRunning idempotence', () => {
+  it('a second commit for a resolved operation is a no-op: no error, no second graph move', async () => {
+    const sent: WirePayload[] = [];
+    const transport: Transport = {
+      connect: () => Promise.resolve(),
+      send(message: ValidatedWireMessage) {
+        sent.push(message.payload);
+      },
+      onMessage: () => noop,
+      onClose: () => noop,
+      close: noop,
+    };
+    const registry = new SessionRecordRegistry(new InMemorySessionStore(), noop);
+    await Effect.runPromise(
+      registry.start((effect) => {
+        void Effect.runPromise(effect);
+      }),
+    );
+    const sessionId = SessionIdSchema.parse('sess-commit');
+    registry.register({
+      sessionId,
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 1,
+      runs: [],
+      graphRevision: 0,
+    });
+    const store = new InMemoryConversationStore();
+    const turns = new ConversationTurnService(store, registry, transport, (effect) => {
+      void Effect.runPromise(effect);
+    });
+    const intent = await Effect.runPromise(
+      turns.persistIntent({
+        sessionId,
+        operationId: OperationIdSchema.parse('op-1'),
+        runId: RunIdSchema.parse('run-1'),
+        parentTurnId: null,
+        input: { type: 'shell-command', command: 'git status' },
+      }),
+    );
+
+    await Effect.runPromise(turns.commitRunning(intent));
+    await Effect.runPromise(turns.commitRunning(intent));
+
+    expect((await store.getOperation(OperationIdSchema.parse('op-1')))?.state).toBe('succeeded');
+    expect(registry.get(sessionId)?.graphRevision).toBe(1);
+    expect(sent.filter((payload) => payload.kind === 'conversation.graph.changed')).toHaveLength(1);
   });
 });

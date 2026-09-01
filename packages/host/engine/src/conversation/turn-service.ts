@@ -174,34 +174,41 @@ export class ConversationTurnService {
   }
 
   /** The provider accepted the dispatch: one transaction stores the success and flips the turn to
-   * `running`; then the host default leaf moves and the graph change is announced. */
+   * `running`; then the host default leaf moves and the graph change is announced. A call for an
+   * already-resolved operation is a no-op — the dispatch-timer rescue commits before the losing
+   * send continuation could, and a second commit must not move the graph again. */
   commitRunning(intent: PersistedTurnIntent): Effect.Effect<void, OperationError> {
-    const turn: ConversationTurn = { ...intent.turn, state: 'running' };
-    const operation: ConversationOperation = {
-      ...intent.operation,
-      state: 'succeeded',
-      turnId: turn.turnId,
-      resolvedAt: Date.now(),
-    };
-    return storeOperation('conversation.operation.resolve', () =>
-      this.store.resolveOperation(operation, turn),
-    ).pipe(
-      Effect.andThen(
-        Effect.sync(() => {
-          this.trackRunning(turn);
-          const graphRevision = this.records.commitGraphMove(turn.sessionId, turn.turnId);
-          if (graphRevision !== undefined) {
-            this.transport.send(
-              createWireMessage({
-                kind: 'conversation.graph.changed',
-                sessionId: turn.sessionId,
-                graphRevision,
-                activeLeafTurnId: turn.turnId,
-              }),
-            );
-          }
-        }),
-      ),
+    return this.getOperation(intent.operation.operationId).pipe(
+      Effect.flatMap((current) => {
+        if (current !== undefined && current.state !== 'open') return Effect.void;
+        const turn: ConversationTurn = { ...intent.turn, state: 'running' };
+        const operation: ConversationOperation = {
+          ...intent.operation,
+          state: 'succeeded',
+          turnId: turn.turnId,
+          resolvedAt: Date.now(),
+        };
+        return storeOperation('conversation.operation.resolve', () =>
+          this.store.resolveOperation(operation, turn),
+        ).pipe(
+          Effect.andThen(
+            Effect.sync(() => {
+              this.trackRunning(turn);
+              const graphRevision = this.records.commitGraphMove(turn.sessionId, turn.turnId);
+              if (graphRevision !== undefined) {
+                this.transport.send(
+                  createWireMessage({
+                    kind: 'conversation.graph.changed',
+                    sessionId: turn.sessionId,
+                    graphRevision,
+                    activeLeafTurnId: turn.turnId,
+                  }),
+                );
+              }
+            }),
+          ),
+        );
+      }),
     );
   }
 

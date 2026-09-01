@@ -50,8 +50,11 @@ import type { ResolvedStartOptions, SessionStartOptionsResolver } from './start-
 
 type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
 
-/** A wedged provider launch or dispatch must fail the operation, never the session forever. */
+/** A wedged provider dispatch must fail the operation, never the session forever. */
 const TURN_SUBMIT_TIMEOUT_MS = 60_000;
+/** Launch budget: the claude CLI can legitimately take ~3 minutes to cold-start at peak hours;
+ * the other harnesses bound their own startup well under this. */
+const LAUNCH_TIMEOUT_MS = 300_000;
 
 export interface TurnSubmitRequest {
   readonly sessionId: SessionId;
@@ -376,8 +379,9 @@ export class SessionLifecycleService {
   /**
    * The `turn.submit` saga — idempotent by `operationId`, atomic from the client's view:
    * replay → admit (short critical section) → persist intent (the durable commit point) →
-   * provider work + dispatch outside the semaphore under a hard timeout. Every post-persist
-   * outcome is committed-or-failed, never absent; the returned terminal operation is the reply.
+   * provider work + dispatch outside the semaphore under phase-scoped hard timeouts. Every
+   * post-persist outcome is committed-or-failed, never absent; the returned terminal operation
+   * is the reply.
    */
   submitTurn(request: TurnSubmitRequest): Effect.Effect<TerminalOperation, EngineFailure> {
     const { sessions, turns } = this;
@@ -395,28 +399,49 @@ export class SessionLifecycleService {
       }
       const { intent, launch } = yield* admitSubmit(request);
       const dispatch = Effect.gen(function* () {
-        if (launch === 'fresh') {
-          yield* relaunchFresh(request.sessionId, intent.turn.runId);
-        } else if (launch === 'resume') {
-          yield* resumeSession(undefined, request.sessionId, {
-            runId: intent.turn.runId,
-            baseTurnId: intent.turn.parentTurnId ?? undefined,
-          });
+        if (launch !== 'continue') {
+          const launchSession =
+            launch === 'fresh'
+              ? relaunchFresh(request.sessionId, intent.turn.runId)
+              : resumeSession(undefined, request.sessionId, {
+                  runId: intent.turn.runId,
+                  baseTurnId: intent.turn.parentTurnId ?? undefined,
+                });
+          yield* launchSession.pipe(
+            Effect.timeoutOrElse({
+              duration: LAUNCH_TIMEOUT_MS,
+              orElse: () =>
+                Effect.fail(
+                  new OperationTimeout({
+                    operation: 'turn.submit.launch',
+                    duration: LAUNCH_TIMEOUT_MS,
+                    publicMessage: 'The provider did not start in time',
+                  }),
+                ),
+            }),
+          );
         }
-        yield* sessions.sendInput(request.sessionId, toAgentInput(request.input), intent);
+        // The adapter contract emits `running` at dispatch, so a send outliving the timer while
+        // the turn is visibly running is committed, not failed — pi-style send() spans the whole
+        // turn. commitRunning completes before the race interrupts the losing send fiber, so its
+        // exit backstop then sees an already-resolved operation and stands down.
+        yield* sessions.sendInput(request.sessionId, toAgentInput(request.input), intent).pipe(
+          Effect.timeoutOrElse({
+            duration: TURN_SUBMIT_TIMEOUT_MS,
+            orElse: (): Effect.Effect<void, OperationError | OperationTimeout> =>
+              sessions.isTurnRunning(request.sessionId)
+                ? turns.commitRunning(intent)
+                : Effect.fail(
+                    new OperationTimeout({
+                      operation: 'turn.submit',
+                      duration: TURN_SUBMIT_TIMEOUT_MS,
+                      publicMessage: 'The provider did not accept the turn in time',
+                    }),
+                  ),
+          }),
+        );
       });
       return yield* dispatch.pipe(
-        Effect.timeoutOrElse({
-          duration: TURN_SUBMIT_TIMEOUT_MS,
-          orElse: () =>
-            Effect.fail(
-              new OperationTimeout({
-                operation: 'turn.submit',
-                duration: TURN_SUBMIT_TIMEOUT_MS,
-                publicMessage: 'The provider did not accept the turn in time',
-              }),
-            ),
-        }),
         Effect.matchEffect({
           onSuccess: () =>
             turns.getOperation(request.operationId).pipe(

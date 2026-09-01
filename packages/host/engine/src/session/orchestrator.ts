@@ -85,6 +85,12 @@ export class SessionOrchestrator {
     return session !== undefined && (session.turnInputActive || session.status === 'running');
   }
 
+  /** The adapter has visibly emitted `running` — deliberately narrower than {@link isBusy}:
+   * `turnInputActive` is set by the dispatch itself and proves nothing about acceptance. */
+  isTurnRunning(sessionId: SessionId): boolean {
+    return this.sessions.get(sessionId)?.status === 'running';
+  }
+
   /** The run the live adapter serves; `undefined` doubles as the cold-session signal. */
   liveRunId(sessionId: SessionId): RunId | undefined {
     return this.sessions.get(sessionId)?.runId;
