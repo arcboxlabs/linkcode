@@ -440,10 +440,13 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
+  // Advertised per the CODE-633 spike (`thread/fork {threadId, lastTurnId}` inclusive on 0.144.6);
+  // paginated-mode rollouts go dark per history (see `branchHistory` and history.ts).
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
     resume: true,
+    forkAfterTurn: true,
     branch: true,
   };
 

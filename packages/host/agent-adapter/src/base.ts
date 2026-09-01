@@ -39,6 +39,8 @@ import type { AgentAdapter, AgentHistoryReadContext, AgentStartCatalogOptions } 
 import { nextMessageId, nextRequestId } from './adapter';
 import type { ProviderErrorDetails } from './gateway-error';
 import { linkCodeGatewayError } from './gateway-error';
+import type { HistoryCheckpoint } from './history-branch';
+import { encodeHistoryBranchCursor } from './history-branch';
 
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
@@ -67,10 +69,12 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     list: false,
     read: false,
     resume: false,
+    forkAfterTurn: false,
     branch: false,
   };
 
   protected readonly events = new Listeners<AgentEvent>();
+  private readonly checkpoints = new Listeners<HistoryCheckpoint>();
   protected opts: StartOptions | null = null;
   /** Last announced provider-local id — `emitSessionRef` dedupes against it. */
   private sessionRef: AgentHistoryId | null = null;
@@ -166,6 +170,10 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     return this.events.add(cb);
   }
 
+  onCheckpoint(cb: (checkpoint: HistoryCheckpoint) => void): Unsubscribe {
+    return this.checkpoints.add(cb);
+  }
+
   async stop(): Promise<void> {
     try {
       await this.onStop();
@@ -176,6 +184,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     this.teardown();
     this.emitStatus('stopped');
     this.events.clear();
+    this.checkpoints.clear();
     this.toolCalls.clear();
   }
 
@@ -346,6 +355,21 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
     if (this.sessionRef === historyId) return;
     this.sessionRef = historyId;
     this.emit({ type: 'session-ref', historyId });
+  }
+  /** Mint the fork checkpoint for a turn: `branchPoint` is what this adapter's `branchHistory`
+   * forks after (claude row uuid, codex turn id, pi leaf entry id) or, for `preceding`, the
+   * successor's id it forks before (opencode). Encoded like a history branch cursor, so replayed
+   * and live checkpoints compare and fork identically. */
+  protected emitCheckpoint(
+    historyId: AgentHistoryId,
+    branchPoint: string,
+    turn: HistoryCheckpoint['turn'] = 'ending',
+  ): void {
+    this.checkpoints.emit({
+      historyId,
+      cursor: encodeHistoryBranchCursor(this.kind, historyId, branchPoint),
+      turn,
+    });
   }
   protected emitUsage(usage: TokenUsage): void {
     this.emit({ type: 'token-usage', usage });

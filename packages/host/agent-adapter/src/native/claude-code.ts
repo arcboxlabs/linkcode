@@ -454,6 +454,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    forkAfterTurn: true,
     branch: true,
   };
 

@@ -8,6 +8,9 @@ import type {
 } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { BaseAgentAdapter } from '../base';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor } from '../history-branch';
+import { asHistoryId } from '../history-util';
 
 /** Minimal concrete adapter that exposes the protected emit/permission surface for testing. */
 class TestAdapter extends BaseAgentAdapter {
@@ -43,6 +46,9 @@ class TestAdapter extends BaseAgentAdapter {
   }
   title(value: string): void {
     this.emitTitle(value);
+  }
+  checkpoint(branchPoint: string, turn?: HistoryCheckpoint['turn']): void {
+    this.emitCheckpoint(asHistoryId('hist-1'), branchPoint, turn);
   }
   askQuestion(signal?: AbortSignal): Promise<unknown> {
     return this.requestQuestion(
@@ -316,6 +322,57 @@ describe('BaseAgentAdapter command/shell defaults', () => {
       type: 'available-commands-update',
       commands: [{ name: 'compact', description: 'Compact the context' }],
     });
+  });
+});
+
+describe('BaseAgentAdapter fork checkpoints', () => {
+  it('hands checkpoints to onCheckpoint subscribers as branch cursors, never as agent events', () => {
+    const a = new TestAdapter();
+    const seen: HistoryCheckpoint[] = [];
+    a.onCheckpoint((checkpoint) => seen.push(checkpoint));
+    a.checkpoint('entry-9');
+    a.checkpoint('msg-next', 'preceding');
+
+    expect(seen).toEqual([
+      {
+        historyId: 'hist-1',
+        cursor: encodeHistoryBranchCursor('pi', asHistoryId('hist-1'), 'entry-9'),
+        turn: 'ending',
+      },
+      {
+        historyId: 'hist-1',
+        cursor: encodeHistoryBranchCursor('pi', asHistoryId('hist-1'), 'msg-next'),
+        turn: 'preceding',
+      },
+    ]);
+    expect(a.seen).toEqual([]);
+  });
+
+  it('drops checkpoint subscribers on stop', async () => {
+    const a = new TestAdapter();
+    const seen: HistoryCheckpoint[] = [];
+    a.onCheckpoint((checkpoint) => seen.push(checkpoint));
+    await a.stop();
+    a.checkpoint('entry-9');
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('BaseAgentAdapter turn contract', () => {
+  // The engine's dispatch rescue commits a turn whose send() outlives the timer as long as the
+  // session is visibly `running`, so that status must only ever come from a turn-starting input.
+  it('emits no status for control inputs — running is reserved for genuine turn execution', async () => {
+    const a = new TestAdapter();
+    const controls = [
+      { type: 'set-mode', modeId: 'plan' },
+      { type: 'set-approval-policy', policyId: 'default' },
+      { type: 'set-model', model: 'test/model' },
+      { type: 'set-effort', effort: 'high' },
+      { type: 'permission-response', requestId: 'unknown', outcome: { outcome: 'cancelled' } },
+      { type: 'question-response', requestId: 'unknown', outcome: { outcome: 'cancelled' } },
+    ] as const;
+    await Promise.allSettled(controls.map((input) => a.send(input)));
+    expect(a.seen.filter((event) => event.type === 'status')).toEqual([]);
   });
 });
 
