@@ -238,9 +238,10 @@ export class ConversationProjectionService {
     const liveTurn = path.find((turn) => !TERMINAL_TURN_STATES.has(turn.state));
     const tail: ConversationReadItem[] = [];
     const seenRequestIds = new Set<string>();
-    // Cold sessions cut the whole current epoch: nothing mints under it again (every launch and
-    // boot bumps it), so buffered stragglers from it are provably superseded by this read.
-    let watermark: ConversationWatermark = { epoch: eventEpoch, seq: Number.MAX_SAFE_INTEGER };
+    // Journal-less sessions (cold, or a launch whose first event hasn't flowed) cut every prior
+    // epoch and NOTHING in the current one: seqs start at 1, so the run's own events all compare
+    // above {epoch, 0} — a client adopting this during the launch window drops nothing.
+    let watermark: ConversationWatermark = { epoch: eventEpoch, seq: 0 };
     if (journal) {
       const snapshot = journal.snapshot();
       const terminalIds = new Set<TurnId>();
@@ -256,14 +257,12 @@ export class ConversationProjectionService {
         const stamp = { epoch: entry.epoch, seq: entry.seq };
         if (cut === undefined || compareConversationWatermarks(stamp, cut) > 0) cut = stamp;
       }
-      for (let i = 0, len = snapshot.length; i < len; i++) {
-        const entry = snapshot[i];
-        if (
-          cut !== undefined &&
-          compareConversationWatermarks({ epoch: entry.epoch, seq: entry.seq }, cut) <= 0
-        ) {
-          continue;
-        }
+      // tailAfter's gap semantics own the eviction question: eviction reaching ABOVE the cut may
+      // have destroyed full-snapshot events (a settled tool call, a resolution) for good.
+      const { events: aboveCut, gap } =
+        cut === undefined ? { events: snapshot, gap: journal.truncated } : journal.tailAfter(cut);
+      for (let i = 0, len = aboveCut.length; i < len; i++) {
+        const entry = aboveCut[i];
         const event = entry.event;
         // User rows are host truth — a live echo must not double the durable row.
         if (event.type === 'user-message') continue;
@@ -284,6 +283,11 @@ export class ConversationProjectionService {
       // The journal returns append order — a stale old-epoch straggler can sit after newer
       // entries; the projection merges by stamp, never array order.
       tail.sort(byStamp);
+      // The retained tail is provably incomplete: what remains still renders, but the in-flight
+      // turn carries the placeholder so the read never claims completeness for it.
+      if (gap && liveTurn !== undefined) {
+        tail.push({ type: 'history-unavailable', turnId: liveTurn.turnId, runId: liveTurn.runId });
+      }
       if (journal.watermark !== undefined) watermark = journal.watermark;
     }
     // CODE-35 backstop: open interactive requests reach the reader even when their original

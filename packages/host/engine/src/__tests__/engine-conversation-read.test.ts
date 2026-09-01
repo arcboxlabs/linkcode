@@ -10,6 +10,7 @@ import type {
   WirePayload,
 } from '@linkcode/schema';
 import {
+  compareConversationWatermarks,
   MAX_ATTACHMENT_TOTAL_BASE64_LENGTH,
   OperationIdSchema,
   SessionIdSchema,
@@ -305,6 +306,30 @@ describe('conversation.read', () => {
         event: expect.objectContaining({ type: 'agent-message', messageId: 'a2' }),
       }),
     );
+  });
+
+  it('keeps a launch-window read below the run’s later events', async () => {
+    const h = await startedHarness();
+    // No adapter event has flowed yet, so the session has no live journal.
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-launch', sessionId: h.sessionId });
+    const early = readResult(h.sent, 'rr-launch');
+    expect(early.watermark).toBeDefined();
+    if (early.watermark === undefined) throw new Error('unreachable');
+
+    h.adapter.emit({ type: 'status', status: 'running' });
+    await settleEngineTasks();
+    const stampedEvent = h.sent.find(
+      (payload) =>
+        payload.kind === 'agent.event' && payload.epoch !== undefined && payload.seq !== undefined,
+    );
+    if (stampedEvent?.kind !== 'agent.event') throw new Error('no stamped agent.event');
+    // A client that adopted the launch-window watermark must not drop the run's own stream.
+    expect(
+      compareConversationWatermarks(early.watermark, {
+        epoch: stampedEvent.epoch ?? 0,
+        seq: stampedEvent.seq ?? 0,
+      }),
+    ).toBeLessThan(0);
   });
 
   it('serves the live tail with stamps, open asks, and no duplicated user echo', async () => {

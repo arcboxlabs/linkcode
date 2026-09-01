@@ -114,10 +114,10 @@ function makeRecord(activeLeafTurnId: TurnId, withHistory = false): SessionRecor
 describe('conversation projection live tail (CODE-35)', () => {
   it('clears a truncated in-flight stream and still delivers open asks', async () => {
     const liveTurnId = 'turn-live' as TurnId;
-    const journals = new ConversationLiveJournals(Number.MAX_SAFE_INTEGER, 3);
+    const journals = new ConversationLiveJournals(Number.MAX_SAFE_INTEGER, 4);
     const journal = journals.open(sessionId);
     journal.append(stamped(1, liveTurnId, chunk('msg-a', 'head ')));
-    journal.append(stamped(2, liveTurnId, chunk('msg-a', 'lost ')));
+    journal.append(stamped(2, liveTurnId, chunk('msg-a', 'mid ')));
     journal.append(
       stamped(3, liveTurnId, {
         type: 'tool-call',
@@ -154,7 +154,8 @@ describe('conversation projection live tail (CODE-35)', () => {
     expect(result.cursor).toBeUndefined();
     expect(result.watermark).toEqual({ epoch: 3, seq: 5 });
     const tailEvents = result.events.flatMap((item) => ('event' in item ? [item.event] : []));
-    // The msg-a stream lost its head to eviction: no headless splice, the message restarts.
+    // msg-a lost its head (seq 1 evicted) but seq 2 survived: the RETAINED continuation must be
+    // dropped too — no headless splice, the message restarts.
     expect(tailEvents.filter((e) => e.type === 'agent-message-chunk')).toEqual([
       chunk('msg-b', 'fresh '),
       chunk('msg-b', 'tail'),
@@ -162,9 +163,72 @@ describe('conversation projection live tail (CODE-35)', () => {
     expect(tailEvents).toContainEqual(
       expect.objectContaining({ type: 'tool-call', toolCall: expect.anything() }),
     );
+    // Eviction reached the live turn's region: the read must not claim its content is complete.
+    expect(result.events).toContainEqual({
+      type: 'history-unavailable',
+      turnId: liveTurnId,
+      runId,
+    });
     // The open ask reaches the reader even though its request event never survived the journal.
     const ask = result.events.find((item) => 'event' in item && item.event === OPEN_ASK);
     expect(ask).toMatchObject({ turnId: liveTurnId, runId });
+  });
+
+  it('surfaces truncation when a full-state event above the cut was evicted', async () => {
+    const doneTurnId = 'turn-done' as TurnId;
+    const liveTurnId = 'turn-live' as TurnId;
+    const journals = new ConversationLiveJournals(Number.MAX_SAFE_INTEGER, 2);
+    const journal = journals.open(sessionId);
+    journal.append(stamped(1, doneTurnId, { type: 'stop', stopReason: 'end_turn' }));
+    journal.append(
+      stamped(2, liveTurnId, {
+        type: 'tool-call',
+        toolCall: {
+          toolCallId: 't-lost',
+          title: 'Completed then lost',
+          kind: 'execute',
+          status: 'completed',
+          content: [],
+        },
+      }),
+    );
+    journal.append(stamped(3, liveTurnId, chunk('msg-live', 'one ')));
+    journal.append(stamped(4, liveTurnId, chunk('msg-live', 'two')));
+
+    const { service, store } = await makeService({ journals, record: makeRecord(liveTurnId) });
+    await store.saveTurn({
+      turnId: doneTurnId,
+      sessionId,
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'ls' },
+      runId,
+      state: 'completed',
+      createdAt: 5,
+    });
+    await store.saveTurn({
+      turnId: liveTurnId,
+      sessionId,
+      parentTurnId: doneTurnId,
+      siblingOrdinal: 1,
+      input: { type: 'shell-command', command: 'pwd' },
+      runId,
+      state: 'running',
+      createdAt: 10,
+    });
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    // The completed tool snapshot was evicted and will never re-emit — the tail is silently
+    // short of it, so the in-flight turn must carry the incompleteness marker.
+    const tailEvents = result.events.flatMap((item) => ('event' in item ? [item.event] : []));
+    expect(tailEvents).not.toContainEqual(expect.objectContaining({ type: 'tool-call' }));
+    expect(result.events).toContainEqual({
+      type: 'history-unavailable',
+      turnId: liveTurnId,
+      runId,
+    });
+    expect(result.watermark).toEqual({ epoch: 3, seq: 4 });
   });
 
   it('orders the tail by stamp, never by journal append order', async () => {
