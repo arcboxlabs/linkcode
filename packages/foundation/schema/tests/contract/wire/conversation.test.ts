@@ -105,6 +105,63 @@ describe('conversation read/graph frames', () => {
     ).toBe(true);
   });
 
+  it('accepts an inputSummary on a graph turn', () => {
+    expect(
+      parses({
+        kind: 'conversation.graph.result',
+        replyTo: 'request-1',
+        sessionId: 'session-1',
+        graphRevision: 1,
+        turns: [
+          {
+            turnId: 'turn-1',
+            sessionId: 'session-1',
+            parentTurnId: null,
+            siblingOrdinal: 1,
+            input: { type: 'prompt', promptId: 'prompt-1' },
+            runId: 'run-1',
+            state: 'completed',
+            createdAt: 1,
+            inputSummary: 'hello there',
+          },
+        ],
+      }),
+    ).toBe(true);
+  });
+
+  it('accepts a non-final page: no watermark, cursor set, placeholder items allowed', () => {
+    expect(
+      parses({
+        kind: 'conversation.read.result',
+        replyTo: 'request-1',
+        sessionId: 'session-1',
+        graphRevision: 2,
+        leafTurnId: 'turn-2',
+        events: [
+          {
+            turnId: 'turn-1',
+            runId: 'run-1',
+            event: { type: 'user-message', messageId: 'm-1', content: [] },
+          },
+          { type: 'history-unavailable', turnId: 'turn-1', runId: 'run-1' },
+        ],
+        cursor: '2',
+      }),
+    ).toBe(true);
+  });
+
+  it('rejects a read item that is neither an event nor a placeholder', () => {
+    expect(
+      parses({
+        kind: 'conversation.read.result',
+        replyTo: 'request-1',
+        sessionId: 'session-1',
+        graphRevision: 0,
+        events: [{ turnId: 'turn-1' }],
+      }),
+    ).toBe(false);
+  });
+
   it('scopes conversation.graph.changed to its session', () => {
     const payload = WirePayloadSchema.parse({
       kind: 'conversation.graph.changed',
