@@ -1,3 +1,4 @@
+import { setImmediate as nextLoopTurn } from 'node:timers/promises';
 import { asHistoryId } from '@linkcode/agent-adapter';
 import type { AgentInput, TurnId, WirePayload } from '@linkcode/schema';
 import {
@@ -8,6 +9,7 @@ import {
   TurnIdSchema,
 } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import { InMemorySessionStore } from '../session/session-store';
@@ -35,6 +37,21 @@ class RejectOnceAdapter extends FakeAdapter {
     }
     return super.send(input);
   }
+}
+
+class HangingResumeAdapter extends FakeAdapter {
+  override resumeHistory(): Promise<void> {
+    return new Promise<void>(noop);
+  }
+}
+
+/** First start is a normal adapter; the first relaunch hangs in resume; later ones are normal. */
+function hangSecondAdapter(): () => FakeAdapter {
+  let index = 0;
+  return () => {
+    index += 1;
+    return index === 2 ? new HangingResumeAdapter() : new FakeAdapter();
+  };
 }
 
 function submittedTurnId(sent: WirePayload[], replyTo: string): TurnId {
@@ -354,5 +371,76 @@ describe('turn.submit saga', () => {
     });
     expect(failure(h.sent, 's-attachment').code).toBe('unsupported');
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
+  });
+
+  it('resolves the operation when the session stops mid-dispatch, and the next submit is not busy', async () => {
+    const h = await startedHarness(hangSecondAdapter());
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop-1', sessionId: h.sessionId });
+
+    // The submit relaunches into an adapter hanging in resume; stopping the session interrupts it.
+    await submitPrompt(h, 's2', 'wake up');
+    await vi.waitFor(() => expect(h.adapters).toHaveLength(2));
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop-2', sessionId: h.sessionId });
+    await vi.waitFor(() =>
+      expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'stop-2' }),
+    );
+
+    // The interrupted dispatch left no open operation; a retry replays the stored failure.
+    await vi.waitFor(async () => {
+      const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s2'));
+      expect(operation?.state).toBe('failed');
+    });
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's2-retry',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-s2'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'wake up' }] },
+    });
+    expect(failure(h.sent, 's2-retry').code).toBe('cancelled');
+
+    // A fresh submit is admitted and relaunches instead of replying busy.
+    await submitPrompt(h, 's3', 'again');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+    expect(nullthrow(h.adapters[2]).resumedFrom).toBe('native-1');
+  });
+
+  it('discards a start interrupted by the submit timeout so the next submit relaunches', async () => {
+    const h = await startedHarness(hangSecondAdapter());
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop-1', sessionId: h.sessionId });
+
+    // Fake only timers: the Effect clock sleeps on setTimeout, fibers schedule on setImmediate.
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    try {
+      const pending = h.inject({
+        kind: 'turn.submit',
+        clientReqId: 's2',
+        sessionId: h.sessionId,
+        operationId: OperationIdSchema.parse('op-s2'),
+        input: { type: 'prompt', blocks: [{ type: 'text', text: 'wake up' }] },
+      });
+      // Let the dispatch reach the hung resume, then fire the submit timeout as it stands today.
+      while (h.adapters.length < 2) await nextLoopTurn();
+      await vi.advanceTimersByTimeAsync(120_000);
+      await pending;
+    } finally {
+      vi.useRealTimers();
+    }
+
+    await vi.waitFor(() => expect(failure(h.sent, 's2').code).toBe('timeout'));
+    // The interrupted start was discarded — no registered zombie holding an unstarted adapter.
+    await vi.waitFor(() => expect(nullthrow(h.adapters[1]).stopped).toBe(true));
+
+    await submitPrompt(h, 's3', 'again');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+    expect(nullthrow(h.adapters[2]).resumedFrom).toBe('native-1');
   });
 });

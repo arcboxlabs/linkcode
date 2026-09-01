@@ -9,6 +9,7 @@ import {
   textBlock,
 } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import { InMemorySessionStore } from '../session/session-store';
@@ -23,6 +24,13 @@ class RejectingTurnAdapter extends FakeAdapter {
   override send(input: AgentInput): Promise<void> {
     this.sentInputs.push(input);
     return Promise.reject(new Error('provider rejected input'));
+  }
+}
+
+class HangingSendAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    return new Promise<void>(noop);
   }
 }
 
@@ -187,6 +195,50 @@ describe('legacy input turn tracking', () => {
     const [record] = await h.store.load();
     expect(record.activeLeafTurnId).toBeUndefined();
     expect(record.graphRevision).toBe(0);
+  });
+
+  it('resolves the persisted turn when the session stops while its dispatch hangs', async () => {
+    const h = await startedHarness(() => new HangingSendAdapter());
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [textBlock('work')] },
+    });
+    // The intent is persisted and the adapter never acknowledges; stopping interrupts the dispatch.
+    expect(await h.conversationStore.listOpenOperations(h.sessionId)).toHaveLength(1);
+
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
+
+    await vi.waitFor(async () => {
+      expect(await h.conversationStore.listOpenOperations(h.sessionId)).toHaveLength(0);
+    });
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+    expect(turn.state).toBe('failed');
+  });
+
+  it('closes an unsettled predecessor as failed when its run saw an adapter error', async () => {
+    const h = await startedHarness();
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'first',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [textBlock('one')] },
+    });
+    h.adapter.emit({ type: 'error', message: 'provider exploded', recoverable: true });
+    await settleEngineTasks();
+
+    // No idle/stop settle arrived; admitting the next turn closes the predecessor out honestly.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'second',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [textBlock('two')] },
+    });
+    await settleEngineTasks();
+
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.map((turn) => turn.state)).toEqual(['failed', 'running']);
   });
 
   it('cancels the running turn when the session is stopped mid-turn', async () => {
