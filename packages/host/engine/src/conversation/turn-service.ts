@@ -174,25 +174,24 @@ export class ConversationTurnService {
   }
 
   /** The provider accepted the dispatch: one transaction stores the success and flips the turn to
-   * `running`; then the host default leaf moves and the graph change is announced. A call for an
-   * already-resolved operation is a no-op — the dispatch-timer rescue commits before the losing
-   * send continuation could, and a second commit must not move the graph again. */
+   * `running`, and ONLY the call that transitioned the row runs the side effects — a concurrent
+   * commit (dispatch-timer rescue vs the send continuation) must move the graph exactly once.
+   * Uninterruptible: an interrupt between the store write and the graph move would strand a
+   * succeeded operation behind a stale active leaf; the whole chain is a few sync-SQLite hops. */
   commitRunning(intent: PersistedTurnIntent): Effect.Effect<void, OperationError> {
-    return this.getOperation(intent.operation.operationId).pipe(
-      Effect.flatMap((current) => {
-        if (current !== undefined && current.state !== 'open') return Effect.void;
-        const turn: ConversationTurn = { ...intent.turn, state: 'running' };
-        const operation: ConversationOperation = {
-          ...intent.operation,
-          state: 'succeeded',
-          turnId: turn.turnId,
-          resolvedAt: Date.now(),
-        };
-        return storeOperation('conversation.operation.resolve', () =>
-          this.store.resolveOperation(operation, turn),
-        ).pipe(
-          Effect.andThen(
-            Effect.sync(() => {
+    const turn: ConversationTurn = { ...intent.turn, state: 'running' };
+    const operation: ConversationOperation = {
+      ...intent.operation,
+      state: 'succeeded',
+      turnId: turn.turnId,
+      resolvedAt: Date.now(),
+    };
+    return storeOperation('conversation.operation.resolve', () =>
+      this.store.resolveOperation(operation, turn),
+    ).pipe(
+      Effect.flatMap((transitioned) =>
+        transitioned
+          ? Effect.sync(() => {
               this.trackRunning(turn);
               const graphRevision = this.records.commitGraphMove(turn.sessionId, turn.turnId);
               if (graphRevision !== undefined) {
@@ -205,31 +204,44 @@ export class ConversationTurnService {
                   }),
                 );
               }
-            }),
-          ),
-        );
-      }),
+            })
+          : Effect.void,
+      ),
+      Effect.uninterruptible,
     );
   }
 
-  /** Store the typed failure — unless a concurrent path already resolved the operation, whose
-   * terminal result then stands. Retrying the operationId replays the stored result verbatim. */
+  /** Store the typed failure — unless a concurrent resolver already stored a terminal result, in
+   * which case the STORED result is returned: the reply must never differ from what a retry of the
+   * operationId will replay. */
   resolveFailed(
     intent: PersistedTurnIntent,
     error: { readonly code: string; readonly message: string },
   ): Effect.Effect<TerminalOperation, OperationError> {
     return Effect.gen({ self: this }, function* () {
-      const current = yield* this.getOperation(intent.operation.operationId);
-      if (current && current.state !== 'open') return current;
       const operation = {
         ...intent.operation,
         state: 'failed' as const,
         error: { code: error.code, message: error.message },
         resolvedAt: Date.now(),
       };
-      yield* storeOperation('conversation.operation.resolve', () =>
+      const transitioned = yield* storeOperation('conversation.operation.resolve', () =>
         this.store.resolveOperation(operation, { ...intent.turn, state: 'failed' }),
       );
+      if (!transitioned) {
+        const stored = yield* this.getOperation(intent.operation.operationId);
+        if (stored === undefined || stored.state === 'open') {
+          return yield* Effect.fail(
+            new OperationError({
+              subsystem: 'store',
+              operation: 'conversation.operation.resolve',
+              publicMessage: 'The operation resolution was lost',
+              cause: undefined,
+            }),
+          );
+        }
+        return stored;
+      }
       const running = this.running.get(intent.turn.sessionId);
       if (running?.turn.turnId === intent.turn.turnId) this.running.delete(intent.turn.sessionId);
       return operation;

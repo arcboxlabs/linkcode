@@ -1,7 +1,7 @@
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import { Effect, Exit } from 'effect';
+import { Cause, Effect, Exit } from 'effect';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import { causeToRequestFailure, OperationError, RequestError } from '../failure';
@@ -186,18 +186,36 @@ export class SessionInputDispatcher {
         // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
         if (startsTurn && session.status !== 'running') session.turnInputActive = false;
       });
-      if (persisted === undefined) return yield* dispatch;
+      // A saga-prepared intent is resolved by its saga's own exit backstop in the request fiber;
+      // this fiber resolves only the intents it minted, so the saga's precise error (e.g. the
+      // dispatch timeout) can never lose the store race to this fiber's interrupt exit.
+      if (persisted === undefined || prepared !== undefined) return yield* dispatch;
       // Every non-success exit past the durable commit point — dispatch rejection, commit failure,
-      // interrupt, defect — must resolve the operation, or the session wedges `busy`. Detached:
-      // this fiber runs in the session scope, and a teardown must not wait on the store write.
+      // interrupt, defect — must resolve the operation, or the session wedges `busy`.
       return yield* dispatch.pipe(
-        Effect.onExit((exit) =>
-          Exit.isFailure(exit)
-            ? Effect.sync(() => {
-                turns.resolveFailedDetached(persisted, causeToRequestFailure(exit.cause));
-              })
-            : Effect.void,
-        ),
+        Effect.onExit((exit) => {
+          if (!Exit.isFailure(exit)) return Effect.void;
+          const failure = causeToRequestFailure(exit.cause);
+          // An interrupt exit means the session scope is tearing down, and awaiting store hops in
+          // this finalizer would block Scope.close — that one path stays detached.
+          if (Cause.hasInterruptsOnly(exit.cause)) {
+            return Effect.sync(() => {
+              turns.resolveFailedDetached(persisted, failure);
+            });
+          }
+          // Typed failures await, so the failure reply can never beat the stored resolution and
+          // hand an instant retry a spurious `busy`.
+          return turns.resolveFailed(persisted, failure).pipe(
+            Effect.catch((resolveError) =>
+              Effect.logError(
+                'Failed to record the rejected turn',
+                { sessionId },
+                resolveError.cause,
+              ),
+            ),
+            Effect.asVoid,
+          );
+        }),
       );
     }).pipe(
       Effect.onExit((exit) =>

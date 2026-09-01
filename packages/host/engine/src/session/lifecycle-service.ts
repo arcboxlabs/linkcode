@@ -360,8 +360,8 @@ export class SessionLifecycleService {
               },
             );
           }).pipe(
-            // The dispatcher resolves dispatch failures itself; this covers stop/branch failures
-            // plus any interrupt or defect on the way to dispatch.
+            // The dispatcher does not resolve saga-prepared intents; every failure exit — stop,
+            // branch, or dispatch failures, interrupts, defects — resolves here.
             Effect.onExit((exit) =>
               Exit.isFailure(exit)
                 ? turns.resolveFailed(intent, causeToRequestFailure(exit.cause)).pipe(

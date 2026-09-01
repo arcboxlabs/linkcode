@@ -415,7 +415,9 @@ describe('legacy input turn tracking', () => {
 });
 
 describe('commitRunning idempotence', () => {
-  it('a second commit for a resolved operation is a no-op: no error, no second graph move', async () => {
+  const sessionId = SessionIdSchema.parse('sess-commit');
+
+  async function turnServiceFixture() {
     const sent: WirePayload[] = [];
     const transport: Transport = {
       connect: () => Promise.resolve(),
@@ -432,7 +434,6 @@ describe('commitRunning idempotence', () => {
         void Effect.runPromise(effect);
       }),
     );
-    const sessionId = SessionIdSchema.parse('sess-commit');
     registry.register({
       sessionId,
       kind: 'claude-code',
@@ -456,6 +457,11 @@ describe('commitRunning idempotence', () => {
         input: { type: 'shell-command', command: 'git status' },
       }),
     );
+    return { sent, registry, store, turns, intent };
+  }
+
+  it('a second commit for a resolved operation is a no-op: no error, no second graph move', async () => {
+    const { sent, registry, store, turns, intent } = await turnServiceFixture();
 
     await Effect.runPromise(turns.commitRunning(intent));
     await Effect.runPromise(turns.commitRunning(intent));
@@ -463,5 +469,34 @@ describe('commitRunning idempotence', () => {
     expect((await store.getOperation(OperationIdSchema.parse('op-1')))?.state).toBe('succeeded');
     expect(registry.get(sessionId)?.graphRevision).toBe(1);
     expect(sent.filter((payload) => payload.kind === 'conversation.graph.changed')).toHaveLength(1);
+  });
+
+  it('a commit that lost the resolve race runs no side effects at all', async () => {
+    const { sent, registry, store, turns, intent } = await turnServiceFixture();
+    await Effect.runPromise(turns.resolveFailed(intent, { code: 'timeout', message: 'too slow' }));
+
+    await Effect.runPromise(turns.commitRunning(intent));
+
+    const operation = await store.getOperation(OperationIdSchema.parse('op-1'));
+    expect(operation).toMatchObject({ state: 'failed', error: { code: 'timeout' } });
+    expect(registry.get(sessionId)?.graphRevision).toBe(0);
+    expect(sent.filter((payload) => payload.kind === 'conversation.graph.changed')).toHaveLength(0);
+    // Nor tracking: a settle for this run must find nothing to flip.
+    turns.settleStop(sessionId, RunIdSchema.parse('run-1'), 'end_turn');
+    await settleEngineTasks();
+    expect((await store.listTurns(sessionId))[0].state).toBe('failed');
+  });
+
+  it('a resolveFailed that lost the race returns the stored terminal result', async () => {
+    const { store, turns, intent } = await turnServiceFixture();
+    await Effect.runPromise(turns.commitRunning(intent));
+
+    const result = await Effect.runPromise(
+      turns.resolveFailed(intent, { code: 'busy', message: 'late loser' }),
+    );
+
+    const stored = await store.getOperation(OperationIdSchema.parse('op-1'));
+    expect(result).toEqual(stored);
+    expect(result.state).toBe('succeeded');
   });
 });
