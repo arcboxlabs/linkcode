@@ -10,7 +10,11 @@ export const AgentHistoryCapabilitiesSchema = z.object({
   read: z.boolean(),
   /** Adapter can resume a live session from a known provider-local history id. */
   resume: z.boolean(),
-  /** Adapter can fork provider history before a historical user prompt for replacement. */
+  /** Adapter can fork provider history right after a turn's captured checkpoint — the one fork
+   * primitive every provider actually has ("before prompt T" ≡ "after parent(T)"). Per-turn
+   * availability additionally depends on a captured, still-valid checkpoint. */
+  forkAfterTurn: z.boolean().optional(),
+  /** Mirror of `forkAfterTurn` for ≤v79 clients; retired at the floor bump. */
   branch: z.boolean().optional(),
 });
 export type AgentHistoryCapabilities = z.infer<typeof AgentHistoryCapabilitiesSchema>;

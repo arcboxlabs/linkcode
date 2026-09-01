@@ -8,6 +8,26 @@ interface HistoryBranchCursorPayload {
   branchPoint: string | null;
 }
 
+/** A provider fork point minted by a live adapter; never crosses the wire. `cursor` is what
+ * `branchHistory` accepts and forks the history right after the described turn. */
+export interface HistoryCheckpoint {
+  readonly historyId: AgentHistoryId;
+  readonly cursor: string;
+  /** `ending`: the turn settling now (emitted before its stop/idle). `preceding`: the turn before
+   * the one whose dispatch just revealed the cut — opencode's cut is the successor's message id. */
+  readonly turn: 'ending' | 'preceding';
+}
+
+/** A fork was refused because its checkpoint no longer names a live provider position (deleted or
+ * rewritten history, an unforkable rollout). Nothing was created; the engine maps it to a typed
+ * `unsupported` instead of ever aiming a fork at a guessed cut. */
+export class HistoryCheckpointInvalidError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'HistoryCheckpointInvalidError';
+  }
+}
+
 export function encodeHistoryBranchCursor(
   kind: AgentKind,
   historyId: AgentHistoryId,
