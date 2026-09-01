@@ -19,9 +19,7 @@ import {
 } from 'coss-ui/components/command';
 import { Kbd, KbdGroup } from 'coss-ui/components/kbd';
 import { ArrowDownIcon, ArrowUpIcon, CornerDownLeftIcon } from 'lucide-react';
-import type { Transition } from 'motion/react';
-import { motion, useReducedMotion } from 'motion/react';
-import { Fragment, useRef, useState } from 'react';
+import { Fragment, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { AgentIcon } from '../chat/agent-icon';
 import { useKeyboardShortcut } from '../keyboard';
@@ -48,7 +46,7 @@ export interface PaletteCommandViewModel {
 }
 
 export interface CommandPaletteProps {
-  /** Fires with `false` on Escape/backdrop dismissal; closing happens by unmounting (the caller's `AnimatePresence` plays the exit). */
+  /** Fires with `false` on Escape, Command+K, or backdrop dismissal. */
   onOpenChange: (open: boolean) => void;
   /** Controlled query — filtering/ranking happens upstream, never inside the dialog. */
   query: string;
@@ -111,24 +109,10 @@ function RecentThreadJumpBinding({
   return null;
 }
 
-/** Dialog chrome forked from coss-ui's `CommandDialogBackdrop`/`CommandDialogPopup`: motion owns
- * enter/exit, so the `data-starting/ending-style` classes are dropped; `backdrop-blur-sm` is
- * dropped because backdrop-filter can't blur the native vibrancy behind the translucent sidebar. */
+/** Dialog chrome without coss-ui's transitions; backdrop blur cannot blur native vibrancy. */
 const BACKDROP_CLASS = 'fixed inset-0 z-50 bg-black/32';
 const POPUP_CLASS =
   'relative flex max-h-105 min-h-0 w-full min-w-0 max-w-xl flex-col rounded-2xl border bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 outline-none before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:bg-muted/72 before:shadow-[0_1px_--theme(--color-black/4%)] **:data-[slot=scroll-area-viewport]:data-has-overflow-y:pe-1 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]';
-
-/** Intrinsic height of an element, observed so the list wrapper can animate to it. */
-function useMeasuredHeight(): [React.RefCallback<HTMLElement>, number | null] {
-  const [height, setHeight] = useState<number | null>(null);
-  const measureRef = (element: HTMLElement | null): (() => void) | undefined => {
-    if (!element) return undefined;
-    const observer = new ResizeObserver(() => setHeight(element.offsetHeight));
-    observer.observe(element);
-    return () => observer.disconnect();
-  };
-  return [measureRef, height];
-}
 
 /** The ⌘K palette dialog. Items are pre-ranked by the caller (`mode="none"`); Base UI owns
  * keyboard navigation and Enter-activation, so rows only need `onClick`. */
@@ -142,11 +126,19 @@ export function CommandPalette({
   onRunCommand,
 }: CommandPaletteProps): React.ReactNode {
   const t = useTranslations('workbench.palette');
-  const reducedMotion = useReducedMotion();
-  const [listRef, listHeight] = useMeasuredHeight();
-  // Owner for the ⌘1–⌘9 jumps: while the palette is open the workbench root carrying the global
-  // bindings is `data-base-ui-inert`, so the popup must own these bindings itself.
+  // The workbench shortcut owner is inert while the dialog is open, so popup-local bindings own
+  // Command+K dismissal and the ⌘1–⌘9 jumps.
   const popupRef = useRef<HTMLDivElement>(null);
+
+  useKeyboardShortcut({
+    actionId: 'workbench.command-palette',
+    shortcut: { code: 'KeyK', modifiers: ['primary'] },
+    owner: popupRef,
+    handler() {
+      onOpenChange(false);
+      return true;
+    },
+  });
 
   const groups: PaletteGroup[] = [];
   if (threads.length > 0) {
@@ -164,38 +156,18 @@ export function CommandPalette({
     });
   }
 
-  const dialogTransition: Transition = reducedMotion
-    ? { duration: 0 }
-    : { duration: 0.2, ease: 'easeInOut' };
-
   return (
     <CommandDialog open onOpenChange={onOpenChange}>
       <CommandDialogPortal>
         <CommandDialogPrimitive.Backdrop
           className={BACKDROP_CLASS}
           data-slot="command-dialog-backdrop"
-          render={
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={dialogTransition}
-            />
-          }
         />
         <CommandDialogViewport>
           <CommandDialogPrimitive.Popup
+            ref={popupRef}
             className={POPUP_CLASS}
             data-slot="command-dialog-popup"
-            render={
-              <motion.div
-                ref={popupRef}
-                initial={{ opacity: 0, scale: 0.98 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.98 }}
-                transition={dialogTransition}
-              />
-            }
           >
             {/* ⌘1–⌘9 select the nth Recent row while the palette is open. Only on the empty-query
                 Recent view — a filtered ranking no longer lines up with the digit hints. */}
@@ -219,13 +191,8 @@ export function CommandPalette({
               <CommandInput placeholder={t('placeholder')} />
               <CommandPanel className="flex flex-col">
                 <CommandEmpty>{t('empty')}</CommandEmpty>
-                <motion.div
-                  className="min-h-0"
-                  initial={false}
-                  animate={listHeight === null ? undefined : { height: listHeight }}
-                  transition={reducedMotion ? { duration: 0 } : { duration: 0.15, ease: 'easeOut' }}
-                >
-                  <CommandList ref={listRef}>
+                <div className="min-h-0">
+                  <CommandList>
                     {(group: PaletteGroup) => (
                       <Fragment key={group.value}>
                         <CommandGroup items={group.items}>
@@ -252,7 +219,7 @@ export function CommandPalette({
                       </Fragment>
                     )}
                   </CommandList>
-                </motion.div>
+                </div>
               </CommandPanel>
               <CommandFooter>
                 <div className="flex items-center gap-4">

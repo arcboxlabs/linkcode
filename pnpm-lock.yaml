@@ -846,9 +846,6 @@ importers:
       lucide-react:
         specifier: 'catalog:'
         version: 1.27.0(react@19.3.0-canary-96fcba90-20260728)
-      motion:
-        specifier: ^12.42.2
-        version: 12.42.2(react-dom@19.3.0-canary-96fcba90-20260728(react@19.3.0-canary-96fcba90-20260728))(react@19.3.0-canary-96fcba90-20260728)
       pathe:
         specifier: ^2.0.3
         version: 2.0.3
