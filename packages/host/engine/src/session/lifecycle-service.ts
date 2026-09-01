@@ -163,6 +163,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, startedAt: now, ...runOf(resolved, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -203,6 +204,7 @@ export class SessionLifecycleService {
             updatedAt: now,
             runs: [],
             graphRevision: 0,
+            eventEpoch: 0,
           };
           yield* records.importRecord(record);
           if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
@@ -243,6 +245,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, historyId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -900,6 +903,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, runId, (adapter) =>

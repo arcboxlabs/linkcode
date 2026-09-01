@@ -441,6 +441,7 @@ describe('commitRunning idempotence', () => {
       updatedAt: 1,
       runs: [],
       graphRevision: 0,
+      eventEpoch: 0,
     });
     const store = new InMemoryConversationStore();
     const turns = new ConversationTurnService(store, registry, transport, (effect) => {
