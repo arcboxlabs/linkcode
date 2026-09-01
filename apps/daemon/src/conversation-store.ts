@@ -173,9 +173,9 @@ export function createConversationStore(dbPath: string): ConversationStore {
       return Promise.resolve(persisted);
     },
 
-    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void> {
-      db.transaction((tx) => {
-        const transitioned = tx
+    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean> {
+      const transitioned = db.transaction((tx) => {
+        const result = tx
           .update(conversationOperations)
           .set(toOperationRow(operation))
           .where(
@@ -186,10 +186,11 @@ export function createConversationStore(dbPath: string): ConversationStore {
           )
           .run();
         // A concurrent resolver already stored a terminal result; the first writer stands.
-        if (transitioned.changes === 0) return;
+        if (result.changes === 0) return false;
         if (turn) upsertTurn(tx, turn);
+        return true;
       });
-      return Promise.resolve();
+      return Promise.resolve(transitioned);
     },
 
     deleteSession(sessionId: SessionId): Promise<void> {

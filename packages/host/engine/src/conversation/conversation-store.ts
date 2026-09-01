@@ -50,8 +50,9 @@ export interface ConversationStore {
    * plain-inserted, so a replayed operationId conflicts instead of re-opening a terminal row. */
   persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn>;
   /** Atomic: store the operation's terminal result and, when given, the turn's new state — but
-   * only while the operation row is still `open`. The first terminal writer stands. */
-  resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void>;
+   * only while the operation row is still `open`. Returns whether THIS call performed the
+   * transition; the first terminal writer stands and losers must run no side effects. */
+  resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean>;
   /** Purge the session's turns, bindings, and operations. Prompts are shared by reference across
    * forks: one is deleted only when no turn in ANY session still references it. */
   deleteSession(sessionId: SessionId): Promise<void>;
@@ -109,15 +110,17 @@ export class InMemoryConversationStore implements ConversationStore {
     return Promise.resolve(open);
   }
 
-  async persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn> {
+  persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn> {
     const { sessionId, parentTurnId } = intent.turn;
     for (const operation of this.operations.values()) {
       if (operation.sessionId === sessionId && operation.state === 'open') {
-        throw new ConversationSessionBusyError(sessionId);
+        return Promise.reject(new ConversationSessionBusyError(sessionId));
       }
     }
     if (this.operations.has(intent.operation.operationId)) {
-      throw new Error(`Operation already persisted: ${intent.operation.operationId}`);
+      return Promise.reject(
+        new Error(`Operation already persisted: ${intent.operation.operationId}`),
+      );
     }
     let siblingOrdinal = 1;
     for (const existing of this.turns.values()) {
@@ -126,7 +129,9 @@ export class InMemoryConversationStore implements ConversationStore {
       }
     }
     const turn: ConversationTurn = { ...intent.turn, siblingOrdinal };
-    await this.saveTurn(turn);
+    // All mutations happen synchronously, so a racing persist cannot pass the guard mid-write —
+    // the same atomicity the SQLite transaction gives the daemon store.
+    this.turns.set(turn.turnId, structuredClone(turn));
     if (
       intent.turn.input.type === 'prompt' &&
       intent.turn.input.promptId !== null &&
@@ -135,13 +140,16 @@ export class InMemoryConversationStore implements ConversationStore {
       this.prompts.set(intent.prompt.promptId, structuredClone(intent.prompt));
     }
     this.operations.set(intent.operation.operationId, structuredClone(intent.operation));
-    return turn;
+    return Promise.resolve(turn);
   }
 
-  async resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void> {
-    if (this.operations.get(operation.operationId)?.state !== 'open') return;
+  resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean> {
+    if (this.operations.get(operation.operationId)?.state !== 'open') {
+      return Promise.resolve(false);
+    }
     this.operations.set(operation.operationId, structuredClone(operation));
-    if (turn) await this.saveTurn(turn);
+    if (turn) this.turns.set(turn.turnId, structuredClone(turn));
+    return Promise.resolve(true);
   }
 
   deleteSession(sessionId: SessionId): Promise<void> {

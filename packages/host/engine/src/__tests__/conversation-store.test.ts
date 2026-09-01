@@ -180,6 +180,27 @@ describe('InMemoryConversationStore', () => {
     });
   });
 
+  it('a same-tick persist race yields one open operation and one busy rejection', async () => {
+    const store = new InMemoryConversationStore();
+
+    const results = await Promise.allSettled([
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-1', sessionId: 's-1' }),
+        operation: openOperation('op-1', 's-1'),
+      }),
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-2', sessionId: 's-1' }),
+        operation: openOperation('op-2', 's-1'),
+      }),
+    ]);
+
+    expect(results.map((result) => result.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const rejected = results.find((result) => result.status === 'rejected');
+    expect(rejected?.reason).toBeInstanceOf(ConversationSessionBusyError);
+    expect(await store.listOpenOperations(SessionIdSchema.parse('s-1'))).toHaveLength(1);
+    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toHaveLength(1);
+  });
+
   it('assigns sibling ordinals itself and refuses a replayed operation id', async () => {
     const store = new InMemoryConversationStore();
     const first = await store.persistTurnIntent({
@@ -227,21 +248,23 @@ describe('InMemoryConversationStore', () => {
       createdAt: 1,
       resolvedAt: 2,
     });
-    await store.resolveOperation(failed, { ...persisted, state: 'failed' });
+    expect(await store.resolveOperation(failed, { ...persisted, state: 'failed' })).toBe(true);
 
     // A late success must not overwrite the stored failure or flip the turn.
-    await store.resolveOperation(
-      ConversationOperationSchema.parse({
-        operationId: 'op-1',
-        sessionId: 's-1',
-        kind: 'turn.submit',
-        state: 'succeeded',
-        turnId: 't-1',
-        createdAt: 1,
-        resolvedAt: 3,
-      }),
-      { ...persisted, state: 'running' },
-    );
+    expect(
+      await store.resolveOperation(
+        ConversationOperationSchema.parse({
+          operationId: 'op-1',
+          sessionId: 's-1',
+          kind: 'turn.submit',
+          state: 'succeeded',
+          turnId: 't-1',
+          createdAt: 1,
+          resolvedAt: 3,
+        }),
+        { ...persisted, state: 'running' },
+      ),
+    ).toBe(false);
 
     expect(await store.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
     expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([

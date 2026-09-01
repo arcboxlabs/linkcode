@@ -432,18 +432,20 @@ describe('SQLite conversation store', () => {
       createdAt: 4,
       resolvedAt: 6,
     });
-    await store.resolveOperation(failed, { ...first, state: 'failed' });
+    expect(await store.resolveOperation(failed, { ...first, state: 'failed' })).toBe(true);
 
     // A late success must not overwrite the stored failure or flip the failed turn.
-    await store.resolveOperation(
-      {
-        ...openOperation('op-1'),
-        state: 'succeeded',
-        turnId: first.turnId,
-        resolvedAt: 7,
-      },
-      { ...first, state: 'running' },
-    );
+    expect(
+      await store.resolveOperation(
+        {
+          ...openOperation('op-1'),
+          state: 'succeeded',
+          turnId: first.turnId,
+          resolvedAt: 7,
+        },
+        { ...first, state: 'running' },
+      ),
+    ).toBe(false);
 
     const reopened = createConversationStore(database);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
