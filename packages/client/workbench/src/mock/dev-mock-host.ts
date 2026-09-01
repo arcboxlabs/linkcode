@@ -7,6 +7,8 @@ import type {
   AgentKind,
   AgentRuntimes,
   ContentBlock,
+  ConversationGraphTurn,
+  ConversationReadItem,
   CustomMcpServer,
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
@@ -17,8 +19,10 @@ import type {
   MessageId,
   PermissionOutcome,
   Plugin,
+  PromptId,
   ProvidersConfig,
   QuestionOutcome,
+  RunId,
   SessionId,
   SessionInfo,
   SessionResource,
@@ -28,6 +32,8 @@ import type {
   TerminalMetadata,
   TerminalReplayEvent,
   ToolCall,
+  TurnId,
+  TurnSubmitInput,
   WireMessage,
   WirePayload,
   WorkspaceId,
@@ -125,11 +131,18 @@ interface MockSession extends SessionInfo {
   effort?: EffortLevel;
   /** Bumped by cancel/stop so an in-flight prompt turn knows to bail out. */
   epoch: number;
+  /** Minimal turn tree: one lineage appended per `turn.submit` (showcase parity). */
+  graphTurns: MockTurn[];
   showcase?: boolean;
   showcaseSeeded?: boolean;
   longThread?: boolean;
   longThreadSeeded?: boolean;
   terminalId?: string;
+}
+
+interface MockTurn {
+  graph: ConversationGraphTurn;
+  content: ContentBlock[];
 }
 
 interface PendingPermission {
@@ -202,6 +215,7 @@ export class DevMockHost {
   private workspaceSeq = 0;
   private terminalSeq = 0;
   private resourceSeq = 0;
+  private turnSeq = 0;
   /** Assets a mock `asset.ensure` has "installed"; list/runtime replies reflect it afterwards. */
   private readonly installedAssets = new Set<ManagedAssetKey>();
   private readonly cleanGitWorkspaces = new Set<string>();
@@ -355,6 +369,62 @@ export class DevMockHost {
       case 'agent.input':
         await this.handleInput(p.clientReqId, p.sessionId, p.input);
         break;
+      case 'turn.submit':
+        await wait(CONTROL_LATENCY_MS);
+        await this.submitTurn(p);
+        break;
+      case 'conversation.graph.get': {
+        await wait(CONTROL_LATENCY_MS);
+        const session = this.sessions.get(p.sessionId);
+        if (!session) {
+          this.sendFailure(p.clientReqId, `Unknown session: ${p.sessionId}`);
+          break;
+        }
+        const leaf = session.graphTurns.at(-1);
+        this.send({
+          kind: 'conversation.graph.result',
+          replyTo: p.clientReqId,
+          sessionId: p.sessionId,
+          graphRevision: session.graphTurns.length,
+          ...(leaf !== undefined && { activeLeafTurnId: leaf.graph.turnId }),
+          turns: session.graphTurns.map((turn) => structuredClone(turn.graph)),
+        });
+        break;
+      }
+      case 'conversation.read': {
+        await wait(CONTROL_LATENCY_MS);
+        const session = this.sessions.get(p.sessionId);
+        if (!session) {
+          this.sendFailure(p.clientReqId, `Unknown session: ${p.sessionId}`);
+          break;
+        }
+        const leaf = session.graphTurns.at(-1);
+        // Minimal parity: host user rows + the no-history placeholder, one final page. The mock
+        // has no provider transcripts, so this mirrors the daemon's prompt-only fallback.
+        const events = session.graphTurns.flatMap(({ graph, content }): ConversationReadItem[] => [
+          {
+            turnId: graph.turnId,
+            runId: graph.runId,
+            ts: graph.createdAt,
+            event: {
+              type: 'user-message',
+              messageId: this.nextMessageId('mock-turn-user'),
+              content: structuredClone(content),
+            },
+          },
+          { type: 'history-unavailable', turnId: graph.turnId, runId: graph.runId },
+        ]);
+        this.send({
+          kind: 'conversation.read.result',
+          replyTo: p.clientReqId,
+          sessionId: p.sessionId,
+          graphRevision: session.graphTurns.length,
+          ...(leaf !== undefined && { leafTurnId: leaf.graph.turnId }),
+          watermark: { epoch: 0, seq: 0 },
+          events,
+        });
+        break;
+      }
       case 'resource.list':
         await wait(CONTROL_LATENCY_MS);
         this.send({
@@ -757,7 +827,7 @@ export class DevMockHost {
   }
 
   private addSession(
-    init: Omit<MockSession, 'sessionId' | 'origin' | 'epoch' | 'status'> & {
+    init: Omit<MockSession, 'sessionId' | 'origin' | 'epoch' | 'status' | 'graphTurns'> & {
       status: SessionStatus;
       origin?: SessionInfo['origin'];
     },
@@ -774,6 +844,7 @@ export class DevMockHost {
       sessionId: this.nextSessionId(),
       origin: origin ?? { type: 'created' },
       epoch: 0,
+      graphTurns: [],
     };
     this.sessions.set(session.sessionId, session);
     return session;
@@ -1235,11 +1306,69 @@ export class DevMockHost {
     this.sendSuccess(replyTo);
   }
 
+  /** Appends a completed turn to the mock graph and streams the scripted reply — the daemon's
+   * submit saga reduced to showcase parity. */
+  private async submitTurn(p: Extract<WirePayload, { kind: 'turn.submit' }>): Promise<void> {
+    const session = this.sessions.get(p.sessionId);
+    if (!session) {
+      this.sendFailure(p.clientReqId, `Unknown session: ${p.sessionId}`);
+      return;
+    }
+    if (session.status === 'stopped') {
+      this.sendFailure(p.clientReqId, `Session is stopped, resume it first: ${p.sessionId}`);
+      return;
+    }
+    if (session.status === 'running') {
+      this.sendFailure(p.clientReqId, `Session is busy: ${p.sessionId}`);
+      return;
+    }
+    const content = turnSubmitContent(p.input);
+    this.turnSeq += 1;
+    const turnId = `turn-mock-${this.turnSeq.toString(36)}` as TurnId;
+    const parent = session.graphTurns.at(-1);
+    const graph: ConversationGraphTurn = {
+      turnId,
+      sessionId: p.sessionId,
+      parentTurnId: parent?.graph.turnId ?? null,
+      siblingOrdinal: 1,
+      input:
+        p.input.type === 'prompt'
+          ? { type: 'prompt', promptId: `prompt-mock-${this.turnSeq.toString(36)}` as PromptId }
+          : p.input,
+      runId: `run-mock-${this.turnSeq.toString(36)}` as RunId,
+      state: 'completed',
+      createdAt: Date.now(),
+      inputSummary: promptText(content).slice(0, 140),
+    };
+    session.graphTurns.push({ graph, content });
+    this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId });
+    if (p.input.type === 'prompt') {
+      const result = await this.streamMockTurn(session, content);
+      if (!result.ok) graph.state = 'failed';
+      return;
+    }
+    // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
+    this.emit(p.sessionId, {
+      type: 'user-message',
+      messageId: this.nextMessageId('mock-user'),
+      content,
+    });
+  }
+
   private async prompt(
     replyTo: string,
     session: MockSession,
     content: ContentBlock[],
   ): Promise<void> {
+    const result = await this.streamMockTurn(session, content);
+    if (result.ok) this.sendSuccess(replyTo);
+    else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
+  }
+
+  private async streamMockTurn(
+    session: MockSession,
+    content: ContentBlock[],
+  ): Promise<{ ok: true } | { ok: false; message: string }> {
     const text = promptText(content);
     if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
@@ -1258,10 +1387,7 @@ export class DevMockHost {
       return session.epoch !== epoch;
     };
 
-    if (await cancelledAfter(200)) {
-      this.sendSuccess(replyTo);
-      return;
-    }
+    if (await cancelledAfter(200)) return { ok: true };
     const thoughtId = this.nextMessageId('mock-thought');
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
@@ -1270,10 +1396,7 @@ export class DevMockHost {
     });
 
     if (text.toLowerCase() === FAIL_PROMPT) {
-      if (await cancelledAfter(200)) {
-        this.sendSuccess(replyTo);
-        return;
-      }
+      if (await cancelledAfter(200)) return { ok: true };
       const message = `Mock failure requested via the "${FAIL_PROMPT}" prompt.`;
       this.emit(session.sessionId, {
         type: 'error',
@@ -1283,8 +1406,7 @@ export class DevMockHost {
       });
       session.status = 'idle';
       this.emit(session.sessionId, { type: 'status', status: 'idle' });
-      this.sendFailure(replyTo, message, { reportedInConversation: true });
-      return;
+      return { ok: false, message };
     }
 
     const messageId = this.nextMessageId('mock-message');
@@ -1293,10 +1415,7 @@ export class DevMockHost {
     if (chunks != null) {
       for (let i = 0, len = chunks.length; i < len; i++) {
         // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
-        if (await cancelledAfter(CHUNK_LATENCY_MS)) {
-          this.sendSuccess(replyTo);
-          return;
-        }
+        if (await cancelledAfter(CHUNK_LATENCY_MS)) return { ok: true };
         this.emit(session.sessionId, {
           type: 'agent-message-chunk',
           messageId,
@@ -1314,7 +1433,7 @@ export class DevMockHost {
     this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
-    this.sendSuccess(replyTo);
+    return { ok: true };
   }
 
   /** Emitted in one burst, not streamed: this transcript exists to be long, not to look live. */
@@ -1703,6 +1822,21 @@ export class DevMockHost {
     return SessionResourceIdSchema.parse(
       `mock-resource-${Date.now().toString(36)}-${this.resourceSeq.toString(36)}`,
     );
+  }
+}
+
+function turnSubmitContent(input: TurnSubmitInput): ContentBlock[] {
+  switch (input.type) {
+    case 'prompt':
+      return input.blocks.flatMap((block) =>
+        block.type === 'text' ? [textBlock(block.text)] : [],
+      );
+    case 'command':
+      return [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)];
+    case 'shell-command':
+      return [textBlock(`$ ${input.command}`)];
+    default:
+      return [];
   }
 }
 

@@ -1,0 +1,105 @@
+import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
+import { OperationIdSchema, SessionIdSchema } from '@linkcode/schema';
+import type { Transport } from '@linkcode/transport';
+import { createWireMessage } from '@linkcode/transport';
+import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
+import { describe, expect, it } from 'vitest';
+import { DevMockHost } from '../dev-mock-host';
+
+function createHost() {
+  const sent: WirePayload[] = [];
+  let handler: ((msg: ValidatedWireMessage) => void) | null = null;
+  const transport: Transport = {
+    connect: () => Promise.resolve(),
+    send(msg: ValidatedWireMessage) {
+      sent.push(msg.payload);
+    },
+    onMessage(cb) {
+      handler = cb;
+      return noop;
+    },
+    onClose: () => noop,
+    close: noop,
+  };
+  const host = new DevMockHost(transport);
+  host.start();
+
+  async function request(payload: WirePayload, replyTo: string): Promise<WirePayload> {
+    if (!handler) throw new Error('mock host not subscribed');
+    handler(createWireMessage(payload));
+    for (let i = 0; i < 100; i++) {
+      // eslint-disable-next-line no-await-in-loop -- polling for the mock's latency-delayed reply.
+      await wait(50);
+      const reply = sent.find((p) => 'replyTo' in p && p.replyTo === replyTo);
+      if (reply) return reply;
+    }
+    throw new Error(`no reply for ${replyTo}`);
+  }
+
+  return { sent, request };
+}
+
+describe('dev mock host conversation parity', () => {
+  it('answers turn.submit, graph.get, and read coherently', async () => {
+    const { request } = createHost();
+    const started = await request(
+      { kind: 'session.start', clientReqId: 'r1', opts: { kind: 'claude-code', cwd: '/mock' } },
+      'r1',
+    );
+    if (started.kind !== 'session.started') throw new Error('session did not start');
+    const sessionId = started.sessionId;
+
+    const submitted = await request(
+      {
+        kind: 'turn.submit',
+        clientReqId: 's1',
+        sessionId,
+        operationId: OperationIdSchema.parse('op-mock-1'),
+        input: { type: 'shell-command', command: 'ls' },
+      },
+      's1',
+    );
+    if (submitted.kind !== 'turn.submitted') throw new Error('turn was not submitted');
+
+    const graph = await request(
+      { kind: 'conversation.graph.get', clientReqId: 'g1', sessionId },
+      'g1',
+    );
+    if (graph.kind !== 'conversation.graph.result') throw new Error('no graph result');
+    expect(graph.turns).toHaveLength(1);
+    expect(graph.activeLeafTurnId).toBe(submitted.turnId);
+    expect(graph.turns[0]).toMatchObject({
+      turnId: submitted.turnId,
+      parentTurnId: null,
+      siblingOrdinal: 1,
+      state: 'completed',
+      inputSummary: '$ ls',
+    });
+
+    const read = await request({ kind: 'conversation.read', clientReqId: 'c1', sessionId }, 'c1');
+    if (read.kind !== 'conversation.read.result') throw new Error('no read result');
+    expect(read.watermark).toBeDefined();
+    expect(read.cursor).toBeUndefined();
+    expect(read.events).toHaveLength(2);
+    const [userRow, placeholder] = read.events;
+    if (!('event' in userRow) || userRow.event.type !== 'user-message') {
+      throw new Error('expected a user row first');
+    }
+    expect(userRow.event.content).toEqual([{ type: 'text', text: '$ ls' }]);
+    expect(placeholder).toMatchObject({
+      type: 'history-unavailable',
+      turnId: submitted.turnId,
+    });
+  }, 15000);
+
+  it('fails loudly for conversation reads on unknown sessions', async () => {
+    const { request } = createHost();
+    const unknown = SessionIdSchema.parse('mock-sess-missing');
+    const reply = await request(
+      { kind: 'conversation.read', clientReqId: 'c-x', sessionId: unknown },
+      'c-x',
+    );
+    expect(reply.kind).toBe('request.failed');
+  }, 15000);
+});
