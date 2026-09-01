@@ -213,13 +213,13 @@ describe('conversation.read', () => {
     const h = await startedHarness(() => new HistoryFakeAdapter(shared));
     h.adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
     await completeTurn(h, 's1', 'real prompt');
-    shared.events = [userRow('u1', 'provider echo'), assistantRow('a1', 'provider answer')];
+    shared.events = [userRow('u1', 'real prompt'), assistantRow('a1', 'provider answer')];
     await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
 
     await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId: h.sessionId });
 
     const result = readResult(h.sent, 'rr');
-    // The user row is host truth: provider lossiness (or its echo text) never renders.
+    // The user row is host truth, rendered exactly once — the provider's own row never doubles it.
     expect(userTexts(result.events)).toEqual(['real prompt']);
     const assistant = result.events.find(
       (item) => 'event' in item && item.event.type === 'agent-message',
@@ -233,6 +233,78 @@ describe('conversation.read', () => {
     );
     // codex resolves its rollout home through the project env, so the read must carry the cwd.
     expect(shared.lastReadOpts?.cwd).toBe('/repo');
+  });
+
+  it('refreshes a stale corpus captured before the newest settle', async () => {
+    const shared: SharedHistory = { events: [], failRead: false };
+    const h = await startedHarness(() => new HistoryFakeAdapter(shared));
+    h.adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    shared.events = [userRow('u1', 'one prompt'), assistantRow('a1', 'answer one')];
+    await completeTurn(h, 's1', 'one prompt');
+    // Warm the TTL cache with the one-turn corpus.
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-1', sessionId: h.sessionId });
+    expect(userTexts(readResult(h.sent, 'rr-1').events)).toEqual(['one prompt']);
+
+    shared.events = [
+      userRow('u1', 'one prompt'),
+      assistantRow('a1', 'answer one'),
+      userRow('u2', 'two prompt'),
+      assistantRow('a2', 'answer two'),
+    ];
+    await completeTurn(h, 's2', 'two prompt');
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-2', sessionId: h.sessionId });
+
+    // A cached one-turn corpus would degrade both turns to placeholders; the settle forces a
+    // cache-bypassing refresh, so the new turn's answer attributes.
+    const result = readResult(h.sent, 'rr-2');
+    expect(result.events).not.toContainEqual(
+      expect.objectContaining({ type: 'history-unavailable' }),
+    );
+    expect(result.events).toContainEqual(
+      expect.objectContaining({
+        event: expect.objectContaining({ type: 'agent-message', messageId: 'a2' }),
+      }),
+    );
+  });
+
+  it('refreshes a mid-turn capture whose settled turn had no answer rows yet', async () => {
+    const shared: SharedHistory = { events: [], failRead: false };
+    const h = await startedHarness(() => new HistoryFakeAdapter(shared));
+    h.adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    shared.events = [userRow('u1', 'one prompt'), assistantRow('a1', 'answer one')];
+    await completeTurn(h, 's1', 'one prompt');
+    // Turn two is dispatched; the provider has written its echo but no answer yet.
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's2',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-s2-live'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'two prompt' }] },
+    });
+    h.adapter.emit({ type: 'status', status: 'running' });
+    await settleEngineTasks();
+    shared.events = [
+      userRow('u1', 'one prompt'),
+      assistantRow('a1', 'answer one'),
+      userRow('u2', 'two prompt'),
+    ];
+    // Warm the cache mid-turn: the trailing echo verifies as the in-flight turn's own row.
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-mid', sessionId: h.sessionId });
+    expect(userTexts(readResult(h.sent, 'rr-mid').events)).toEqual(['one prompt', 'two prompt']);
+
+    h.adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    shared.events = [...shared.events, assistantRow('a2', 'answer two')];
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-2', sessionId: h.sessionId });
+
+    // Without the settle-driven refresh, the cached capture passes every gate with an empty
+    // partition and the settled turn renders answer-less forever.
+    expect(readResult(h.sent, 'rr-2').events).toContainEqual(
+      expect.objectContaining({
+        event: expect.objectContaining({ type: 'agent-message', messageId: 'a2' }),
+      }),
+    );
   });
 
   it('serves the live tail with stamps, open asks, and no duplicated user echo', async () => {

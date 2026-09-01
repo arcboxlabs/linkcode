@@ -21,6 +21,7 @@ import {
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import type { HistoryService } from '../session/history-service';
+import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
@@ -135,7 +136,11 @@ export class ConversationProjectionService {
       }
       const leafTurnId = request.leafTurnId ?? record.activeLeafTurnId;
       const path = pathToLeaf(byId, leafTurnId);
-      const durable = yield* composeDurable(record, path);
+      // Positional attribution is sound only on the active lineage: a sibling lineage has the
+      // same path length by construction (and can carry identical prompt text on a retry), so an
+      // inactive-leaf read renders host rows + placeholders until per-turn bindings (CODE-632).
+      const isActiveLineage = leafTurnId !== undefined && leafTurnId === record.activeLeafTurnId;
+      const durable = yield* composeDurable(record, path, isActiveLineage);
       const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
       const { events, cursor } = pageReadItems(
         durable,
@@ -154,69 +159,66 @@ export class ConversationProjectionService {
     });
   }
 
-  /** Host user rows for every path turn, provider assistant/tool events under the count gate,
-   * placeholders where provider content is unavailable. */
+  /** Host user rows for every path turn, provider assistant/tool events under the attribution
+   * gate, placeholders where provider content is unavailable or unverifiable. */
   private composeDurable(
     record: SessionRecord,
     path: ConversationTurn[],
+    isActiveLineage: boolean,
   ): Effect.Effect<ConversationReadItem[], OperationError> {
     const { records } = this;
     const readProviderEvents = this.readProviderEvents.bind(this);
-    const hostUserItem = this.hostUserItem.bind(this);
+    const hostUserContent = this.hostUserContent.bind(this);
     return Effect.gen(function* () {
       const items: ConversationReadItem[] = [];
+      const contents: (ContentBlock[] | undefined)[] = [];
+      for (let i = 0, len = path.length; i < len; i++) {
+        contents.push(yield* hostUserContent(path[i]));
+      }
       const cold = path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state));
       // A failed turn expects no provider rows (nothing durable ran) and gets no placeholder.
       const expectsProvider = cold.filter((turn) => turn.state !== 'failed');
-      const hasLiveTurn = path.length > cold.length;
+      const liveIndex = path.findIndex((turn) => !TERMINAL_TURN_STATES.has(turn.state));
       const historyId = records.historyId(record.sessionId);
-      let partitions: ProviderPartition[] | undefined;
-      if (historyId !== undefined && expectsProvider.length > 0) {
+      let attributed: ProviderPartition[] = [];
+      let leading: AgentHistoryEvent[] = [];
+      if (isActiveLineage && historyId !== undefined && expectsProvider.length > 0) {
         const corpus = yield* readProviderEvents(record, historyId);
         if (corpus !== undefined) {
-          const split = partitionAtUserRows(corpus);
-          // Count gate (the §9 discipline): positional attribution only when provider user rows
-          // match the turns that ran 1:1 — one trailing extra is the in-flight turn's own row,
-          // which the live tail owns. Any other mismatch degrades to prompt-only placeholders;
-          // a wrongly attributed slice is worse than none.
-          if (split.partitions.length === expectsProvider.length) {
-            partitions = split.partitions;
-          } else if (hasLiveTurn && split.partitions.length === expectsProvider.length + 1) {
-            partitions = split.partitions.slice(0, -1);
+          const hostFingerprints: (string | undefined)[] = [];
+          for (let i = 0, len = path.length; i < len; i++) {
+            const turn = path[i];
+            if (!TERMINAL_TURN_STATES.has(turn.state) || turn.state === 'failed') continue;
+            const content = contents[i];
+            hostFingerprints.push(content && promptContentFingerprint(content));
           }
-          if (partitions !== undefined) {
-            for (let i = 0, len = split.leading.length; i < len; i++) {
-              items.push(projectedItem(undefined, split.leading[i]));
-            }
+          let liveFingerprint: string | undefined;
+          if (liveIndex >= 0) {
+            const liveContent = contents[liveIndex];
+            if (liveContent) liveFingerprint = promptContentFingerprint(liveContent);
           }
+          const result = attributeCorpus(corpus, hostFingerprints, liveFingerprint);
+          attributed = result.attributed;
+          leading = result.leading;
         }
+      }
+      for (let i = 0, len = leading.length; i < len; i++) {
+        items.push(projectedItem(undefined, leading[i]));
       }
       let partitionIndex = 0;
       for (let i = 0, len = path.length; i < len; i++) {
         const turn = path[i];
-        if (!TERMINAL_TURN_STATES.has(turn.state)) {
-          // The in-flight turn: host user row here; its output rides the live tail.
-          const liveRow = yield* hostUserItem(turn);
-          if (liveRow !== undefined) items.push(liveRow);
-          continue;
-        }
-        const partition =
-          partitions !== undefined && turn.state !== 'failed'
-            ? partitions[partitionIndex]
-            : undefined;
-        if (turn.state !== 'failed') partitionIndex += 1;
-        const userRow = yield* hostUserItem(turn);
-        if (userRow !== undefined) {
-          items.push(userRow);
-        } else if (partition !== undefined) {
-          // Migrated turn (null prompt): its user row keeps rendering from the provider projection.
-          items.push(projectedItem(turn, partition.userRow));
-        }
+        const content = contents[i];
+        if (content !== undefined) items.push(projectedUserRow(turn, content));
+        if (!TERMINAL_TURN_STATES.has(turn.state)) continue; // in-flight output rides the live tail
+        if (turn.state === 'failed') continue; // nothing durable ran; the state badge is the story
+        const partition = attributed[partitionIndex];
+        partitionIndex += 1;
         if (partition !== undefined) {
           for (let j = 0, restLen = partition.rest.length; j < restLen; j++) {
             items.push(projectedItem(turn, partition.rest[j]));
           }
-        } else if (turn.state !== 'failed') {
+        } else {
           items.push({ type: 'history-unavailable', turnId: turn.turnId, runId: turn.runId });
         }
       }
@@ -307,13 +309,22 @@ export class ConversationProjectionService {
   ): Effect.Effect<AgentHistoryEvent[] | undefined> {
     const { history } = this;
     const { cwd, kind, sessionId } = record;
+    // A cached corpus captured before the newest settle can miss that turn's rows (or hold its
+    // partial answer) — bypass it so a post-settle read never attributes a stale slice.
+    const freshAfter = this.turns.lastSettledAt(sessionId);
     return Effect.gen(function* () {
       const events: AgentHistoryEvent[] = [];
       const seenCursors = new Set<string>();
       let cursor: string | undefined;
       do {
         // cwd is load-bearing for codex: its rollout home resolves through the project env.
-        const result = yield* history.read(kind, { historyId, cwd, cursor, limit: 1000 });
+        const result = yield* history.read(kind, {
+          historyId,
+          cwd,
+          cursor,
+          freshAfter,
+          limit: 1000,
+        });
         for (let i = 0, len = result.events.length; i < len; i++) events.push(result.events[i]);
         cursor = result.cursor;
         if (cursor !== undefined) {
@@ -345,23 +356,23 @@ export class ConversationProjectionService {
     );
   }
 
-  /** The turn's user row from host truth; undefined for migrated null-prompt turns. */
-  private hostUserItem(
+  /** The turn's user-row content from host truth; undefined for migrated null-prompt turns
+   * (which render as placeholders until per-turn bindings land, CODE-632). */
+  private hostUserContent(
     turn: ConversationTurn,
-  ): Effect.Effect<ConversationReadItem | undefined, OperationError> {
+  ): Effect.Effect<ContentBlock[] | undefined, OperationError> {
     const input = turn.input;
     if (input.type === 'command' || input.type === 'shell-command') {
-      return Effect.succeed(projectedUserRow(turn, [{ type: 'text', text: inputText(input) }]));
+      return Effect.succeed([{ type: 'text' as const, text: inputText(input) }]);
     }
     if (input.promptId === null) return Effect.undefined;
     return this.turns.getPrompt(input.promptId).pipe(
       Effect.map((prompt) => {
         if (!prompt) return;
         // attachment_ref blocks join the projection when the attachment store lands.
-        const content = prompt.blocks.flatMap((block) =>
+        return prompt.blocks.flatMap((block) =>
           block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
         );
-        return projectedUserRow(turn, content);
       }),
     );
   }
@@ -471,6 +482,49 @@ function pathToLeaf(
     currentId = turn.parentTurnId;
   }
   return path.reverse();
+}
+
+/**
+ * The attribution gate (§9 discipline): positions attribute only while each partition's user row
+ * fingerprint-matches the host prompt at that position; the FIRST mismatch degrades that turn and
+ * every later one to placeholders — alignment is lost past a mismatch, never resynced positionally.
+ * One trailing extra partition is tolerated only when it fingerprint-verifies as the in-flight
+ * turn's own row (the live tail owns it); any other count anomaly attributes nothing.
+ */
+function attributeCorpus(
+  corpus: readonly AgentHistoryEvent[],
+  hostFingerprints: ReadonlyArray<string | undefined>,
+  liveFingerprint: string | undefined,
+): { attributed: ProviderPartition[]; leading: AgentHistoryEvent[] } {
+  const none = { attributed: [], leading: [] };
+  const split = partitionAtUserRows(corpus);
+  let candidates = split.partitions;
+  const trailing = candidates.at(-1);
+  if (trailing !== undefined && candidates.length === hostFingerprints.length + 1) {
+    if (liveFingerprint === undefined || userRowFingerprint(trailing.userRow) !== liveFingerprint) {
+      return none;
+    }
+    candidates = candidates.slice(0, -1);
+  }
+  if (candidates.length !== hostFingerprints.length) return none;
+  const attributed: ProviderPartition[] = [];
+  for (let i = 0, len = candidates.length; i < len; i++) {
+    const hostFingerprint = hostFingerprints[i];
+    if (
+      hostFingerprint === undefined ||
+      userRowFingerprint(candidates[i].userRow) !== hostFingerprint
+    ) {
+      break;
+    }
+    attributed.push(candidates[i]);
+  }
+  return { attributed, leading: attributed.length > 0 ? split.leading : [] };
+}
+
+function userRowFingerprint(entry: AgentHistoryEvent): string | undefined {
+  return entry.event.type === 'user-message'
+    ? promptContentFingerprint(entry.event.content)
+    : undefined;
 }
 
 /** Splits a provider corpus at its user rows: partition i is user row i plus what follows it. */

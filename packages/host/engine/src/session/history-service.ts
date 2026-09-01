@@ -26,6 +26,9 @@ export type HistoryListOptions = AgentHistoryListOptions & {
 
 export type HistoryReadOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
+  /** Bypass a cache entry built at or before this timestamp — the caller knows the corpus moved
+   * (e.g. a turn settled) and a same-or-older capture may be missing rows. */
+  freshAfter?: number;
 };
 
 export interface HistoryServiceOptions {
@@ -43,6 +46,7 @@ interface ListCacheEntry {
 
 interface EventCacheEntry {
   expiresAt: number;
+  builtAt: number;
   version: number;
   session: AgentHistorySession;
   events: AgentHistoryEvent[];
@@ -125,6 +129,8 @@ export class HistoryService {
       cached &&
       !opts.forceRefresh &&
       cached.expiresAt > now &&
+      // Same-millisecond builds count as stale: the settle/build order is unknowable then.
+      (opts.freshAfter === undefined || cached.builtAt > opts.freshAfter) &&
       cached.version === HISTORY_CONVERSION_CACHE_VERSION &&
       (!cached.partialCursor || offset < cached.events.length)
     ) {
@@ -152,6 +158,7 @@ export class HistoryService {
       Effect.flatMap((fullResult) => {
         const entry: EventCacheEntry = {
           expiresAt: now + this.ttlMs,
+          builtAt: now,
           version: HISTORY_CONVERSION_CACHE_VERSION,
           session: fullResult.session,
           events: [...fullResult.events],
@@ -330,8 +337,10 @@ function agentHistoryOperation<A>(
   });
 }
 
-function stripForceRefresh<T extends { forceRefresh?: boolean }>(opts: T): Omit<T, 'forceRefresh'> {
-  const { forceRefresh: _forceRefresh, ...rest } = opts;
+function stripForceRefresh<T extends { forceRefresh?: boolean; freshAfter?: number }>(
+  opts: T,
+): Omit<T, 'forceRefresh' | 'freshAfter'> {
+  const { forceRefresh: _forceRefresh, freshAfter: _freshAfter, ...rest } = opts;
   return rest;
 }
 

@@ -95,6 +95,9 @@ interface RunningTurn {
 export class ConversationTurnService {
   /** The running turn per session; settles are addressed by the turn's own runId. */
   private readonly running = new Map<SessionId, RunningTurn>();
+  /** When a turn last flipped terminal — the projection's cache-freshness bound: a provider
+   * corpus captured before the newest settle may be missing that turn's rows. */
+  private readonly settledAt = new Map<SessionId, number>();
 
   constructor(
     private readonly store: ConversationStore,
@@ -123,6 +126,10 @@ export class ConversationTurnService {
     return storeOperation('conversation.prompt.get', () => this.store.getPrompt(promptId));
   }
 
+  lastSettledAt(sessionId: SessionId): number | undefined {
+    return this.settledAt.get(sessionId);
+  }
+
   listBindings(turnId: TurnId): Effect.Effect<ProviderTurnBinding[], OperationError> {
     return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
@@ -134,6 +141,7 @@ export class ConversationTurnService {
       Effect.tap(() =>
         Effect.sync(() => {
           this.running.delete(sessionId);
+          this.settledAt.delete(sessionId);
         }),
       ),
     );
@@ -381,6 +389,7 @@ export class ConversationTurnService {
   /** Settles run off synchronous adapter callbacks, so persistence is enqueued best-effort. */
   private persistTurnState(turn: ConversationTurn, state: ConversationTurnState): void {
     if (TERMINAL_TURN_STATES.has(turn.state)) return;
+    this.settledAt.set(turn.sessionId, Date.now());
     this.runTask(
       storeOperation('conversation.turn.save', () => this.store.saveTurn({ ...turn, state })).pipe(
         Effect.catch((error) =>
