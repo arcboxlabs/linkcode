@@ -75,7 +75,11 @@ export type TerminalOperation =
       readonly error: TurnFailure;
     });
 
-const TERMINAL_TURN_STATES = new Set<ConversationTurnState>(['completed', 'failed', 'cancelled']);
+export const TERMINAL_TURN_STATES = new Set<ConversationTurnState>([
+  'completed',
+  'failed',
+  'cancelled',
+]);
 
 interface RunningTurn {
   readonly turn: ConversationTurn;
@@ -113,6 +117,10 @@ export class ConversationTurnService {
 
   listTurns(sessionId: SessionId): Effect.Effect<ConversationTurn[], OperationError> {
     return storeOperation('conversation.turns.list', () => this.store.listTurns(sessionId));
+  }
+
+  getPrompt(promptId: PromptId): Effect.Effect<PromptRecord | undefined, OperationError> {
+    return storeOperation('conversation.prompt.get', () => this.store.getPrompt(promptId));
   }
 
   listBindings(turnId: TurnId): Effect.Effect<ProviderTurnBinding[], OperationError> {
