@@ -8,9 +8,10 @@ export type { ProviderConfigStore } from './agent/provider-config';
 export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
 export type { LoopStore, ScheduleStore } from './automation';
-export type {
-  ConversationStore,
-  ConversationTurnIntent,
+export {
+  ConversationSessionBusyError,
+  type ConversationStore,
+  type ConversationTurnIntent,
 } from './conversation/conversation-store';
 export type { EngineDeps } from './deps';
 export { PreviewRouteRegistry } from './preview/route-registry';

@@ -10,11 +10,21 @@ import type {
 } from '@linkcode/schema';
 
 /** The durable commit point of a submit: the turn, its prompt (for prompt inputs), and the open
- * operation journal row persist together or not at all. */
+ * operation journal row persist together or not at all. `siblingOrdinal` is store-assigned inside
+ * the persist transaction, so racing submits cannot compute the same ordinal. */
 export interface ConversationTurnIntent {
-  readonly turn: ConversationTurn;
+  readonly turn: Omit<ConversationTurn, 'siblingOrdinal'>;
   readonly prompt?: PromptRecord;
   readonly operation: ConversationOperation;
+}
+
+/** Rejection from {@link ConversationStore.persistTurnIntent} when the session already has an
+ * open operation — the durable backstop behind the engine's admit gate. */
+export class ConversationSessionBusyError extends Error {
+  constructor(sessionId: SessionId, options?: ErrorOptions) {
+    super(`Another operation is open on session ${sessionId}`, options);
+    this.name = 'ConversationSessionBusyError';
+  }
 }
 
 /**
@@ -34,9 +44,13 @@ export interface ConversationStore {
   getOperation(operationId: OperationId): Promise<ConversationOperation | undefined>;
   /** Open operations, for the per-session admit gate and boot recovery (no argument = all). */
   listOpenOperations(sessionId?: SessionId): Promise<ConversationOperation[]>;
-  /** Atomic: persist the turn, its prompt (if any), and the open operation in one transaction. */
-  persistTurnIntent(intent: ConversationTurnIntent): Promise<void>;
-  /** Atomic: store the operation's terminal result and, when given, the turn's new state. */
+  /** Atomic: assign `siblingOrdinal`, then insert the turn, its prompt (if any), and the open
+   * operation in one transaction; the assigned turn is returned. Rejects with
+   * {@link ConversationSessionBusyError} while the session has an open operation; rows are
+   * plain-inserted, so a replayed operationId conflicts instead of re-opening a terminal row. */
+  persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn>;
+  /** Atomic: store the operation's terminal result and, when given, the turn's new state — but
+   * only while the operation row is still `open`. The first terminal writer stands. */
   resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void>;
   /** Purge the session's turns, bindings, and operations. Prompts are shared by reference across
    * forks: one is deleted only when no turn in ANY session still references it. */
@@ -95,8 +109,24 @@ export class InMemoryConversationStore implements ConversationStore {
     return Promise.resolve(open);
   }
 
-  async persistTurnIntent(intent: ConversationTurnIntent): Promise<void> {
-    await this.saveTurn(intent.turn);
+  async persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn> {
+    const { sessionId, parentTurnId } = intent.turn;
+    for (const operation of this.operations.values()) {
+      if (operation.sessionId === sessionId && operation.state === 'open') {
+        throw new ConversationSessionBusyError(sessionId);
+      }
+    }
+    if (this.operations.has(intent.operation.operationId)) {
+      throw new Error(`Operation already persisted: ${intent.operation.operationId}`);
+    }
+    let siblingOrdinal = 1;
+    for (const existing of this.turns.values()) {
+      if (existing.sessionId === sessionId && existing.parentTurnId === parentTurnId) {
+        siblingOrdinal += 1;
+      }
+    }
+    const turn: ConversationTurn = { ...intent.turn, siblingOrdinal };
+    await this.saveTurn(turn);
     if (
       intent.turn.input.type === 'prompt' &&
       intent.turn.input.promptId !== null &&
@@ -105,9 +135,11 @@ export class InMemoryConversationStore implements ConversationStore {
       this.prompts.set(intent.prompt.promptId, structuredClone(intent.prompt));
     }
     this.operations.set(intent.operation.operationId, structuredClone(intent.operation));
+    return turn;
   }
 
   async resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void> {
+    if (this.operations.get(operation.operationId)?.state !== 'open') return;
     this.operations.set(operation.operationId, structuredClone(operation));
     if (turn) await this.saveTurn(turn);
   }

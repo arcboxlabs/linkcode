@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ConversationStore } from '@linkcode/engine';
+import { ConversationSessionBusyError } from '@linkcode/engine';
 import type { ConversationOperation, ConversationTurn, PromptRecord } from '@linkcode/schema';
 import {
   ConversationOperationSchema,
@@ -158,10 +159,17 @@ describe('SQLite conversation store', () => {
       prompt: prompt('p-1'),
       operation: openOperation('op-1'),
     });
-    for (let i = 1, len = turns.length; i < len; i++) {
+    await store.resolveOperation({
+      ...openOperation('op-1'),
+      state: 'succeeded',
+      turnId: turns[0].turnId,
+      resolvedAt: 9,
+    });
+    for (let i = 1, len = turns.length - 1; i < len; i++) {
       await store.saveTurn(turns[i]);
     }
 
+    // A migrated prompt turn persists with `promptId: null`; its prompt record is not inserted.
     await store.persistTurnIntent({
       turn: migratedTurn,
       prompt: prompt('p-migrated'),
@@ -234,22 +242,29 @@ describe('SQLite conversation store', () => {
       createdAt: 2,
     });
     await store.resolveOperation(succeeded, running);
+    const doomed = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-doomed', createdAt: 5 }),
+      operation: openOperation('op-2'),
+    });
     const failed = ConversationOperationSchema.parse({
       operationId: 'op-2',
       sessionId: 's-1',
       kind: 'turn.submit',
       state: 'failed',
       error: { code: 'busy', message: 'A turn is already running' },
-      createdAt: 5,
+      createdAt: 4,
       resolvedAt: 6,
     });
-    await store.resolveOperation(failed);
+    await store.resolveOperation(failed, { ...doomed, state: 'failed' });
 
     const reopened = createConversationStore(database);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-1'))).toEqual(succeeded);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-2'))).toEqual(failed);
     expect(await reopened.listOpenOperations()).toEqual([]);
-    expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual([running]);
+    expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
+      running,
+      { ...doomed, state: 'failed' },
+    ]);
   });
 
   it('deleteSession purges turns, bindings, and operations but keeps prompts shared with a fork', async () => {
@@ -263,6 +278,12 @@ describe('SQLite conversation store', () => {
       }),
       prompt: prompt('p-shared'),
       operation: openOperation('op-1', 's-parent'),
+    });
+    await store.resolveOperation({
+      ...openOperation('op-1', 's-parent'),
+      state: 'succeeded',
+      turnId: TurnIdSchema.parse('t-shared'),
+      resolvedAt: 5,
     });
     await store.persistTurnIntent({
       turn: turn({
@@ -306,5 +327,128 @@ describe('SQLite conversation store', () => {
     expect(
       await createConversationStore(database).getPrompt(PromptIdSchema.parse('p-shared')),
     ).toBeUndefined();
+  });
+
+  it('refuses a second intent while the session has an open operation', async () => {
+    const database = await databaseWithSessions('s-1', 's-2');
+    const store = createConversationStore(database);
+    await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1' }),
+      operation: openOperation('op-1'),
+    });
+
+    await expect(async () =>
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-2', createdAt: 2 }),
+        operation: openOperation('op-2'),
+      }),
+    ).rejects.toBeInstanceOf(ConversationSessionBusyError);
+    // The rejected transaction rolled back whole: no turn row either.
+    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toHaveLength(1);
+    expect(await store.listOpenOperations(SessionIdSchema.parse('s-1'))).toEqual([
+      openOperation('op-1'),
+    ]);
+
+    // Another session is not gated by this one's open operation.
+    await store.persistTurnIntent({
+      turn: turn({ turnId: 't-other', sessionId: SessionIdSchema.parse('s-2') }),
+      operation: openOperation('op-other', 's-2'),
+    });
+  });
+
+  it('assigns sibling ordinals in the transaction and the unique index rejects duplicates', async () => {
+    const database = await databaseWithSessions('s-1');
+    const store = createConversationStore(database);
+    const first = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1' }),
+      operation: openOperation('op-1'),
+    });
+    await store.resolveOperation({
+      ...openOperation('op-1'),
+      state: 'succeeded',
+      turnId: first.turnId,
+      resolvedAt: 5,
+    });
+    const second = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-2', createdAt: 2 }),
+      operation: openOperation('op-2'),
+    });
+    expect([first.siblingOrdinal, second.siblingOrdinal]).toEqual([1, 2]);
+
+    // Belt-and-braces: even a direct save cannot mint a duplicate (session, parent, ordinal).
+    await expect(async () =>
+      store.saveTurn(turn({ turnId: 't-dupe', siblingOrdinal: 2, createdAt: 3 })),
+    ).rejects.toThrow('UNIQUE');
+    await store.saveTurn(
+      turn({ turnId: 't-child', parentTurnId: TurnIdSchema.parse('t-1'), createdAt: 4 }),
+    );
+    await expect(async () =>
+      store.saveTurn(
+        turn({ turnId: 't-child-dupe', parentTurnId: TurnIdSchema.parse('t-1'), createdAt: 5 }),
+      ),
+    ).rejects.toThrow('UNIQUE');
+  });
+
+  it('refuses a replayed operation id instead of re-opening the terminal row', async () => {
+    const database = await databaseWithSessions('s-1');
+    const store = createConversationStore(database);
+    const first = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1' }),
+      operation: openOperation('op-1'),
+    });
+    const failed = ConversationOperationSchema.parse({
+      operationId: 'op-1',
+      sessionId: 's-1',
+      kind: 'turn.submit',
+      state: 'failed',
+      error: { code: 'timeout', message: 'too slow' },
+      createdAt: 4,
+      resolvedAt: 6,
+    });
+    await store.resolveOperation(failed, { ...first, state: 'failed' });
+
+    await expect(async () =>
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-replayed', createdAt: 2 }),
+        operation: openOperation('op-1'),
+      }),
+    ).rejects.toThrow('UNIQUE');
+    expect(await store.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
+  });
+
+  it('resolveOperation transitions open rows only — the first terminal result stands', async () => {
+    const database = await databaseWithSessions('s-1');
+    const store = createConversationStore(database);
+    const first = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1' }),
+      operation: openOperation('op-1'),
+    });
+    const failed = ConversationOperationSchema.parse({
+      operationId: 'op-1',
+      sessionId: 's-1',
+      kind: 'turn.submit',
+      state: 'failed',
+      error: { code: 'timeout', message: 'too slow' },
+      createdAt: 4,
+      resolvedAt: 6,
+    });
+    await store.resolveOperation(failed, { ...first, state: 'failed' });
+
+    // A late success must not overwrite the stored failure or flip the failed turn.
+    await store.resolveOperation(
+      {
+        ...openOperation('op-1'),
+        state: 'succeeded',
+        turnId: first.turnId,
+        resolvedAt: 7,
+      },
+      { ...first, state: 'running' },
+    );
+
+    const reopened = createConversationStore(database);
+    expect(await reopened.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
+    expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
+      { ...first, state: 'failed' },
+    ]);
   });
 });

@@ -10,7 +10,10 @@ import {
   TurnIdSchema,
 } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { InMemoryConversationStore } from '../conversation/conversation-store';
+import {
+  ConversationSessionBusyError,
+  InMemoryConversationStore,
+} from '../conversation/conversation-store';
 
 function turn(value: {
   turnId: string;
@@ -60,9 +63,10 @@ describe('InMemoryConversationStore', () => {
       prompt: prompt('p-1'),
       operation: openOperation('op-1', 's-1'),
     };
-    await store.persistTurnIntent(intent);
+    const persisted = await store.persistTurnIntent(intent);
 
-    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([intent.turn]);
+    expect(persisted).toEqual({ ...intent.turn, siblingOrdinal: 1 });
+    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([persisted]);
     expect(await store.getPrompt(PromptIdSchema.parse('p-1'))).toEqual(intent.prompt);
     expect(await store.listOpenOperations(SessionIdSchema.parse('s-1'))).toEqual([
       intent.operation,
@@ -112,8 +116,24 @@ describe('InMemoryConversationStore', () => {
       prompt: shared,
       operation: openOperation('op-1', 's-parent'),
     });
+    await store.resolveOperation(
+      ConversationOperationSchema.parse({
+        operationId: 'op-1',
+        sessionId: 's-parent',
+        kind: 'turn.submit',
+        state: 'succeeded',
+        turnId: 't-parent',
+        createdAt: 1,
+        resolvedAt: 2,
+      }),
+    );
     await store.persistTurnIntent({
-      turn: turn({ turnId: 't-own', sessionId: 's-parent', promptId: 'p-own' }),
+      turn: turn({
+        turnId: 't-own',
+        sessionId: 's-parent',
+        promptId: 'p-own',
+        parentTurnId: 't-parent',
+      }),
       prompt: own,
       operation: openOperation('op-2', 's-parent'),
     });
@@ -136,5 +156,96 @@ describe('InMemoryConversationStore', () => {
     expect(await store.listOpenOperations()).toEqual([]);
     expect(await store.getPrompt(PromptIdSchema.parse('p-own'))).toBeUndefined();
     expect(await store.getPrompt(PromptIdSchema.parse('p-shared'))).toEqual(shared);
+  });
+
+  it('refuses a second intent while the session has an open operation', async () => {
+    const store = new InMemoryConversationStore();
+    await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1', sessionId: 's-1' }),
+      operation: openOperation('op-1', 's-1'),
+    });
+
+    await expect(
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-2', sessionId: 's-1' }),
+        operation: openOperation('op-2', 's-1'),
+      }),
+    ).rejects.toBeInstanceOf(ConversationSessionBusyError);
+    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toHaveLength(1);
+
+    // Another session is not gated by this one's open operation.
+    await store.persistTurnIntent({
+      turn: turn({ turnId: 't-other', sessionId: 's-2' }),
+      operation: openOperation('op-other', 's-2'),
+    });
+  });
+
+  it('assigns sibling ordinals itself and refuses a replayed operation id', async () => {
+    const store = new InMemoryConversationStore();
+    const first = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1', sessionId: 's-1' }),
+      operation: openOperation('op-1', 's-1'),
+    });
+    await store.resolveOperation({
+      ...openOperation('op-1', 's-1'),
+      state: 'failed',
+      error: { code: 'busy', message: 'nope' },
+      resolvedAt: 2,
+    });
+    const second = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-2', sessionId: 's-1' }),
+      operation: openOperation('op-2', 's-1'),
+    });
+    expect([first.siblingOrdinal, second.siblingOrdinal]).toEqual([1, 2]);
+
+    await store.resolveOperation({
+      ...openOperation('op-2', 's-1'),
+      state: 'failed',
+      error: { code: 'busy', message: 'nope' },
+      resolvedAt: 3,
+    });
+    await expect(
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-3', sessionId: 's-1' }),
+        operation: openOperation('op-1', 's-1'),
+      }),
+    ).rejects.toThrow('already persisted');
+  });
+
+  it('resolveOperation transitions open rows only — the first terminal result stands', async () => {
+    const store = new InMemoryConversationStore();
+    const persisted = await store.persistTurnIntent({
+      turn: turn({ turnId: 't-1', sessionId: 's-1' }),
+      operation: openOperation('op-1', 's-1'),
+    });
+    const failed = ConversationOperationSchema.parse({
+      operationId: 'op-1',
+      sessionId: 's-1',
+      kind: 'turn.submit',
+      state: 'failed',
+      error: { code: 'timeout', message: 'too slow' },
+      createdAt: 1,
+      resolvedAt: 2,
+    });
+    await store.resolveOperation(failed, { ...persisted, state: 'failed' });
+
+    // A late success must not overwrite the stored failure or flip the turn.
+    await store.resolveOperation(
+      ConversationOperationSchema.parse({
+        operationId: 'op-1',
+        sessionId: 's-1',
+        kind: 'turn.submit',
+        state: 'succeeded',
+        turnId: 't-1',
+        createdAt: 1,
+        resolvedAt: 3,
+      }),
+      { ...persisted, state: 'running' },
+    );
+
+    expect(await store.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
+    expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
+      { ...persisted, state: 'failed' },
+    ]);
   });
 });

@@ -1,3 +1,4 @@
+import { sql } from 'drizzle-orm';
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core';
 import {
   index,
@@ -154,7 +155,16 @@ export const conversationTurns = sqliteTable(
     }).notNull(),
     createdAt: integer('created_at').notNull(),
   },
-  (table) => [index('conversation_turns_session_idx').on(table.sessionId)],
+  (table) => [
+    index('conversation_turns_session_idx').on(table.sessionId),
+    // Ordinal uniqueness needs two partial indexes: SQLite treats NULL parents as distinct rows.
+    uniqueIndex('conversation_turns_sibling_unique')
+      .on(table.sessionId, table.parentTurnId, table.siblingOrdinal)
+      .where(sql`parent_turn_id IS NOT NULL`),
+    uniqueIndex('conversation_turns_root_sibling_unique')
+      .on(table.sessionId, table.siblingOrdinal)
+      .where(sql`parent_turn_id IS NULL`),
+  ],
 );
 
 /** One row per (turn, provider history); forks re-bind. `checkpoint` is adapter-opaque. */
@@ -188,7 +198,12 @@ export const conversationOperations = sqliteTable(
     createdAt: integer('created_at').notNull(),
     resolvedAt: integer('resolved_at'),
   },
-  (table) => [index('conversation_operations_session_idx').on(table.sessionId)],
+  (table) => [
+    index('conversation_operations_session_idx').on(table.sessionId),
+    uniqueIndex('conversation_operations_open_session_unique')
+      .on(table.sessionId)
+      .where(sql`state = 'open'`),
+  ],
 );
 
 /**
