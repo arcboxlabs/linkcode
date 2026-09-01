@@ -5,10 +5,11 @@ import type {
   RunId,
   SessionId,
   SessionRecord,
+  StartOptions,
   ValidatedWireMessage,
   WirePayload,
 } from '@linkcode/schema';
-import { compareConversationWatermarks } from '@linkcode/schema';
+import { compareConversationWatermarks, OperationIdSchema } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { Deferred, Effect, Scope } from 'effect';
 import { noop } from 'foxts/noop';
@@ -144,6 +145,88 @@ describe('agent.event sequencing over the wire', () => {
     // The authoritative replay lands above every prior position, so a client merging by
     // watermark can never drop an open interactive request as already-seen.
     expect(compareConversationWatermarks(replayed, original)).toBeGreaterThan(0);
+  });
+});
+
+/** Save log + on-demand failure: the launch path must prove the bumped epoch durable pre-mint. */
+class GatedSaveStore extends InMemorySessionStore {
+  failSaves = false;
+
+  constructor(private readonly log: string[]) {
+    super();
+  }
+
+  override save(record: SessionRecord): Promise<void> {
+    if (this.failSaves) return Promise.reject(new Error('session store save failed'));
+    this.log.push(`save:${record.eventEpoch}`);
+    return super.save(record);
+  }
+}
+
+class StartLoggingAdapter extends FakeAdapter {
+  constructor(private readonly log: string[]) {
+    super();
+  }
+
+  override start(opts: StartOptions): Promise<void> {
+    this.log.push('adapter-start');
+    return super.start(opts);
+  }
+}
+
+describe('durable epoch before minting', () => {
+  function launchHarness() {
+    const log: string[] = [];
+    const store = new GatedSaveStore(log);
+    return { log, store, h: harness(store, () => new StartLoggingAdapter(log)) };
+  }
+
+  it('persists the bumped epoch before the relaunched adapter starts', async () => {
+    const { log, h } = launchHarness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({ kind: 'session.stop', clientReqId: 'r-stop', sessionId });
+
+    await h.inject({ kind: 'session.resume', clientReqId: 'r-resume', sessionId });
+
+    const bumpedSave = log.indexOf('save:1');
+    const relaunchStart = log.lastIndexOf('adapter-start');
+    expect(bumpedSave).toBeGreaterThanOrEqual(0);
+    expect(relaunchStart).toBeGreaterThan(bumpedSave);
+  });
+
+  it('fails the launch loud when the epoch cannot be made durable, minting nothing', async () => {
+    const { store, h } = launchHarness();
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    await h.inject({ kind: 'session.stop', clientReqId: 'r-stop', sessionId });
+
+    store.failSaves = true;
+    const mark = h.sent.length;
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 'r-sub',
+      sessionId,
+      operationId: OperationIdSchema.parse('op-epoch-flush'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'hello' }] },
+    });
+
+    expect(h.sent.slice(mark)).toContainEqual(
+      expect.objectContaining({ kind: 'request.failed', replyTo: 'r-sub' }),
+    );
+    // No LiveSession was constructed and nothing was minted under the undurable epoch.
+    expect(h.adapters).toHaveLength(1);
+    expect(stampedFrames(h.sent.slice(mark), sessionId)).toEqual([]);
   });
 });
 

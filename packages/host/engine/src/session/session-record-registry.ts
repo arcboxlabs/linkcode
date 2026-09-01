@@ -230,6 +230,17 @@ export class SessionRecordRegistry {
     return runId;
   }
 
+  /** Awaited durable save, for the launch path only: the bumped epoch must reach the store before
+   * a LiveSession can mint under it, and a lost write must fail the launch loud — the general
+   * fire-and-forget {@link persist} cannot guarantee either. */
+  flush(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    const record = this.records.get(sessionId);
+    if (!record) return Effect.void;
+    return storeOperation('session-records.save', 'Failed to persist session record', () =>
+      this.store.save(record),
+    );
+  }
+
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {
     const record = this.records.get(sessionId);
     if (!record || record.title !== undefined) return;

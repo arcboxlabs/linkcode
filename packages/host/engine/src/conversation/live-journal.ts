@@ -19,7 +19,6 @@ interface JournalEntry {
 
 const DEFAULT_JOURNAL_BYTE_CAP = 10 * 1024 * 1024;
 const DEFAULT_JOURNAL_EVENT_CAP = 10_000;
-const textEncoder = new TextEncoder();
 
 function stampOf(event: JournaledEvent): ConversationWatermark {
   return { epoch: event.epoch, seq: event.seq };
@@ -72,7 +71,7 @@ export class ConversationLiveJournal {
     if (this.last === undefined || compareConversationWatermarks(stamp, this.last) > 0) {
       this.last = stamp;
     }
-    const bytes = textEncoder.encode(JSON.stringify(event.event)).byteLength;
+    const bytes = Buffer.byteLength(JSON.stringify(event.event));
     this.entries.push({ event, bytes });
     this.byteCount += bytes;
     while (
@@ -96,9 +95,15 @@ export class ConversationLiveJournal {
    * Retained events above `watermark`, and whether that set is provably complete. `gap` means
    * events past the watermark were evicted or never reached this journal (an older epoch's tail):
    * the reader must clear the affected in-flight state and re-read — never splice a headless tail.
+   * A watermark ABOVE everything appended is also a gap: an honest current client compares at
+   * most equal, so above means epoch reuse or a foreign watermark, never provable completeness.
+   * Events return in append order, not stamp order (a stale straggler can sit after newer-epoch
+   * entries); consumers merge by stamp.
    */
   tailAfter(watermark: ConversationWatermark): { events: JournaledEvent[]; gap: boolean } {
     const gap =
+      this.last === undefined ||
+      compareConversationWatermarks(watermark, this.last) > 0 ||
       (this.evictedThrough !== undefined &&
         compareConversationWatermarks(this.evictedThrough, watermark) > 0) ||
       (this.first !== undefined &&

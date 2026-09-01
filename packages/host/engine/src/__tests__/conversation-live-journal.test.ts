@@ -105,6 +105,24 @@ describe('ConversationLiveJournal tailAfter', () => {
     expect(journal.tailAfter({ epoch: 7, seq: 0 }).gap).toBe(false);
   });
 
+  it('flags a watermark above everything appended: the epoch-reuse signature', () => {
+    const journal = new ConversationLiveJournal();
+    for (let seq = 1; seq <= 3; seq++) journal.append(stamped(1, seq));
+
+    // An honest current client compares at most equal; above means a reused epoch minted these
+    // positions before for different events, or the watermark belongs to another stream.
+    expect(journal.tailAfter({ epoch: 1, seq: 4 })).toEqual({ events: [], gap: true });
+    expect(journal.tailAfter({ epoch: 2, seq: 0 })).toEqual({ events: [], gap: true });
+    // The equal edge stays complete.
+    expect(journal.tailAfter({ epoch: 1, seq: 3 })).toEqual({ events: [], gap: false });
+  });
+
+  it('treats every watermark as a gap while nothing was ever appended', () => {
+    const journal = new ConversationLiveJournal();
+    expect(journal.tailAfter({ epoch: 0, seq: 0 })).toEqual({ events: [], gap: true });
+    expect(journal.tailAfter({ epoch: 5, seq: 40 })).toEqual({ events: [], gap: true });
+  });
+
   it('keeps the watermark at the lexicographic max when an old-epoch straggler appends late', () => {
     const journal = new ConversationLiveJournal();
     journal.append(stamped(2, 1));

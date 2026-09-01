@@ -853,14 +853,22 @@ export class SessionLifecycleService {
         runId,
         baseTurnId,
       });
-      return this.sessions.startLive(
-        replyTo,
-        record,
-        launchedRunId,
-        startAdapter,
-        resolved.warnings,
-        startOptions,
-      );
+      // The bumped epoch must be durable before the LiveSession exists to mint under it; a lost
+      // write here would re-mint the same (epoch, seq) pairs after a reboot, with no gap signal.
+      return this.records
+        .flush(record.sessionId)
+        .pipe(
+          Effect.andThen(
+            this.sessions.startLive(
+              replyTo,
+              record,
+              launchedRunId,
+              startAdapter,
+              resolved.warnings,
+              startOptions,
+            ),
+          ),
+        );
     });
   }
 
