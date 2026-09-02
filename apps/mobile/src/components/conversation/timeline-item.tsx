@@ -140,6 +140,12 @@ export function TimelineItem({
           ) : null}
         </View>
       );
+    case 'history-unavailable':
+      return (
+        <View className="flex-row items-center justify-center gap-2 px-2">
+          <Text className="text-footnote text-muted">{t('historyUnavailable')}</Text>
+        </View>
+      );
     default:
       return null;
   }
