@@ -18,6 +18,7 @@ import {
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { decodeLiveBranchCursor } from '../session/live-session';
 import {
   FakeAdapter,
   createSessionHarness as harness,
@@ -176,6 +177,38 @@ describe('conversation.graph.get', () => {
 });
 
 describe('conversation.read', () => {
+  it('mints user rows with the live echo’s identity and edit cursor', async () => {
+    const shared: SharedHistory = { events: [], failRead: false };
+    const h = await startedHarness(() => new HistoryFakeAdapter(shared));
+    h.adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    shared.events = [userRow('u1', 'hello one'), assistantRow('a1', 'answer one')];
+    await completeTurn(h, 's1', 'hello one');
+    const echo = h.sent.find(
+      (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+    );
+    if (echo?.kind !== 'agent.event' || echo.event.type !== 'user-message') {
+      throw new Error('no live prompt echo');
+    }
+
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId: h.sessionId });
+
+    const row = readResult(h.sent, 'rr').events.find(
+      (item) => 'event' in item && item.event.type === 'user-message',
+    );
+    if (row === undefined || !('event' in row) || row.event.type !== 'user-message') {
+      throw new Error('no user row');
+    }
+    // One identity per turn across the live view and the read: nothing to reconcile client-side.
+    expect(row.event.messageId).toBe(echo.event.messageId);
+    // Read rows stay editable through the legacy path exactly like the echo they replace.
+    expect(row.event.branchCursor).toBe(echo.event.branchCursor);
+    expect(decodeLiveBranchCursor(nullthrow(row.event.branchCursor))).toEqual({
+      type: 'live',
+      historyId: HISTORY_ID,
+      turnId: row.turnId,
+    });
+  });
+
   it('renders prompts and placeholders when the harness has no history', async () => {
     const h = await startedHarness();
     await completeTurn(h, 's1', 'hello one');

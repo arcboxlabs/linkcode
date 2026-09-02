@@ -251,6 +251,6 @@ export function promptContentFingerprint(content: ContentBlock[]): string {
   return createHash('sha256').update(contentToText(content)).digest('base64url');
 }
 
-function encodeLiveBranchCursor(historyId: AgentHistoryId, turnId: TurnId): string {
+export function encodeLiveBranchCursor(historyId: AgentHistoryId, turnId: TurnId): string {
   return JSON.stringify({ type: LIVE_BRANCH_CURSOR_TYPE, historyId, turnId });
 }

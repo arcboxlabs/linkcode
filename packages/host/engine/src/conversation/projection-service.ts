@@ -3,11 +3,13 @@ import { boundedLimit } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryEvent,
+  AgentHistoryId,
   ContentBlock,
   ConversationGraphTurn,
   ConversationReadItem,
   ConversationTurn,
   ConversationWatermark,
+  RunId,
   SessionId,
   SessionRecord,
   TurnId,
@@ -15,12 +17,12 @@ import type {
 import {
   compareConversationWatermarks,
   MAX_ATTACHMENT_TOTAL_BASE64_LENGTH,
-  MessageIdSchema,
   TurnIdSchema,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import type { OperationError } from '../failure';
 import { RequestError } from '../failure';
+import { encodeLiveBranchCursor } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationCheckpointService } from './checkpoint-service';
 import type { ProviderPartition } from './lineage-attribution';
@@ -28,7 +30,7 @@ import { pathToLeaf } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
 import type { ConversationTurnService } from './turn-service';
-import { TERMINAL_TURN_STATES, turnInputText } from './turn-service';
+import { TERMINAL_TURN_STATES, turnInputText, userRowMessageId } from './turn-service';
 
 export interface ConversationGraphResult {
   readonly sessionId: SessionId;
@@ -217,7 +219,9 @@ export class ConversationProjectionService {
       for (let i = 0, len = path.length; i < len; i++) {
         const turn = path[i];
         const content = contents[i];
-        if (content !== undefined) items.push(projectedUserRow(turn, content));
+        if (content !== undefined) {
+          items.push(projectedUserRow(turn, content, runHistoryId(record, turn.runId)));
+        }
         if (!TERMINAL_TURN_STATES.has(turn.state)) continue; // in-flight output rides the live tail
         if (turn.state === 'failed') continue; // nothing durable ran; the state badge is the story
         const partition = attributed[partitionIndex];
@@ -446,16 +450,28 @@ function projectedItem(
   };
 }
 
-function projectedUserRow(turn: ConversationTurn, content: ContentBlock[]): ConversationReadItem {
+function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
+  return record.runs.find((run) => run.runId === runId)?.historyId;
+}
+
+function projectedUserRow(
+  turn: ConversationTurn,
+  content: ContentBlock[],
+  historyId: AgentHistoryId | undefined,
+): ConversationReadItem {
   return {
     turnId: turn.turnId,
     runId: turn.runId,
     ts: turn.createdAt,
     event: {
       type: 'user-message',
-      // Deterministic identity: re-reads and page overlaps converge on one row per turn.
-      messageId: MessageIdSchema.parse(`msg-${turn.turnId}`),
+      messageId: userRowMessageId(turn.turnId),
       content,
+      // The cursor the live echo carries, so legacy `history.branch` can edit a row that was read
+      // rather than seen live; absent until the run's adapter reports its history.
+      ...(historyId !== undefined && {
+        branchCursor: encodeLiveBranchCursor(historyId, turn.turnId),
+      }),
     },
   };
 }
