@@ -461,8 +461,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
-  /** Transcript row uuid of the turn's last main-agent assistant frame — the row the next user
-   * row hangs off (its `parentUuid`), so a fork through it is the chain-correct cut (CODE-633). */
+  /** Transcript row uuid of the turn's last main-agent assistant frame (one frame per persisted
+   * row) — a chain-correct inclusive fork cut. It is NOT the next user row's `parentUuid` whenever
+   * a Stop hook ran (every LinkCode query registers one): a `system/stop_hook_summary` row then
+   * sits between, so the cold-read cursor and this live checkpoint differ yet both fork validly. */
   private lastAssistantUuid: string | undefined;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
   private stopped = false;
@@ -1813,8 +1815,9 @@ export interface ClaudeTranscriptSupplement {
    * summary, whose `parentUuid` is null — `logicalParentUuid` is ignored). In file (= chronological)
    * order; rows the SDK still returns (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
-  /** Message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`, but Claude
-   * requires the predecessor message id when forking immediately before a historical prompt. */
+  /** Main-chain message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`,
+   * but Claude requires the predecessor message id when forking immediately before a historical
+   * prompt. Sidechain rows are absent: `forkSession` drops them, so a cut through one is invalid. */
   parentUuidByUuid: Map<string, string | null>;
   /** tool_use_id → announce snapshot. Cursor pages can begin at the matching result row, after
    * the stateful mapper's in-page announce map has been reset. */
@@ -1860,7 +1863,9 @@ export function buildClaudeTranscriptSupplement(
     if (!isRecord(parsed) || typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
     const row = parsed;
     const uuid = parsed.uuid;
-    parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
+    if (row.isSidechain !== true) {
+      parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
+    }
     if (row.type === 'system' && row.subtype === 'compact_boundary') {
       boundaries += 1;
       const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};

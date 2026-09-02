@@ -409,14 +409,36 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     ]);
   });
 
-  it('mints each user message id once as the preceding turn’s fork checkpoint', async () => {
-    const { adapter } = await makeAdapter();
+  it('keeps turn-level forks dark while the legacy branch path stays advertised', () => {
+    expect(new OpenCodeAdapter().historyCapabilities).toEqual({
+      list: true,
+      read: true,
+      resume: true,
+      forkAfterTurn: false,
+      branch: true,
+    });
+  });
+
+  it('mints exactly one preceding checkpoint per turn: the prompt’s own user message', async () => {
+    const { adapter, events } = await makeAdapter();
     const checkpoints: HistoryCheckpoint[] = [];
     adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
 
+    // A user message outside any turn (a resumed session's straggler) cuts nothing.
+    client.stream.push(userMessageUpdated('msg-stale', 'e-stale'));
+    await drained();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'first' }] });
+    pushBusy();
     client.stream.push(userMessageUpdated('msg-user-1', 'e-u1'));
-    // A late re-emit of a settled prompt (observed on 1.17.11) must not re-mint its cut.
+    // A mid-turn compaction materializes as a second user message, and a settled prompt can be
+    // re-emitted late (observed on 1.17.11): neither may move the cut past the turn's own prompt.
+    client.stream.push(userMessageUpdated('msg-compaction', 'e-compaction'));
     client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-again'));
+    pushIdle();
+    await vi.waitFor(() => expect(stops(events)).toHaveLength(1));
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'second' }] });
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-late'));
     client.stream.push(userMessageUpdated('msg-user-2', 'e-u2'));
     await drained();
 

@@ -14,7 +14,8 @@ export const AgentHistoryCapabilitiesSchema = z.object({
    * primitive every provider actually has ("before prompt T" ≡ "after parent(T)"). Per-turn
    * availability additionally depends on a captured, still-valid checkpoint. */
   forkAfterTurn: z.boolean().optional(),
-  /** Mirror of `forkAfterTurn` for ≤v79 clients; retired at the floor bump. */
+  /** The legacy `history.branch` capability (≤v79 clients); stays true for a harness whose
+   * turn-level cut is still unverified while `forkAfterTurn` is false. Retired at the floor bump. */
   branch: z.boolean().optional(),
 });
 export type AgentHistoryCapabilities = z.infer<typeof AgentHistoryCapabilitiesSchema>;
