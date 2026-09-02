@@ -20,6 +20,7 @@ import type {
 import { Effect, Exit, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
+import type { ConversationCheckpointService, ForkCut } from '../conversation/checkpoint-service';
 import type {
   ConversationTurnService,
   PersistedTurnIntent,
@@ -61,13 +62,18 @@ export interface TurnSubmitRequest {
   readonly operationId: OperationId;
   readonly input: TurnSubmitInput;
   /** Absent = plain send onto the active leaf; `null` = new root lineage; a turn id = tip-continue
-   * or (once checkpoints exist) fork. */
+   * or a fork after that turn's checkpoint. */
   readonly parentTurnId?: TurnId | null;
   readonly expectedGraphRevision?: number;
 }
 
-/** Provider work a submit needs: none (live adapter continues), a cold resume, or a fresh session. */
-type TurnLaunch = 'continue' | 'resume' | 'fresh';
+/** Provider work a submit needs: none (live adapter continues), a resume (of the latest history,
+ * or an inactive lineage's own), a fresh session, or a fork at the parent's checkpoint. */
+type TurnLaunch =
+  | { readonly type: 'continue' }
+  | { readonly type: 'fresh' }
+  | { readonly type: 'resume'; readonly historyId?: AgentHistoryId }
+  | { readonly type: 'fork'; readonly cut: ForkCut };
 
 function toAgentInput(input: TurnSubmitInput): AgentInput {
   if (input.type !== 'prompt') return input;
@@ -95,6 +101,7 @@ export class SessionLifecycleService {
     private readonly workspaces: WorkspaceRegistry,
     private readonly worktrees: WorktreeService,
     private readonly turns: ConversationTurnService,
+    private readonly checkpoints: ConversationCheckpointService,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -292,11 +299,8 @@ export class SessionLifecycleService {
             }),
           );
         }
-        const sourceHistoryId =
-          liveCursor.type === 'live'
-            ? liveCursor.historyId
-            : this.records.historyId(sourceSessionId);
-        if (!sourceHistoryId) {
+        const sourceHistoryId = this.records.historyId(sourceSessionId);
+        if (!sourceHistoryId && liveCursor.type === 'provider') {
           return Effect.fail(
             new RequestError({
               code: 'conflict',
@@ -305,7 +309,7 @@ export class SessionLifecycleService {
           );
         }
 
-        const { history, sessions, turns } = this;
+        const { checkpoints, history, sessions, turns } = this;
         const resolveForRecord = this.resolveForRecord.bind(this);
         const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
@@ -319,49 +323,65 @@ export class SessionLifecycleService {
           }
           const resolved = yield* resolveForRecord(source);
           // The runtime rewrite stays destructive for old clients, but the tree records the
-          // replacement non-destructively. Live-echo message ids are never persisted, so
-          // `sourceMessageId` cannot name a graph turn; best-effort, the replacement lands as a
-          // sibling of the active leaf. Nothing is guessed destructively.
-          const runId = mintRunId();
+          // replacement non-destructively. A live echo's cursor names its turn, so the replacement
+          // lands exactly under the edited turn's parent and the cut comes from that parent's
+          // checkpoint; a provider cursor (cold-read prompt) names no turn, so the replacement
+          // lands beside the active leaf and the cut is the cursor itself. Nothing is guessed.
           const existingTurns = yield* turns.listTurns(sourceSessionId);
+          const target =
+            liveCursor.type === 'live'
+              ? existingTurns.find((turn) => turn.turnId === liveCursor.turnId)
+              : undefined;
+          if (target === undefined && liveCursor.type === 'live') {
+            return yield* Effect.fail(
+              new RequestError({
+                code: 'conflict',
+                message: 'The prompt does not belong to this session',
+              }),
+            );
+          }
           const activeLeaf = existingTurns.find((turn) => turn.turnId === source.activeLeafTurnId);
+          const parentTurnId = target ? target.parentTurnId : (activeLeaf?.parentTurnId ?? null);
+          let startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>;
+          if (target === undefined) {
+            const historyId = nullthrow(sourceHistoryId, 'checked above for provider cursors');
+            startAdapter = (adapter) =>
+              history.branch(adapter, { historyId, cursor: branchCursor }, resolved.options);
+          } else if (target.parentTurnId === null && source.origin.type === 'created') {
+            // The first prompt of a session LinkCode created: nothing precedes it in provider
+            // history, so its replacement starts a fresh provider session (the saga's root rule).
+            startAdapter = (adapter) => sessions.startAdapter(adapter, resolved.options);
+          } else {
+            // Resolved before the intent persists: a checkpoint-less prompt fails typed here
+            // instead of leaving a failed sibling behind.
+            const cut = yield* checkpoints.forkCutBefore(source, target.turnId);
+            if (cut === undefined) {
+              return yield* Effect.fail(
+                new RequestError({
+                  code: 'unsupported',
+                  message: 'This prompt has no provider checkpoint to rewrite from',
+                }),
+              );
+            }
+            startAdapter = (adapter) => history.branch(adapter, cut, resolved.options);
+          }
+          const runId = mintRunId();
           const intent = yield* turns.persistIntent({
             sessionId: sourceSessionId,
             operationId: mintOperationId(),
             runId,
-            parentTurnId: activeLeaf?.parentTurnId ?? null,
+            parentTurnId,
             input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
           });
           yield* Effect.gen(function* () {
             yield* sessions.stopForReplacement(sourceSessionId);
-            const resolvedBranchCursor =
-              liveCursor.type === 'live'
-                ? yield* history.resolveLiveBranchCursor(
-                    source.kind,
-                    sourceHistoryId,
-                    source.cwd,
-                    liveCursor.offsetFromEnd,
-                    liveCursor.contentFingerprint,
-                  )
-                : branchCursor;
-            yield* launchRun(
-              replyTo,
-              source,
-              resolved,
-              (adapter) =>
-                history.branch(
-                  adapter,
-                  { historyId: sourceHistoryId, cursor: resolvedBranchCursor },
-                  resolved.options,
-                ),
-              {
-                initialInput: { type: 'prompt', content },
-                preparedTurn: intent,
-                registerRecord: false,
-                rewindMessageId: sourceMessageId,
-                runId,
-              },
-            );
+            yield* launchRun(replyTo, source, resolved, startAdapter, {
+              initialInput: { type: 'prompt', content },
+              preparedTurn: intent,
+              registerRecord: false,
+              rewindMessageId: sourceMessageId,
+              runId,
+            });
           }).pipe(
             // The dispatcher does not resolve saga-prepared intents; every failure exit — stop,
             // branch, or dispatch failures, interrupts, defects — resolves here.
@@ -389,8 +409,9 @@ export class SessionLifecycleService {
   submitTurn(request: TurnSubmitRequest): Effect.Effect<TerminalOperation, EngineFailure> {
     const { sessions, turns } = this;
     const admitSubmit = this.admitSubmit.bind(this);
-    const relaunchFresh = this.relaunchFresh.bind(this);
+    const relaunch = this.relaunch.bind(this);
     const resumeSession = this.resumeSession.bind(this);
+    const { history } = this;
     return Effect.gen(function* () {
       // Replay before any validation: a reply lost to a disconnect must not duplicate a sibling.
       const existing = yield* turns.getOperation(request.operationId);
@@ -412,14 +433,30 @@ export class SessionLifecycleService {
       }
       const { intent, launch } = yield* admitSubmit(request);
       const dispatch = Effect.gen(function* () {
-        if (launch !== 'continue') {
-          const launchSession =
-            launch === 'fresh'
-              ? relaunchFresh(request.sessionId, intent.turn.runId)
-              : resumeSession(undefined, request.sessionId, {
-                  runId: intent.turn.runId,
-                  baseTurnId: intent.turn.parentTurnId ?? undefined,
-                });
+        if (launch.type !== 'continue') {
+          const { runId } = intent.turn;
+          const baseTurnId = intent.turn.parentTurnId ?? undefined;
+          const { sessionId } = request;
+          let launchSession: Effect.Effect<void, EngineFailure>;
+          if (launch.type === 'fresh') {
+            launchSession = relaunch(sessionId, { runId }, (adapter, options) =>
+              sessions.startAdapter(adapter, options),
+            );
+          } else if (launch.type === 'fork') {
+            const { cut } = launch;
+            launchSession = relaunch(sessionId, { runId, baseTurnId }, (adapter, options) =>
+              history.branch(adapter, cut, options),
+            );
+          } else if (launch.historyId !== undefined) {
+            const { historyId } = launch;
+            launchSession = relaunch(
+              sessionId,
+              { runId, baseTurnId, historyId },
+              (adapter, options) => history.resume(adapter, historyId, options),
+            );
+          } else {
+            launchSession = resumeSession(undefined, sessionId, { runId, baseTurnId });
+          }
           yield* launchSession.pipe(
             Effect.timeoutOrElse({
               duration: LAUNCH_TIMEOUT_MS,
@@ -532,7 +569,7 @@ export class SessionLifecycleService {
           );
         }
         // Seam: the worktree co-leaseholder busy gate joins this critical section later.
-        const { sessions, turns } = this;
+        const { checkpoints, sessions, turns } = this;
         return Effect.gen(function* () {
           if (yield* turns.hasOpenOperation(request.sessionId)) {
             return yield* Effect.fail(
@@ -547,7 +584,7 @@ export class SessionLifecycleService {
           if (request.parentTurnId === undefined) {
             // Plain send: no guards — targets the current active leaf under the busy rules alone.
             parentTurnId = record.activeLeafTurnId ?? null;
-            launch = 'continue';
+            launch = { type: 'continue' };
           } else if (request.parentTurnId === null) {
             if (request.expectedGraphRevision !== record.graphRevision) {
               return yield* Effect.fail(
@@ -555,7 +592,7 @@ export class SessionLifecycleService {
               );
             }
             parentTurnId = null;
-            launch = 'fresh';
+            launch = { type: 'fresh' };
           } else {
             const existingTurns = yield* turns.listTurns(request.sessionId);
             const parent = existingTurns.find((turn) => turn.turnId === request.parentTurnId);
@@ -580,28 +617,46 @@ export class SessionLifecycleService {
                 new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
               );
             }
+            parentTurnId = request.parentTurnId;
             if (request.parentTurnId === record.activeLeafTurnId) {
               // Tip-continue on the active lineage: the provider history head IS this leaf.
-              parentTurnId = request.parentTurnId;
-              launch = 'continue';
+              launch = { type: 'continue' };
             } else {
-              // Fork seam: per-turn provider checkpoints are not captured yet, so this read
-              // always finds none and every interior/edit fork is refused loudly.
-              const bindings = yield* turns.listBindings(request.parentTurnId);
-              return yield* Effect.fail(
-                new RequestError({
-                  code: 'unsupported',
-                  message:
-                    bindings.length === 0
+              // A valid checkpoint forks — including at an inactive tip, whose provider history
+              // may since have branched in place (pi). Without one, a tip is continued by
+              // resuming the history its own run wrote to; an interior turn is fork-unavailable.
+              const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
+              const cut = forkable
+                ? yield* checkpoints.forkCutAfter(record, parent.turnId)
+                : undefined;
+              if (cut !== undefined) {
+                launch = { type: 'fork', cut };
+              } else if (existingTurns.some((turn) => turn.parentTurnId === parent.turnId)) {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'unsupported',
+                    message: forkable
                       ? 'This turn has no provider checkpoint to fork from'
-                      : 'Forking from an earlier turn is not supported yet',
-                }),
-              );
+                      : `${record.kind}: forking from an earlier turn is not supported`,
+                  }),
+                );
+              } else {
+                const historyId = record.runs.find((run) => run.runId === parent.runId)?.historyId;
+                if (historyId === undefined) {
+                  return yield* Effect.fail(
+                    new RequestError({
+                      code: 'unsupported',
+                      message: 'This turn has no provider history to continue',
+                    }),
+                  );
+                }
+                launch = { type: 'resume', historyId };
+              }
             }
           }
           const liveRunId =
-            launch === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
-          if (launch === 'continue' && liveRunId === undefined) launch = 'resume';
+            launch.type === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
+          if (liveRunId === undefined && launch.type === 'continue') launch = { type: 'resume' };
           const intent = yield* turns.persistIntent({
             sessionId: request.sessionId,
             operationId: request.operationId,
@@ -615,9 +670,16 @@ export class SessionLifecycleService {
     );
   }
 
-  /** Replace the session's adapter with a fresh provider session under the same LinkCode id —
-   * the `parentTurnId: null` (new root lineage) submit path. */
-  private relaunchFresh(sessionId: SessionId, runId: RunId): Effect.Effect<void, EngineFailure> {
+  /** Replace the session's adapter under the same LinkCode id with one `start`ed on other provider
+   * history: a fresh session (new root lineage), a fork at a checkpoint, or an inactive lineage's
+   * own history resumed. The source adapter is stopped first — one live adapter per session, and
+   * a stopped source is the strongest quiesce a fork can get. `run` pre-mints the relaunch's run
+   * identity so the persisted turn references it. */
+  private relaunch(
+    sessionId: SessionId,
+    run: { runId: RunId; baseTurnId?: TurnId; historyId?: AgentHistoryId },
+    start: (adapter: AgentAdapter, options: StartOptions) => Effect.Effect<void, EngineFailure>,
+  ): Effect.Effect<void, EngineFailure> {
     return this.sessionSemaphore(sessionId).withPermit(
       Effect.suspend(() => {
         const record = this.records.get(sessionId);
@@ -636,8 +698,8 @@ export class SessionLifecycleService {
             undefined,
             record,
             resolved,
-            (adapter) => sessions.startAdapter(adapter, resolved.options),
-            { registerRecord: false, runId },
+            (adapter) => start(adapter, resolved.options),
+            { registerRecord: false, ...run },
           );
         });
       }),

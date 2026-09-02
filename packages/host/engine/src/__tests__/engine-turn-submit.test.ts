@@ -1,6 +1,17 @@
 import { setImmediate as nextLoopTurn } from 'node:timers/promises';
-import { asHistoryId } from '@linkcode/agent-adapter';
-import type { AgentHistoryResumeOptions, AgentInput, TurnId, WirePayload } from '@linkcode/schema';
+import { asHistoryId, HistoryCheckpointInvalidError } from '@linkcode/agent-adapter';
+import type {
+  AgentHistoryBranchOptions,
+  AgentHistoryCapabilities,
+  AgentHistoryReadOptions,
+  AgentHistoryReadResult,
+  AgentHistoryResumeOptions,
+  AgentInput,
+  MessageId,
+  StartOptions,
+  TurnId,
+  WirePayload,
+} from '@linkcode/schema';
 import {
   AttachmentIdSchema,
   OperationIdSchema,
@@ -72,6 +83,59 @@ class SilentHangingSendAdapter extends FakeAdapter {
   }
 }
 
+class ForkingAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    forkAfterTurn: true,
+    branch: true,
+  };
+  branchedFrom: AgentHistoryBranchOptions | null = null;
+  failFork: Error | undefined;
+
+  branchHistory(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void> {
+    if (this.failFork) return Promise.reject(this.failFork);
+    this.branchedFrom = opts;
+    this.startedWith = startOpts;
+    this.emit({ type: 'session-ref', historyId: asHistoryId('native-child') });
+    return Promise.resolve();
+  }
+}
+
+/** Cold reads return the lineage's own prompts; a row without a cursor models a rollout the
+ * provider cannot fork (codex `history_mode: paginated`). */
+class AlignedHistoryAdapter extends ForkingAdapter {
+  constructor(private readonly rows: Array<{ text: string; cursor?: string }>) {
+    super();
+  }
+
+  override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    return Promise.resolve({
+      session: { historyId: opts.historyId, kind: this.kind, cwd: '/repo' },
+      events: this.rows.map((row, index) => ({
+        historyId: opts.historyId,
+        itemId: `u${index}`,
+        event: {
+          type: 'user-message' as const,
+          messageId: `u${index}` as MessageId,
+          content: [{ type: 'text' as const, text: row.text }],
+          ...(row.cursor !== undefined && { branchCursor: row.cursor }),
+        },
+      })),
+    });
+  }
+}
+
+function forkedAdapter(adapters: FakeAdapter[]): ForkingAdapter {
+  return nullthrow(
+    adapters.find(
+      (adapter): adapter is ForkingAdapter =>
+        adapter instanceof ForkingAdapter && adapter.branchedFrom !== null,
+    ),
+  );
+}
+
 /** First start is a normal adapter; the first relaunch is `make()`; later ones are normal. */
 function secondAdapter(make: () => FakeAdapter): () => FakeAdapter {
   let index = 0;
@@ -132,6 +196,21 @@ function submitPrompt(
     input: { type: 'prompt', blocks: [{ type: 'text', text }] },
     ...extra,
   });
+}
+
+/** Two settled turns on `native-1`, each with a live `ending` checkpoint. */
+async function twoCheckpointedTurns(h: Awaited<ReturnType<typeof startedHarness>>) {
+  await submitPrompt(h, 's1', 'first');
+  const firstTurnId = submittedTurnId(h.sent, 's1');
+  h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+  h.adapter.emitCheckpoint({ historyId: asHistoryId('native-1'), cursor: 'cp-1', turn: 'ending' });
+  h.adapter.emit({ type: 'status', status: 'idle' });
+  await settleEngineTasks();
+  await submitPrompt(h, 's2', 'second');
+  h.adapter.emitCheckpoint({ historyId: asHistoryId('native-1'), cursor: 'cp-2', turn: 'ending' });
+  h.adapter.emit({ type: 'status', status: 'idle' });
+  await settleEngineTasks();
+  return firstTurnId;
 }
 
 describe('turn.submit saga', () => {
@@ -278,6 +357,216 @@ describe('turn.submit saga', () => {
 
     expect(failure(h.sent, 's3').code).toBe('unsupported');
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(2);
+  });
+
+  it('forks after the parent turn’s live checkpoint into a new run and records the sibling', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    const firstTurnId = await twoCheckpointedTurns(h);
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    const forked = forkedAdapter(h.adapters);
+    expect(forked.branchedFrom).toEqual({ historyId: 'native-1', cursor: 'cp-1' });
+    expect(forked.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'edited second' }] },
+    ]);
+    expect(h.adapter.stopped).toBe(true);
+    const forkedTurnId = submittedTurnId(h.sent, 's3');
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    const forkedTurn = nullthrow(turns.find((turn) => turn.turnId === forkedTurnId));
+    expect(forkedTurn).toMatchObject({
+      parentTurnId: firstTurnId,
+      siblingOrdinal: 2,
+      state: 'running',
+    });
+    const [record] = await h.store.load();
+    expect(record.runs.at(-1)).toMatchObject({
+      runId: forkedTurn.runId,
+      baseTurnId: firstTurnId,
+      historyId: 'native-child',
+    });
+    expect(record.activeLeafTurnId).toBe(forkedTurnId);
+  });
+
+  it('refuses typed at fork time when the checkpoint is no longer valid, leaving a failed sibling', async () => {
+    const h = await startedHarness(() => {
+      const adapter = new ForkingAdapter();
+      adapter.failFork = new HistoryCheckpointInvalidError(
+        'claude-code: checkpoint row-b is no longer in transcript native-1',
+      );
+      return adapter;
+    });
+    const firstTurnId = await twoCheckpointedTurns(h);
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => failure(h.sent, 's3'));
+
+    expect(failure(h.sent, 's3')).toMatchObject({
+      code: 'unsupported',
+      message: 'claude-code: checkpoint row-b is no longer in transcript native-1',
+    });
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns).toHaveLength(3);
+    expect(
+      turns.find((turn) => turn.siblingOrdinal === 2 && turn.parentTurnId === firstTurnId),
+    ).toMatchObject({ state: 'failed' });
+    expect(h.adapters.every((adapter) => (adapter as ForkingAdapter).branchedFrom === null)).toBe(
+      true,
+    );
+  });
+
+  it('refuses a fork on a harness without forkAfterTurn even when a checkpoint exists', async () => {
+    const h = await startedHarness();
+    const firstTurnId = await twoCheckpointedTurns(h);
+    expect(await h.conversationStore.listBindings(firstTurnId)).toHaveLength(1);
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+
+    expect(failure(h.sent, 's3')).toMatchObject({
+      code: 'unsupported',
+      message: 'claude-code: forking from an earlier turn is not supported',
+    });
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(2);
+  });
+
+  it('continues an inactive tip by resuming the history its own run wrote to', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const fresh = nullthrow(h.adapters[1]);
+    fresh.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    fresh.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'continue the old version', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    const resumed = nullthrow(h.adapters.find((adapter) => adapter.resumedFrom === 'native-1'));
+    expect(resumed.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'continue the old version' }] },
+    ]);
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === submittedTurnId(h.sent, 's3'))).toMatchObject({
+      parentTurnId: firstTurnId,
+      siblingOrdinal: 1,
+      state: 'running',
+    });
+  });
+
+  it('forks — never resumes — an inactive tip that has a live checkpoint', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-1',
+      turn: 'ending',
+    });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const fresh = nullthrow(h.adapters[1]);
+    fresh.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    fresh.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'continue the old version', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    // pi branches in place: the file's current leaf may be another lineage, so a tip with a
+    // checkpoint goes through the checkpoint, not through a resume of "its" history.
+    expect(forkedAdapter(h.adapters).branchedFrom).toEqual({
+      historyId: 'native-1',
+      cursor: 'cp-1',
+    });
+    expect(h.adapters.some((adapter) => adapter.resumedFrom === 'native-1')).toBe(false);
+  });
+
+  it('replays the fork cut from an aligned cold read when no live checkpoint was captured', async () => {
+    const h = await startedHarness(
+      () =>
+        new AlignedHistoryAdapter([
+          { text: 'first', cursor: 'before-first' },
+          { text: 'second', cursor: 'before-second' },
+        ]),
+    );
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'second');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    // "Before the second prompt" is "after the first turn": the successor row's own cursor.
+    expect(forkedAdapter(h.adapters).branchedFrom).toEqual({
+      historyId: 'native-1',
+      cursor: 'before-second',
+    });
+    expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
+      expect.objectContaining({
+        historyId: 'native-1',
+        checkpoint: 'before-second',
+        capturedFrom: 'replay',
+      }),
+    ]);
+  });
+
+  it('keeps a fork unavailable when the cold read mints no cursors (a paginated codex rollout)', async () => {
+    const h = await startedHarness(
+      () => new AlignedHistoryAdapter([{ text: 'first' }, { text: 'second' }]),
+    );
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'second');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => failure(h.sent, 's3'));
+
+    expect(failure(h.sent, 's3')).toMatchObject({
+      code: 'unsupported',
+      message: 'This turn has no provider checkpoint to fork from',
+    });
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(2);
+    expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([]);
   });
 
   it('persists the intent before dispatch and replays the stored failure', async () => {

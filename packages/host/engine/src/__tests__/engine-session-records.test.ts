@@ -14,6 +14,7 @@ import { MessageIdSchema, textBlock } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
+import { InMemoryConversationStore } from '../conversation/conversation-store';
 import type { SessionStore } from '../session/session-store';
 import { InMemorySessionStore } from '../session/session-store';
 import { InMemoryWorkspaceStore } from '../workspace/workspace-store';
@@ -54,6 +55,7 @@ class BranchingHistoryAdapter extends FakeAdapter {
     list: false,
     read: true,
     resume: true,
+    forkAfterTurn: true,
     branch: true,
   };
   branchedFrom: AgentHistoryBranchOptions | null = null;
@@ -424,11 +426,12 @@ describe('engine session records', () => {
     await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-running')).toBe(sourceSessionId));
 
     expect(sourceAdapter.stopped).toBe(true);
-    const replacementAdapter = h.adapters[2] as BranchingHistoryAdapter;
-    expect(replacementAdapter.branchedFrom).toEqual({
-      historyId: 'native-source',
-      cursor: 'opaque-original-cursor',
-    });
+    // The first prompt of a created session has nothing before it: its rewrite starts a fresh
+    // provider session instead of forking at a guessed cut.
+    const replacementAdapter = nullthrow(h.adapters.at(-1)) as BranchingHistoryAdapter;
+    expect(replacementAdapter.branchedFrom).toBeNull();
+    expect(replacementAdapter.resumedFrom).toBeNull();
+    expect(replacementAdapter.startedWith).not.toBeNull();
     expect(replacementAdapter.sentInputs).toEqual([
       { type: 'prompt', content: [textBlock('edited prompt')] },
     ]);
@@ -458,7 +461,16 @@ describe('engine session records', () => {
 
   it('rewrites an earlier live prompt from its original provider history', async () => {
     const store = new InMemorySessionStore();
-    const h = harness(store, () => new BranchingHistoryAdapter());
+    const conversationStore = new InMemoryConversationStore();
+    const h = harness(
+      store,
+      () => new BranchingHistoryAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
     await h.engine.start();
     await h.inject({
       kind: 'session.start',
@@ -514,6 +526,23 @@ describe('engine session records', () => {
     });
     await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-later')).toBe(sourceSessionId));
 
+    // No live checkpoint was captured, so the cut before the later prompt is replayed from the
+    // provider's own row — and persisted as the original turn's replay binding.
+    const forked = h.adapters.filter(
+      (adapter) => (adapter as BranchingHistoryAdapter).branchedFrom !== null,
+    ) as BranchingHistoryAdapter[];
+    expect(forked.map((adapter) => adapter.branchedFrom)).toEqual([
+      { historyId: 'native-source', cursor: 'opaque-later-cursor' },
+    ]);
+    const [originalTurn] = await conversationStore.listTurns(sourceSessionId);
+    expect(await conversationStore.listBindings(originalTurn.turnId)).toEqual([
+      expect.objectContaining({
+        historyId: 'native-source',
+        checkpoint: 'opaque-later-cursor',
+        capturedFrom: 'replay',
+      }),
+    ]);
+
     await h.inject({
       kind: 'history.branch',
       clientReqId: 'rewrite-original',
@@ -524,12 +553,88 @@ describe('engine session records', () => {
     });
     await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-original')).toBe(sourceSessionId));
 
-    expect((h.adapters[4] as BranchingHistoryAdapter).branchedFrom).toEqual({
-      historyId: 'native-source',
-      cursor: 'opaque-original-cursor',
-    });
+    // The original prompt is the created session's first: its rewrite starts fresh, no fork.
+    const last = nullthrow(h.adapters.at(-1)) as BranchingHistoryAdapter;
+    expect(last.branchedFrom).toBeNull();
+    expect(last.startedWith).not.toBeNull();
+    expect(last.sentInputs).toEqual([
+      { type: 'prompt', content: [textBlock('edited original prompt')] },
+    ]);
     const [record] = await store.load();
     expect(record.runs).toHaveLength(3);
+  });
+
+  it('records a live-cursor rewrite under the edited turn’s parent and forks at that parent’s checkpoint', async () => {
+    const store = new InMemorySessionStore();
+    const conversationStore = new InMemoryConversationStore();
+    const h = harness(
+      store,
+      () => new BranchingHistoryAdapter(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start-source',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sourceSessionId = startedId(h.sent, 'start-source');
+    h.adapters[0].emit({ type: 'session-ref', historyId: asHistoryId('native-source') });
+    const texts = ['one', 'two', 'three'];
+    for (let i = 0, len = texts.length; i < len; i++) {
+      const text = texts[i];
+      // eslint-disable-next-line no-await-in-loop -- turns are sequential by construction
+      await h.inject({
+        kind: 'agent.input',
+        clientReqId: `prompt-${text}`,
+        sessionId: sourceSessionId,
+        input: { type: 'prompt', content: [textBlock(text)] },
+      });
+      h.adapters[0].emitCheckpoint({
+        historyId: asHistoryId('native-source'),
+        cursor: `after-${text}`,
+        turn: 'ending',
+      });
+      h.adapters[0].emit({ type: 'status', status: 'idle' });
+      // eslint-disable-next-line no-await-in-loop -- settle the store hops before the next turn
+      await tick();
+    }
+    const [one, two] = await conversationStore.listTurns(sourceSessionId);
+    const secondPrompt = agentEvents(h.sent, sourceSessionId).findLast(
+      (event) =>
+        event.type === 'user-message' &&
+        event.branchCursor !== undefined &&
+        event.content[0]?.type === 'text' &&
+        event.content[0].text === 'two',
+    );
+    if (secondPrompt?.type !== 'user-message' || secondPrompt.branchCursor === undefined) {
+      throw new Error('live prompt has no branch cursor');
+    }
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-two',
+      sourceSessionId,
+      sourceMessageId: secondPrompt.messageId,
+      branchCursor: secondPrompt.branchCursor,
+      content: [textBlock('two, edited')],
+    });
+    await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-two')).toBe(sourceSessionId));
+
+    const forked = nullthrow(
+      h.adapters.find((adapter) => (adapter as BranchingHistoryAdapter).branchedFrom !== null),
+    ) as BranchingHistoryAdapter;
+    expect(forked.branchedFrom).toEqual({ historyId: 'native-source', cursor: 'after-one' });
+    const turns = await conversationStore.listTurns(sourceSessionId);
+    const replacement = nullthrow(turns.find((turn) => turn.siblingOrdinal === 2));
+    // A sibling of the edited turn — not of the active leaf, which was its child.
+    expect(replacement.parentTurnId).toBe(one.turnId);
+    expect(two.parentTurnId).toBe(one.turnId);
+    expect((await store.load())[0].activeLeafTurnId).toBe(replacement.turnId);
   });
 
   it('does not rewind or start a replacement when stopping the running turn fails', async () => {

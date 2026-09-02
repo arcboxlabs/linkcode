@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AgentHistoryCapabilities,
   AgentInput,
+  AgentKind,
   ContentBlock,
   McpWarning,
   MessageId,
@@ -103,6 +104,11 @@ export class SessionOrchestrator {
    * one, so a caller about to tear it down learns what *this* session can do. */
   historyCapabilities(sessionId: SessionId): AgentHistoryCapabilities | undefined {
     return this.sessions.get(sessionId)?.adapter.historyCapabilities;
+  }
+
+  /** The harness's static history capabilities, for gating work on a session with no live adapter. */
+  historyCapabilitiesOf(kind: AgentKind): AgentHistoryCapabilities {
+    return this.factory(kind).historyCapabilities;
   }
 
   replay(sessionId: SessionId): void {
@@ -286,6 +292,7 @@ export class SessionOrchestrator {
       scope: parentScope,
       sessions,
       transport,
+      turns,
     } = this;
     const { browserTools } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
@@ -308,10 +315,14 @@ export class SessionOrchestrator {
         );
         const startupEvents: AgentEvent[] = [];
         let bufferEvents = rewindMessageId !== undefined;
-        session.listen((event) => {
-          if (bufferEvents) startupEvents.push(event);
-          else events.handle(sessionId, session, event);
-        });
+        session.listen(
+          (event) => {
+            if (bufferEvents) startupEvents.push(event);
+            else events.handle(sessionId, session, event);
+          },
+          // Checkpoints never reach the wire, so the rewind buffer above does not apply.
+          (checkpoint) => turns.bindLiveCheckpoint(sessionId, session.runId, checkpoint),
+        );
         if (sessions.has(sessionId)) {
           session.stopListening();
           yield* Scope.close(scope, Exit.interrupt());
