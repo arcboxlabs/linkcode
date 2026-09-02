@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { HistoryCheckpoint } from '@linkcode/agent-adapter';
 import type {
   ContentBlock,
   ConversationOperation,
@@ -95,6 +96,9 @@ interface RunningTurn {
 export class ConversationTurnService {
   /** The running turn per session; settles are addressed by the turn's own runId. */
   private readonly running = new Map<SessionId, RunningTurn>();
+  /** The persisted intent between its persist and its commit/failure. A pi-style send() settles
+   * the whole turn — checkpoint included — before the commit tracks it as running. */
+  private readonly dispatching = new Map<SessionId, ConversationTurn>();
   /** When a turn last flipped terminal — the projection's cache-freshness bound: a provider
    * corpus captured before the newest settle may be missing that turn's rows. */
   private readonly settledAt = new Map<SessionId, number>();
@@ -134,6 +138,32 @@ export class ConversationTurnService {
     return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
 
+  /** A binding derived from a cold read (`capturedFrom: 'replay'`); the caller owns the
+   * never-overwrite-a-live-capture rule. */
+  saveReplayBinding(binding: ProviderTurnBinding): Effect.Effect<void, OperationError> {
+    return storeOperation('conversation.binding.save', () => this.store.saveBinding(binding));
+  }
+
+  /** The turn's user-row content from host truth; undefined for migrated null-prompt turns. */
+  hostUserContent(
+    turn: ConversationTurn,
+  ): Effect.Effect<ContentBlock[] | undefined, OperationError> {
+    const input = turn.input;
+    if (input.type === 'command' || input.type === 'shell-command') {
+      return Effect.succeed([{ type: 'text' as const, text: turnInputText(input) }]);
+    }
+    if (input.promptId === null) return Effect.undefined;
+    return this.getPrompt(input.promptId).pipe(
+      Effect.map((prompt) => {
+        if (!prompt) return;
+        // attachment_ref blocks join the projection when the attachment store lands.
+        return prompt.blocks.flatMap((block) =>
+          block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
+        );
+      }),
+    );
+  }
+
   deleteSession(sessionId: SessionId): Effect.Effect<void, OperationError> {
     return storeOperation('conversation.delete-session', () =>
       this.store.deleteSession(sessionId),
@@ -141,6 +171,7 @@ export class ConversationTurnService {
       Effect.tap(() =>
         Effect.sync(() => {
           this.running.delete(sessionId);
+          this.dispatching.delete(sessionId);
           this.settledAt.delete(sessionId);
         }),
       ),
@@ -198,6 +229,7 @@ export class ConversationTurnService {
           ),
         ),
       );
+      this.dispatching.set(spec.sessionId, persisted);
       return { turn: persisted, operation };
     });
   }
@@ -271,8 +303,9 @@ export class ConversationTurnService {
         }
         return stored;
       }
-      const running = this.running.get(intent.turn.sessionId);
-      if (running?.turn.turnId === intent.turn.turnId) this.running.delete(intent.turn.sessionId);
+      const { sessionId, turnId } = intent.turn;
+      if (this.running.get(sessionId)?.turn.turnId === turnId) this.running.delete(sessionId);
+      if (this.dispatching.get(sessionId)?.turnId === turnId) this.dispatching.delete(sessionId);
       return { ...operation, error };
     });
   }
@@ -338,6 +371,25 @@ export class ConversationTurnService {
     return this.runningFor(sessionId, runId)?.turn.turnId;
   }
 
+  /** Persist a live fork checkpoint as the binding of the turn it describes: `ending` → the turn
+   * `runId` is executing, `preceding` → that turn's parent (a root has none). A checkpoint from a
+   * run that is neither dispatching nor running a turn (a replaced adapter) binds nothing. */
+  bindLiveCheckpoint(sessionId: SessionId, runId: RunId, checkpoint: HistoryCheckpoint): void {
+    const dispatching = this.dispatching.get(sessionId);
+    const turn =
+      dispatching?.runId === runId ? dispatching : this.runningFor(sessionId, runId)?.turn;
+    if (!turn) return;
+    const turnId = checkpoint.turn === 'ending' ? turn.turnId : turn.parentTurnId;
+    if (turnId === null) return;
+    this.saveBinding({
+      turnId,
+      runId,
+      historyId: checkpoint.historyId,
+      checkpoint: checkpoint.cursor,
+      capturedFrom: 'live',
+    });
+  }
+
   /** An adapter `error` while the run's turn is live; decides `failed` on a stop-less settle. */
   noteError(sessionId: SessionId, runId: RunId): void {
     const entry = this.runningFor(sessionId, runId);
@@ -384,6 +436,24 @@ export class ConversationTurnService {
       this.persistTurnState(stale.turn, stale.sawError ? 'failed' : 'completed');
     }
     this.running.set(turn.sessionId, { turn, sawError: false });
+    if (this.dispatching.get(turn.sessionId)?.turnId === turn.turnId) {
+      this.dispatching.delete(turn.sessionId);
+    }
+  }
+
+  /** Bindings are written off synchronous adapter callbacks, best-effort like turn settles. */
+  private saveBinding(binding: ProviderTurnBinding): void {
+    this.runTask(
+      storeOperation('conversation.binding.save', () => this.store.saveBinding(binding)).pipe(
+        Effect.catch((error) =>
+          Effect.logError(
+            error.publicMessage,
+            { operation: error.operation, turnId: binding.turnId },
+            error.cause,
+          ),
+        ),
+      ),
+    );
   }
 
   /** Settles run off synchronous adapter callbacks, so persistence is enqueued best-effort. */
@@ -402,6 +472,15 @@ export class ConversationTurnService {
       ),
     );
   }
+}
+
+/** How a command or shell turn reads as a user row. */
+export function turnInputText(
+  input: Extract<ConversationTurn['input'], { type: 'command' | 'shell-command' }>,
+): string {
+  return input.type === 'command'
+    ? `/${input.name}${input.arguments === undefined ? '' : ` ${input.arguments}`}`
+    : `$ ${input.command}`;
 }
 
 function storeOperation<A>(

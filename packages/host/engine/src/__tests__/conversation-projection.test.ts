@@ -16,6 +16,7 @@ import type { Transport } from '@linkcode/transport';
 import { Cause, Effect, Exit } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
+import { ConversationCheckpointService } from '../conversation/checkpoint-service';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import type { JournaledEvent } from '../conversation/live-journal';
 import { ConversationLiveJournals } from '../conversation/live-journal';
@@ -90,7 +91,7 @@ async function makeService(opts: {
   const service = new ConversationProjectionService(
     turns,
     records,
-    history,
+    new ConversationCheckpointService(turns, records, history),
     opts.journals,
     () => opts.openRequests ?? [],
   );

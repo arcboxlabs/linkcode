@@ -3,7 +3,6 @@ import { boundedLimit } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryEvent,
-  AgentHistoryId,
   ContentBlock,
   ConversationGraphTurn,
   ConversationReadItem,
@@ -20,14 +19,16 @@ import {
   TurnIdSchema,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
-import { OperationError, RequestError } from '../failure';
-import type { HistoryService } from '../session/history-service';
-import { promptContentFingerprint } from '../session/live-session';
+import type { OperationError } from '../failure';
+import { RequestError } from '../failure';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
+import type { ConversationCheckpointService } from './checkpoint-service';
+import type { ProviderPartition } from './lineage-attribution';
+import { pathToLeaf } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
 import type { ConversationTurnService } from './turn-service';
-import { TERMINAL_TURN_STATES } from './turn-service';
+import { TERMINAL_TURN_STATES, turnInputText } from './turn-service';
 
 export interface ConversationGraphResult {
   readonly sessionId: SessionId;
@@ -59,11 +60,6 @@ const WHITESPACE_RUN_RE = /\s+/g;
  * (the history-util.ts byte-budget rationale applies verbatim). */
 const READ_PAGE_BYTE_BUDGET = MAX_ATTACHMENT_TOTAL_BASE64_LENGTH;
 
-interface ProviderPartition {
-  readonly userRow: AgentHistoryEvent;
-  readonly rest: AgentHistoryEvent[];
-}
-
 /**
  * Composes the root→leaf conversation projection: user rows from the durable ConversationStore
  * (host truth — never provider history, never the journal), assistant/tool events from provider
@@ -74,7 +70,7 @@ export class ConversationProjectionService {
   constructor(
     private readonly turns: ConversationTurnService,
     private readonly records: SessionRecordRegistry,
-    private readonly history: HistoryService,
+    private readonly checkpoints: ConversationCheckpointService,
     private readonly journals: ConversationLiveJournals,
     /** Authoritative open interactive requests of the live session (the CODE-35 backstop). */
     private readonly openRequests: (sessionId: SessionId) => AgentEvent[],
@@ -197,40 +193,21 @@ export class ConversationProjectionService {
     path: ConversationTurn[],
     isActiveLineage: boolean,
   ): Effect.Effect<ConversationReadItem[], OperationError> {
-    const { records } = this;
-    const readProviderEvents = this.readProviderEvents.bind(this);
-    const hostUserContent = this.hostUserContent.bind(this);
+    const { checkpoints, turns } = this;
     return Effect.gen(function* () {
       const items: ConversationReadItem[] = [];
       const contents: (ContentBlock[] | undefined)[] = [];
       for (let i = 0, len = path.length; i < len; i++) {
-        contents.push(yield* hostUserContent(path[i]));
+        contents.push(yield* turns.hostUserContent(path[i]));
       }
-      const cold = path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state));
-      // A failed turn expects no provider rows (nothing durable ran) and gets no placeholder.
-      const expectsProvider = cold.filter((turn) => turn.state !== 'failed');
-      const liveIndex = path.findIndex((turn) => !TERMINAL_TURN_STATES.has(turn.state));
-      const historyId = records.historyId(record.sessionId);
       let attributed: ProviderPartition[] = [];
       let leading: AgentHistoryEvent[] = [];
-      if (isActiveLineage && historyId !== undefined && expectsProvider.length > 0) {
-        const corpus = yield* readProviderEvents(record, historyId);
-        if (corpus !== undefined) {
-          const hostFingerprints: (string | undefined)[] = [];
-          for (let i = 0, len = path.length; i < len; i++) {
-            const turn = path[i];
-            if (!TERMINAL_TURN_STATES.has(turn.state) || turn.state === 'failed') continue;
-            const content = contents[i];
-            hostFingerprints.push(content && promptContentFingerprint(content));
-          }
-          let liveFingerprint: string | undefined;
-          if (liveIndex >= 0) {
-            const liveContent = contents[liveIndex];
-            if (liveContent) liveFingerprint = promptContentFingerprint(liveContent);
-          }
-          const result = attributeCorpus(corpus, hostFingerprints, liveFingerprint);
-          attributed = result.attributed;
-          leading = result.leading;
+      if (isActiveLineage) {
+        // Reading the corpus also backfills replay bindings for the attributed turns.
+        const attribution = yield* checkpoints.attributeActiveLineage(record, path, contents);
+        if (attribution !== undefined) {
+          attributed = attribution.attributed;
+          leading = attribution.leading;
         }
       }
       for (let i = 0, len = leading.length; i < len; i++) {
@@ -336,86 +313,10 @@ export class ConversationProjectionService {
     return { tail, watermark };
   }
 
-  /** The full provider corpus behind the TTL cache, or undefined when unreadable — unsupported
-   * harness, failed read (CODE-645), deleted transcript — so the caller degrades to prompt-only. */
-  private readProviderEvents(
-    record: SessionRecord,
-    historyId: AgentHistoryId,
-  ): Effect.Effect<AgentHistoryEvent[] | undefined> {
-    const { history } = this;
-    const { cwd, kind, sessionId } = record;
-    // A cached corpus captured before the newest settle can miss that turn's rows (or hold its
-    // partial answer) — bypass it so a post-settle read never attributes a stale slice.
-    const freshAfter = this.turns.lastSettledAt(sessionId);
-    return Effect.gen(function* () {
-      const events: AgentHistoryEvent[] = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | undefined;
-      do {
-        // cwd is load-bearing for codex: its rollout home resolves through the project env.
-        const result = yield* history.read(kind, {
-          historyId,
-          cwd,
-          cursor,
-          freshAfter,
-          limit: 1000,
-        });
-        for (let i = 0, len = result.events.length; i < len; i++) events.push(result.events[i]);
-        cursor = result.cursor;
-        if (cursor !== undefined) {
-          if (seenCursors.has(cursor)) {
-            return yield* Effect.fail(
-              new OperationError({
-                subsystem: 'agent',
-                operation: 'conversation.read.history',
-                publicMessage: 'Provider history read returned a repeated cursor',
-                cause: undefined,
-              }),
-            );
-          }
-          seenCursors.add(cursor);
-        }
-      } while (cursor !== undefined);
-      return events;
-    }).pipe(
-      Effect.catch((error) =>
-        (error instanceof OperationError
-          ? Effect.logWarning(
-              'Provider history unavailable for conversation read',
-              { sessionId, operation: error.operation },
-              error.cause,
-            )
-          : Effect.void
-        ).pipe(Effect.as(undefined)),
-      ),
-    );
-  }
-
-  /** The turn's user-row content from host truth; undefined for migrated null-prompt turns
-   * (which render as placeholders until per-turn bindings land, CODE-632). */
-  private hostUserContent(
-    turn: ConversationTurn,
-  ): Effect.Effect<ContentBlock[] | undefined, OperationError> {
-    const input = turn.input;
-    if (input.type === 'command' || input.type === 'shell-command') {
-      return Effect.succeed([{ type: 'text' as const, text: inputText(input) }]);
-    }
-    if (input.promptId === null) return Effect.undefined;
-    return this.turns.getPrompt(input.promptId).pipe(
-      Effect.map((prompt) => {
-        if (!prompt) return;
-        // attachment_ref blocks join the projection when the attachment store lands.
-        return prompt.blocks.flatMap((block) =>
-          block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
-        );
-      }),
-    );
-  }
-
   private inputSummary(turn: ConversationTurn): Effect.Effect<string | undefined, OperationError> {
     const input = turn.input;
     if (input.type === 'command' || input.type === 'shell-command') {
-      return Effect.succeed(truncateSummary(inputText(input)));
+      return Effect.succeed(truncateSummary(turnInputText(input)));
     }
     if (input.promptId === null) return Effect.undefined;
     return this.turns.getPrompt(input.promptId).pipe(
@@ -534,93 +435,6 @@ function itemBytes(item: ConversationReadItem): number {
   return Buffer.byteLength(JSON.stringify(item), 'utf8');
 }
 
-/** Root→leaf path through `parentTurnId`; a broken chain fails loud rather than rendering wrong. */
-function pathToLeaf(
-  byId: Map<TurnId, ConversationTurn>,
-  leafTurnId: TurnId | undefined,
-): ConversationTurn[] {
-  if (leafTurnId === undefined) return [];
-  const path: ConversationTurn[] = [];
-  const seen = new Set<TurnId>();
-  let currentId: TurnId | null = leafTurnId;
-  while (currentId !== null) {
-    if (seen.has(currentId)) {
-      throw new RequestError({ code: 'conflict', message: 'The turn graph contains a cycle' });
-    }
-    seen.add(currentId);
-    const turn = byId.get(currentId);
-    if (!turn) {
-      throw new RequestError({ code: 'conflict', message: `Missing turn in path: ${currentId}` });
-    }
-    path.push(turn);
-    currentId = turn.parentTurnId;
-  }
-  return path.reverse();
-}
-
-/**
- * The attribution gate (§9 discipline): positions attribute only while each partition's user row
- * fingerprint-matches the host prompt at that position; the FIRST mismatch degrades that turn and
- * every later one to placeholders — alignment is lost past a mismatch, never resynced positionally.
- * One trailing extra partition is tolerated only when it fingerprint-verifies as the in-flight
- * turn's own row (the live tail owns it); any other count anomaly attributes nothing.
- */
-function attributeCorpus(
-  corpus: readonly AgentHistoryEvent[],
-  hostFingerprints: ReadonlyArray<string | undefined>,
-  liveFingerprint: string | undefined,
-): { attributed: ProviderPartition[]; leading: AgentHistoryEvent[] } {
-  const none = { attributed: [], leading: [] };
-  const split = partitionAtUserRows(corpus);
-  let candidates = split.partitions;
-  const trailing = candidates.at(-1);
-  if (trailing !== undefined && candidates.length === hostFingerprints.length + 1) {
-    if (liveFingerprint === undefined || userRowFingerprint(trailing.userRow) !== liveFingerprint) {
-      return none;
-    }
-    candidates = candidates.slice(0, -1);
-  }
-  if (candidates.length !== hostFingerprints.length) return none;
-  const attributed: ProviderPartition[] = [];
-  for (let i = 0, len = candidates.length; i < len; i++) {
-    const hostFingerprint = hostFingerprints[i];
-    if (
-      hostFingerprint === undefined ||
-      userRowFingerprint(candidates[i].userRow) !== hostFingerprint
-    ) {
-      break;
-    }
-    attributed.push(candidates[i]);
-  }
-  return { attributed, leading: attributed.length > 0 ? split.leading : [] };
-}
-
-function userRowFingerprint(entry: AgentHistoryEvent): string | undefined {
-  return entry.event.type === 'user-message'
-    ? promptContentFingerprint(entry.event.content)
-    : undefined;
-}
-
-/** Splits a provider corpus at its user rows: partition i is user row i plus what follows it. */
-function partitionAtUserRows(corpus: readonly AgentHistoryEvent[]): {
-  leading: AgentHistoryEvent[];
-  partitions: ProviderPartition[];
-} {
-  const leading: AgentHistoryEvent[] = [];
-  const partitions: ProviderPartition[] = [];
-  for (let i = 0, len = corpus.length; i < len; i++) {
-    const entry = corpus[i];
-    if (entry.event.type === 'user-message') {
-      partitions.push({ userRow: entry, rest: [] });
-    } else {
-      const current = partitions.at(-1);
-      if (current === undefined) leading.push(entry);
-      else current.rest.push(entry);
-    }
-  }
-  return { leading, partitions };
-}
-
 function projectedItem(
   turn: ConversationTurn | undefined,
   entry: AgentHistoryEvent,
@@ -644,14 +458,6 @@ function projectedUserRow(turn: ConversationTurn, content: ContentBlock[]): Conv
       content,
     },
   };
-}
-
-function inputText(
-  input: Extract<ConversationTurn['input'], { type: 'command' | 'shell-command' }>,
-): string {
-  return input.type === 'command'
-    ? `/${input.name}${input.arguments === undefined ? '' : ` ${input.arguments}`}`
-    : `$ ${input.command}`;
 }
 
 function truncateSummary(text: string): string {
