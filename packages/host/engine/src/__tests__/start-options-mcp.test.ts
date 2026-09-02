@@ -311,7 +311,8 @@ describe('custom MCP injection at session start', () => {
         return Effect.runPromise(resolver.resolve({ kind, cwd: '/repo' }, SESSION));
       }),
     );
-    for (const { options: resolved, warnings } of results) {
+    for (let i = 0, len = results.length; i < len; i++) {
+      const { options: resolved, warnings } = results[i];
       expect(resolved.mcpServers).toEqual([customEntry('github').server]);
       expect(warnings).toEqual([]);
     }

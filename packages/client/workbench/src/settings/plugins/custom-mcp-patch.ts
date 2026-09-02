@@ -103,7 +103,8 @@ function diffSecrets(
   const set: Record<string, string> = {};
   const remove: string[] = [];
   let touched = false;
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     const key = row.key.trim();
     if (!key) continue;
     if (row.remove) {
@@ -127,7 +128,8 @@ function diffSecrets(
 
 function mintedServer(draft: CustomMcpServerDraft, mint: CustomMcpMint, enabled: boolean) {
   const secrets: Record<string, string> = {};
-  for (const row of draft.secrets) {
+  for (let i = 0, len = draft.secrets.length; i < len; i++) {
+    const row = draft.secrets[i];
     const key = row.key.trim();
     if (key && !row.remove && row.value !== '') secrets[key] = row.value;
   }

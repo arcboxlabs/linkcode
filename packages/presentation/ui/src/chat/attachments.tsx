@@ -3,6 +3,7 @@ import { Button } from 'coss-ui/components/button';
 import { Card } from 'coss-ui/components/card';
 import { Spinner } from 'coss-ui/components/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from 'coss-ui/components/tooltip';
+import { split1st } from 'foxts/split-nth';
 import { AlertCircleIcon, FileImageIcon, XIcon } from 'lucide-react';
 import { cn } from '../lib/cn';
 import type { FileIconComponent } from '../lib/file-icon';
@@ -246,6 +247,7 @@ function attachmentExtensionLabel(attachment: ChatAttachment): string {
   if (dot > 0 && dot < attachment.name.length - 1) {
     return attachment.name.slice(dot + 1).toUpperCase();
   }
-  const mimeSubtype = attachment.mimeType?.split('/', 2)[1];
+  const mimeSubtype =
+    attachment.mimeType === undefined ? undefined : split1st(attachment.mimeType, '/');
   return (mimeSubtype ?? attachment.kind).toUpperCase();
 }

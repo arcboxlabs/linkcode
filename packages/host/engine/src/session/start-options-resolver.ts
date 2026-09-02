@@ -110,9 +110,13 @@ export class SessionStartOptionsResolver {
     const names = (this.customMcp?.listEnabled() ?? []).map((entry) => entry.server.name);
     if (this.simulatorMcp) names.push(SIMULATOR_MCP_SERVER_NAME);
     if (this.linkCodePluginStore) {
-      for (const entry of this.linkCodePluginStore.list()) {
+      const entries = this.linkCodePluginStore.list();
+      for (let i = 0, len = entries.length; i < len; i++) {
+        const entry = entries[i];
         if (!entry.installed.enabled) continue;
-        for (const component of entry.manifest.components) {
+        const components = entry.manifest.components;
+        for (let j = 0, componentCount = components.length; j < componentCount; j++) {
+          const component = components[j];
           if (component.kind === 'mcp-server') names.push(component.name);
         }
       }
@@ -151,13 +155,15 @@ export class SessionStartOptionsResolver {
     const enabled = this.customMcp?.listEnabled() ?? [];
     if (enabled.length === 0) return { options, warnings };
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
-      for (const entry of enabled) {
+      for (let i = 0, len = enabled.length; i < len; i++) {
+        const entry = enabled[i];
         warnings.push({ serverName: entry.server.name, reason: 'agent-unsupported' });
       }
       return { options, warnings };
     }
     const servers = [...(options.mcpServers ?? [])];
-    for (const entry of enabled) {
+    for (let i = 0, len = enabled.length; i < len; i++) {
+      const entry = enabled[i];
       if (nativeMcpNames === null) {
         warnings.push({
           serverName: entry.server.name,
@@ -207,8 +213,11 @@ export class SessionStartOptionsResolver {
     const entries = store.list().filter((entry) => entry.installed.enabled);
     if (entries.length === 0) return { options, warnings };
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
-      for (const entry of entries) {
-        for (const component of entry.manifest.components) {
+      for (let i = 0, len = entries.length; i < len; i++) {
+        const entry = entries[i];
+        const components = entry.manifest.components;
+        for (let j = 0, componentCount = components.length; j < componentCount; j++) {
+          const component = components[j];
           if (component.kind === 'mcp-server') {
             warnings.push({ serverName: component.name, reason: 'agent-unsupported' });
           }
@@ -217,9 +226,12 @@ export class SessionStartOptionsResolver {
       return { options, warnings };
     }
     const servers = [...(options.mcpServers ?? [])];
-    for (const entry of entries) {
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const entry = entries[i];
       const settings = store.getSettings(entry.installed.id);
-      for (const component of entry.manifest.components) {
+      const components = entry.manifest.components;
+      for (let j = 0, componentCount = components.length; j < componentCount; j++) {
+        const component = components[j];
         if (component.kind !== 'mcp-server') continue;
         if (nativeMcpNames === null) {
           // Without the native name set an override cannot be ruled out — skip, don't inject.
@@ -235,7 +247,9 @@ export class SessionStartOptionsResolver {
         }
         const env: Record<string, string> = {};
         if (component.env) {
-          for (const [envVar, settingId] of Object.entries(component.env)) {
+          const envEntries = Object.entries(component.env);
+          for (let k = 0, envCount = envEntries.length; k < envCount; k++) {
+            const [envVar, settingId] = envEntries[k];
             if (settingId in settings) env[envVar] = String(settings[settingId]);
           }
         }

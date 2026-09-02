@@ -4,13 +4,13 @@ import type { BrowserFindState } from '@linkcode/ui/shell/browser';
 import { BrowserPane } from '@linkcode/ui/shell/browser';
 import type { WebviewTag } from 'electron';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
-import { useSingleton } from 'foxact/use-singleton';
 import { noop } from 'foxts/noop';
-import { useEffectEvent, useRef, useState } from 'react';
+import { useCallback, useEffectEvent, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useDesktopShellStore } from '../store/store';
 import {
   advanceBrowserWebviewGeneration,
+  isBrowserWebviewReady,
   markBrowserWebviewReady,
   markBrowserWebviewUnready,
   registerBrowserWebview,
@@ -19,21 +19,38 @@ import {
 /** All in-app pages share one persisted session (cookies/storage survive restarts). */
 const BROWSER_PARTITION = 'persist:linkcode-browser';
 
-interface WebviewNavState {
-  isLoading: boolean;
-  canGoBack: boolean;
-  canGoForward: boolean;
-  failure: string | null;
-  guestReady: boolean;
+/** Guest events after which the nav/readiness snapshots must be re-read. */
+const GUEST_NAV_EVENTS = [
+  'did-start-loading',
+  'did-stop-loading',
+  'dom-ready',
+  'did-start-navigation',
+  'did-navigate',
+  'did-navigate-in-page',
+] as const;
+
+/** An absent or still-attaching guest (methods throw until dom-ready) reads as idle. */
+function readGuest(webview: WebviewTag | null, read: (view: WebviewTag) => boolean): boolean {
+  if (webview === null) return false;
+  try {
+    return read(webview);
+  } catch {
+    return false;
+  }
 }
 
-const IDLE_NAV: WebviewNavState = {
-  isLoading: false,
-  canGoBack: false,
-  canGoForward: false,
-  failure: null,
-  guestReady: false,
-};
+/** Forward every nav-affecting guest event to `onStoreChange`; returns the detach. */
+function subscribeGuestNav(webview: WebviewTag | null, onStoreChange: () => void): () => void {
+  if (webview === null) return noop;
+  for (let i = 0, len = GUEST_NAV_EVENTS.length; i < len; i++) {
+    webview.addEventListener(GUEST_NAV_EVENTS[i], onStoreChange);
+  }
+  return () => {
+    for (let i = 0, len = GUEST_NAV_EVENTS.length; i < len; i++) {
+      webview.removeEventListener(GUEST_NAV_EVENTS[i], onStoreChange);
+    }
+  };
+}
 
 function whenNotLocal(event: KeyboardEvent): boolean {
   return !isKeyboardShortcutLocalTarget(event.target);
@@ -92,15 +109,12 @@ export function BrowserWebviewPane({
   );
   const rootRef = useRef<HTMLDivElement | null>(null);
   const [webview, setWebview] = useState<WebviewTag | null>(null);
-  const [nav, setNav] = useState<WebviewNavState>(IDLE_NAV);
-  const guestReady = webview !== null && nav.guestReady;
-  const [find, setFind] = useState<BrowserFindState | null>(null);
   // React's built-in `webview` intrinsic types the element as a bare HTMLWebViewElement;
   // in Electron (webviewTag enabled) the live element is always the full WebviewTag.
-  const { current: captureWebview } = useSingleton(() => (element: HTMLWebViewElement | null) => {
-    setWebview(element as WebviewTag | null);
-    setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
-  });
+  const captureWebview = useCallback(
+    (element: HTMLWebViewElement | null) => setWebview(element as WebviewTag | null),
+    [],
+  );
 
   useLayoutEffect(() => {
     if (webview === null) return;
@@ -108,46 +122,30 @@ export function BrowserWebviewPane({
     return () => registerBrowserWebview(tabId, null);
   }, [tabId, webview]);
 
+  const [failureError, setFailureError] = useState<string | null>(null);
+  const [find, setFind] = useState<BrowserFindState | null>(null);
+
   const syncDocumentState = useEffectEvent((currentUrl: string, currentTitle: string) => {
     if (currentUrl.length > 0) setBrowserTabUrl(tabId, currentUrl);
     if (currentTitle.length > 0) setBrowserTabTitle(tabId, currentTitle);
   });
 
+  // Command side: guest events drive the registry marks, the shell store's url/title, and the
+  // event-payload-only states (load failure, find matches) that no webview getter can serve.
   useLayoutEffect(() => {
     if (webview === null) return;
-    let ready = false;
-    const sync = (): void => {
-      if (!ready) return;
-      setNav((prev) => ({
-        ...prev,
-        isLoading: webview.isLoading(),
-        canGoBack: webview.canGoBack(),
-        canGoForward: webview.canGoForward(),
-      }));
-    };
     const syncDocument = (): void => {
-      ready = true;
       markBrowserWebviewReady(tabId);
-      setNav((prev) => ({
-        ...prev,
-        isLoading: webview.isLoading(),
-        canGoBack: webview.canGoBack(),
-        canGoForward: webview.canGoForward(),
-        guestReady: true,
-      }));
       syncDocumentState(webview.getURL(), webview.getTitle());
     };
     const onNavigate = (event: Electron.DidNavigateEvent): void => {
       advanceBrowserWebviewGeneration(tabId);
       syncDocumentState(event.url, '');
-      setNav((prev) => ({ ...prev, failure: null }));
-      sync();
+      setFailureError(null);
     };
     const onStartNavigation = (event: Electron.DidStartNavigationEvent): void => {
       if (!event.isMainFrame || event.isInPlace) return;
-      ready = false;
       markBrowserWebviewUnready(tabId);
-      setNav((prev) => (prev.guestReady ? { ...prev, guestReady: false } : prev));
     };
     const onTitleUpdated = (event: Electron.PageTitleUpdatedEvent): void => {
       syncDocumentState('', event.title);
@@ -155,10 +153,7 @@ export function BrowserWebviewPane({
     const onFail = (event: Electron.DidFailLoadEvent): void => {
       // -3 = ERR_ABORTED: fired for cancelled loads (e.g. quick re-navigation), not real failures.
       if (event.errorCode === -3 || !event.isMainFrame) return;
-      setNav((prev) => ({
-        ...prev,
-        failure: t('loadFailed', { error: event.errorDescription }),
-      }));
+      setFailureError(event.errorDescription);
     };
     const onFoundInPage = (event: Electron.FoundInPageEvent): void => {
       setFind((prev) =>
@@ -170,8 +165,7 @@ export function BrowserWebviewPane({
             },
       );
     };
-    webview.addEventListener('did-start-loading', sync);
-    // `dom-ready` can fire before React's layout effects subscribe on very fast pages. The later
+    // `dom-ready` can fire before this effect subscribes on very fast pages. The later
     // `did-stop-loading` is an equivalent safe point for guest methods and closes that race.
     webview.addEventListener('did-stop-loading', syncDocument);
     webview.addEventListener('dom-ready', syncDocument);
@@ -189,7 +183,6 @@ export function BrowserWebviewPane({
       noop();
     }
     return () => {
-      webview.removeEventListener('did-start-loading', sync);
       webview.removeEventListener('did-stop-loading', syncDocument);
       webview.removeEventListener('dom-ready', syncDocument);
       webview.removeEventListener('did-start-navigation', onStartNavigation);
@@ -199,7 +192,39 @@ export function BrowserWebviewPane({
       webview.removeEventListener('did-fail-load', onFail);
       webview.removeEventListener('found-in-page', onFoundInPage);
     };
-  }, [webview, t, tabId]);
+  }, [webview, tabId]);
+
+  // Query side: the webview itself is the store. Subscribing just forwards guest events to
+  // React, and each snapshot reads the element (or the registry's readiness mark) directly —
+  // the post-subscribe snapshot re-read makes a pre-subscription load impossible to miss.
+  const isLoading = useSyncExternalStore(
+    useCallback(
+      (onStoreChange: () => void) => subscribeGuestNav(webview, onStoreChange),
+      [webview],
+    ),
+    () => readGuest(webview, (view) => view.isLoading()),
+  );
+  const canGoBack = useSyncExternalStore(
+    useCallback(
+      (onStoreChange: () => void) => subscribeGuestNav(webview, onStoreChange),
+      [webview],
+    ),
+    () => readGuest(webview, (view) => view.canGoBack()),
+  );
+  const canGoForward = useSyncExternalStore(
+    useCallback(
+      (onStoreChange: () => void) => subscribeGuestNav(webview, onStoreChange),
+      [webview],
+    ),
+    () => readGuest(webview, (view) => view.canGoForward()),
+  );
+  const guestReady = useSyncExternalStore(
+    useCallback(
+      (onStoreChange: () => void) => subscribeGuestNav(webview, onStoreChange),
+      [webview],
+    ),
+    () => webview !== null && isBrowserWebviewReady(tabId),
+  );
 
   // Pause playing media when the pane is hidden; gated on dom-ready to avoid pre-attachment throws.
   useLayoutEffect(() => {
@@ -312,10 +337,10 @@ export function BrowserWebviewPane({
     <div ref={rootRef} className="h-full min-h-0">
       <BrowserPane
         url={url}
-        isLoading={nav.isLoading}
-        canGoBack={nav.canGoBack}
-        canGoForward={nav.canGoForward}
-        failure={nav.failure}
+        isLoading={isLoading}
+        canGoBack={canGoBack}
+        canGoForward={canGoForward}
+        failure={failureError === null ? null : t('loadFailed', { error: failureError })}
         find={find}
         onNavigate={(next) => setBrowserTabUrl(tabId, next)}
         onBack={() => guestReady && webview?.goBack()}

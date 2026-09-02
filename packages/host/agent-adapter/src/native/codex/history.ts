@@ -1,8 +1,11 @@
+import { createHash } from 'node:crypto';
 import type { Stats } from 'node:fs';
-import { readdir, readFile, stat } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { readdir, stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { basename, join } from 'node:path';
 import { env } from 'node:process';
+import { createInterface } from 'node:readline';
 import type {
   AgentHistoryEvent,
   AgentHistoryId,
@@ -17,6 +20,7 @@ import {
   textBlock,
 } from '@linkcode/schema';
 import { appendArrayInPlace } from 'foxts/append-array-in-place';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { not } from 'foxts/guard';
 import { encodeHistoryBranchCursor } from '../../history-branch';
 import {
@@ -58,7 +62,7 @@ function isBase64(data: string): boolean {
     if (!isDigit && !isUppercase && !isLowercase && code !== 43 && code !== 47) return false;
   }
   for (let index = payloadLength; index < data.length; index += 1) {
-    if (data.codePointAt(index) !== 61) return false;
+    if (data.charCodeAt(index) !== 61) return false;
   }
   return true;
 }
@@ -113,37 +117,74 @@ function isCodexImageMarker(parts: unknown[], index: number): boolean {
  * so the row is rescued when every marker-bearing part is echoed as an `event_msg`/`user_message`
  * (real prompts always are, both TUI- and app-server-written; injected rows never are). Only the
  * marked parts count — an unmarked part that happens to equal a real prompt must not drag the
- * injected parts of a glued row back in. Rollouts without event_msg rows degrade to marker-only. */
+ * injected parts of a glued row back in. Rollouts without event_msg rows degrade to marker-only.
+ * Echo comparison is by {@link promptTextFingerprint}, so scans never retain prompt bodies. */
 export function isSyntheticCodexUserPayload(
   payload: JsonRecord,
-  realPromptTexts?: ReadonlySet<string>,
+  realPromptFingerprints?: ReadonlySet<string>,
 ): boolean {
+  return isSyntheticCodexUserDigest(digestCodexUserPayload(payload), realPromptFingerprints);
+}
+
+/** Equality-only stand-in for a prompt text, so holding one per row stays a few dozen bytes even
+ * when the text is a pasted file or an injected AGENTS.md blob. */
+function promptTextFingerprint(text: string): string {
+  return createHash('sha256').update(text, 'utf16le').digest('base64url');
+}
+
+/** The parts of a user row the synthetic judgment needs, small enough to hold for every user row
+ * of a rollout while the surrounding rows stream by (the judgment needs the complete echoed-prompt
+ * set, which is only known at end of file). */
+interface CodexUserRowDigest {
+  markedFingerprints: string[];
+  hasImage: boolean;
+  echoedFingerprint: string;
+}
+
+function digestCodexUserPayload(payload: JsonRecord): CodexUserRowDigest {
   const content = payload.content;
   const parts = Array.isArray(content) ? content : [payload];
   const texts = parts.map((part) => textFromUnknown(part));
-  const marked = texts.filter((text) => isSyntheticCodexUserText(text));
-  if (marked.length === 0) return false;
-  if (!realPromptTexts) return true;
-  if (marked.every((text) => realPromptTexts.has(text))) return false;
   const hasImage = parts.some(
     (part) => isRecord(part) && stringField(part, 'type') === 'input_image',
   );
-  if (!hasImage) return true;
-  const echoedText = texts.filter((_text, index) => !isCodexImageMarker(parts, index)).join('');
-  return !realPromptTexts.has(echoedText);
+  return {
+    markedFingerprints: texts.flatMap((text) =>
+      isSyntheticCodexUserText(text) ? [promptTextFingerprint(text)] : [],
+    ),
+    hasImage,
+    echoedFingerprint: hasImage
+      ? promptTextFingerprint(
+          texts.filter((_text, index) => !isCodexImageMarker(parts, index)).join(''),
+        )
+      : '',
+  };
 }
 
-/** The texts codex echoed as `event_msg`/`user_message` rows — the real prompts of the rollout. */
-export function collectCodexPromptTexts(rows: JsonRecord[]): Set<string> {
-  const texts = new Set<string>();
-  for (const row of rows) {
+function isSyntheticCodexUserDigest(
+  digest: CodexUserRowDigest,
+  realPromptFingerprints?: ReadonlySet<string>,
+): boolean {
+  if (digest.markedFingerprints.length === 0) return false;
+  if (!realPromptFingerprints) return true;
+  if (digest.markedFingerprints.every((print) => realPromptFingerprints.has(print))) return false;
+  if (!digest.hasImage) return true;
+  return !realPromptFingerprints.has(digest.echoedFingerprint);
+}
+
+/** Fingerprints of the texts codex echoed as `event_msg`/`user_message` rows — the real prompts
+ * of the rollout. */
+export function collectCodexPromptFingerprints(rows: JsonRecord[]): Set<string> {
+  const prints = new Set<string>();
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'user_message') continue;
     const message = stringField(payload, 'message');
-    if (message) texts.add(message);
+    if (message) prints.add(promptTextFingerprint(message));
   }
-  return texts;
+  return prints;
 }
 
 /** Convert Codex's persisted response content without trusting an arbitrary URL or local path.
@@ -239,7 +280,8 @@ export function codexHome(environment: NodeJS.ProcessEnv = env): string {
 export async function readCodexIndex(home = codexHome()): Promise<Map<string, CodexIndexEntry>> {
   const rows = await readJsonlFile(join(home, 'session_index.jsonl'));
   const index = new Map<string, CodexIndexEntry>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     const id = stringField(row, 'id');
     if (!id) continue;
     index.set(id, {
@@ -251,15 +293,27 @@ export async function readCodexIndex(home = codexHome()): Promise<Map<string, Co
   return index;
 }
 
+/** A rollout corpus can hold gigabytes; an unbounded fan-out once held enough of it in memory at
+ * once to OOM the daemon (2026-08). Streams per file, a few files at a time. */
+const SUMMARY_READ_CONCURRENCY = 8;
+
 export async function readCodexTranscriptSummaries(
   index: Map<string, CodexIndexEntry>,
   home = codexHome(),
 ): Promise<CodexTranscriptSummary[]> {
-  const roots = [join(home, 'sessions'), join(home, 'archived_sessions')];
-  const fileSets = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
-  const files = fileSets.flat();
-  const summaries = await Promise.all(files.map((file) => readCodexTranscriptSummary(file, index)));
-  return summaries.filter(not(undefined));
+  const files = await collectCodexRolloutFiles(home);
+  const summaries: CodexTranscriptSummary[] = [];
+  const workers = createFixedArray(Math.min(SUMMARY_READ_CONCURRENCY, files.length)).map(
+    async () => {
+      for (let file = files.pop(); file !== undefined; file = files.pop()) {
+        // eslint-disable-next-line no-await-in-loop -- the loop is one bounded-concurrency worker.
+        const summary = await readCodexTranscriptSummary(file, index);
+        if (summary) summaries.push(summary);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return summaries;
 }
 
 export async function findCodexTranscript(
@@ -267,9 +321,29 @@ export async function findCodexTranscript(
   home = codexHome(),
 ): Promise<CodexTranscriptSummary | undefined> {
   const index = await readCodexIndex(home);
+  const id: string = historyId;
+  // Rollout filenames end with the thread id (`rollout-<ts>-<id>.jsonl`), so a suffix match reads
+  // one file instead of the whole corpus; session_meta stays the identity check.
+  const files = await collectCodexRolloutFiles(home);
+  const candidates = files.filter((path) => {
+    const name = basename(path, '.jsonl');
+    return path === id || name === id || name.endsWith(`-${id}`);
+  });
+  const fastSummaries = await Promise.all(
+    candidates.map((candidate) => readCodexTranscriptSummary(candidate, index)),
+  );
+  const fastHit = fastSummaries
+    .filter(not(undefined))
+    .find((summary) => summary.id === id || summary.path === id);
+  if (fastHit) return fastHit;
   const summaries = await readCodexTranscriptSummaries(index, home);
-  const id = historyId;
   return summaries.find((summary) => summary.id === id || summary.path === id);
+}
+
+async function collectCodexRolloutFiles(home: string): Promise<string[]> {
+  const roots = [join(home, 'sessions'), join(home, 'archived_sessions')];
+  const fileSets = await Promise.all(roots.map((root) => collectJsonlFiles(root)));
+  return fileSets.flat();
 }
 
 async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
@@ -282,49 +356,75 @@ async function collectJsonlFiles(root: string, depth = 8): Promise<string[]> {
   }
   const files: string[] = [];
   const pendingDirs: Array<Promise<string[]>> = [];
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     const path = join(root, entry.name);
     if (entry.isDirectory()) pendingDirs.push(collectJsonlFiles(path, depth - 1));
     else if (entry.isFile() && entry.name.endsWith('.jsonl')) files.push(path);
   }
-  for (const nestedFiles of await Promise.all(pendingDirs)) appendArrayInPlace(files, nestedFiles);
+  const nested = await Promise.all(pendingDirs);
+  for (let i = 0, len = nested.length; i < len; i++) {
+    const nestedFiles = nested[i];
+    appendArrayInPlace(files, nestedFiles);
+  }
   return files;
 }
 
 export async function readJsonlFile(path: string): Promise<JsonRecord[]> {
-  let raw: string;
-  try {
-    raw = await readFile(path, 'utf8');
-  } catch {
-    return [];
-  }
   const rows: JsonRecord[] = [];
-  for (const line of raw.split('\n')) {
-    if (line.trim().length === 0) continue;
-    try {
-      const parsed: unknown = JSON.parse(line);
-      if (isRecord(parsed)) rows.push(parsed);
-    } catch {
-      // Ignore corrupt partial lines; Codex may be writing the active transcript.
-    }
-  }
+  await forEachJsonlRow(path, (row) => rows.push(row));
   return rows;
+}
+
+/** Stream one rollout's rows without ever holding the whole file — a single transcript can be
+ * over 100MB, and whole-file reads were half of the 2026-08 daemon OOM. Returns the row count. */
+async function forEachJsonlRow(path: string, onRow: (row: JsonRecord) => void): Promise<number> {
+  const lines = createInterface({
+    input: createReadStream(path, { encoding: 'utf8' }),
+    crlfDelay: Number.POSITIVE_INFINITY,
+  });
+  let count = 0;
+  try {
+    for await (const line of lines) {
+      if (line.trim().length === 0) continue;
+      try {
+        const parsed: unknown = JSON.parse(line);
+        if (isRecord(parsed)) {
+          count += 1;
+          onRow(parsed);
+        }
+      } catch {
+        // Ignore corrupt partial lines; Codex may be writing the active transcript.
+      }
+    }
+  } catch {
+    // An unreadable or vanished file reads as empty, matching the old readFile fallback.
+  } finally {
+    lines.close();
+  }
+  return count;
+}
+
+/** A user row's summary contribution, deferred to end of stream: whether it counts (and previews)
+ * depends on the complete echoed-prompt set. Holds previews and digests, never the row itself. */
+interface PendingUserRow {
+  digest: CodexUserRowDigest;
+  empty: boolean;
+  preview?: string;
 }
 
 async function readCodexTranscriptSummary(
   path: string,
   index: Map<string, CodexIndexEntry>,
 ): Promise<CodexTranscriptSummary | undefined> {
-  const [rows, fileStat] = await Promise.all([readJsonlFile(path), statOrUndefined(path)]);
-  if (rows.length === 0) return undefined;
-  const promptTexts = collectCodexPromptTexts(rows);
+  const promptFingerprints = new Set<string>();
+  const userRows: PendingUserRow[] = [];
 
   let id: string | undefined;
   let cwd: string | undefined;
   let model: string | undefined;
   let createdAt: number | undefined;
   let updatedAt: number | undefined;
-  let firstUserText: string | undefined;
   let firstAssistantText: string | undefined;
   let messageCount = 0;
   let cliVersion: string | undefined;
@@ -333,7 +433,7 @@ async function readCodexTranscriptSummary(
   let modelProvider: string | undefined;
   let gitBranch: string | undefined;
 
-  for (const row of rows) {
+  const rowCount = await forEachJsonlRow(path, (row) => {
     const rowType = stringField(row, 'type');
     const rowTs = timestampMs(row.timestamp);
     if (rowTs !== undefined) {
@@ -342,9 +442,15 @@ async function readCodexTranscriptSummary(
     }
 
     const payload = recordField(row, 'payload');
-    if (!payload) continue;
+    if (!payload) return;
 
     switch (rowType) {
+      case 'event_msg': {
+        if (stringField(payload, 'type') !== 'user_message') break;
+        const message = stringField(payload, 'message');
+        if (message) promptFingerprints.add(promptTextFingerprint(message));
+        break;
+      }
       case 'session_meta': {
         id = stringField(payload, 'id') ?? id;
         cwd = stringField(payload, 'cwd') ?? cwd;
@@ -367,26 +473,37 @@ async function readCodexTranscriptSummary(
       }
       case 'response_item': {
         const role = stringField(payload, 'role');
-        if (role !== 'user' && role !== 'assistant') continue;
-        let text: string;
         if (role === 'user') {
-          if (isSyntheticCodexUserPayload(payload, promptTexts)) continue;
           const content = codexUserContent(payload.content);
-          if (content.length === 0) continue;
-          text = content.flatMap((block) => (block.type === 'text' ? [block.text] : [])).join('\n');
-        } else {
-          text = textFromUnknown(payload);
-          if (text.trim().length === 0) continue;
+          const text = content
+            .flatMap((block) => (block.type === 'text' ? [block.text] : []))
+            .join('\n');
+          userRows.push({
+            digest: digestCodexUserPayload(payload),
+            empty: content.length === 0,
+            ...(text.trim().length > 0 && { preview: previewText(text) }),
+          });
+        } else if (role === 'assistant') {
+          const text = textFromUnknown(payload);
+          if (text.trim().length === 0) break;
+          messageCount += 1;
+          firstAssistantText ??= previewText(text);
         }
-        messageCount += 1;
-        if (role === 'user' && text.trim().length > 0) firstUserText ??= previewText(text);
-        else if (role === 'assistant') firstAssistantText ??= previewText(text);
-
         break;
       }
       default:
         break;
     }
+  });
+  if (rowCount === 0) return undefined;
+  const fileStat = await statOrUndefined(path);
+
+  let firstUserText: string | undefined;
+  for (let i = 0, len = userRows.length; i < len; i++) {
+    const userRow = userRows[i];
+    if (isSyntheticCodexUserDigest(userRow.digest, promptFingerprints) || userRow.empty) continue;
+    messageCount += 1;
+    if (userRow.preview !== undefined) firstUserText ??= userRow.preview;
   }
 
   id ??= idFromFilename(path);
@@ -470,7 +587,8 @@ function collectRespondedToolCallIds(rows: JsonRecord[]): {
 } {
   const callIds = new Set<string>();
   const outputCallIds = new Set<string>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'response_item') continue;
     const payload = recordField(row, 'payload');
     if (!payload) continue;
@@ -494,7 +612,8 @@ interface McpEndState {
 /** Precomputed so a response output that precedes its MCP end row still gets the structured verdict. */
 function collectMcpEndStates(rows: JsonRecord[]): Map<string, McpEndState> {
   const states = new Map<string, McpEndState>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload || stringField(payload, 'type') !== 'mcp_tool_call_end') continue;
@@ -518,7 +637,7 @@ export function mapCodexHistoryEvents(
   const events: AgentHistoryEvent[] = [];
   const announced = new Map<string, ToolCall>();
   const persistedMcpIdentities = collectCodexMcpIdentities(rows);
-  const promptTexts = collectCodexPromptTexts(rows);
+  const promptFingerprints = collectCodexPromptFingerprints(rows);
   const { callIds: respondedCallIds, outputCallIds: responseOutputCallIds } =
     collectRespondedToolCallIds(rows);
   const mcpEndStates = collectMcpEndStates(rows);
@@ -615,7 +734,7 @@ export function mapCodexHistoryEvents(
 
     const role = stringField(payload, 'role');
     if (role !== 'user' && role !== 'assistant') return;
-    if (role === 'user' && isSyntheticCodexUserPayload(payload, promptTexts)) return;
+    if (role === 'user' && isSyntheticCodexUserPayload(payload, promptFingerprints)) return;
     const itemId =
       stringField(payload, 'id') ?? stringField(row, 'id') ?? `${role}-${index.toString(36)}`;
     const event =
@@ -639,7 +758,8 @@ function collectCodexMcpIdentities(
   rows: JsonRecord[],
 ): Map<string, { server: string; tool: string }> {
   const identities = new Map<string, { server: string; tool: string }>();
-  for (const row of rows) {
+  for (let i = 0, len = rows.length; i < len; i++) {
+    const row = rows[i];
     if (stringField(row, 'type') !== 'event_msg') continue;
     const payload = recordField(row, 'payload');
     if (!payload) continue;

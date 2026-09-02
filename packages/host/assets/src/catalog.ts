@@ -84,10 +84,13 @@ function exe(key: PlatformKey): string {
 }
 
 function forAllPlatforms(source: (key: PlatformKey) => ArtifactSource) {
-  return Object.fromEntries(PLATFORM_KEYS.map((key) => [key, source(key)])) as Record<
-    PlatformKey,
-    ArtifactSource
-  >;
+  return PLATFORM_KEYS.reduce<Record<PlatformKey, ArtifactSource>>(
+    (acc, key) => {
+      acc[key] = source(key);
+      return acc;
+    },
+    {} as Record<PlatformKey, ArtifactSource>,
+  );
 }
 
 /** Rust target triples embedded in the codex tarball's `vendor/` tree, per platform. */

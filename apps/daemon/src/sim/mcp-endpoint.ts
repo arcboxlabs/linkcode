@@ -15,6 +15,7 @@ import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
+import { split0th } from 'foxts/split-nth';
 import { z } from 'zod';
 import { logger } from '../logger';
 
@@ -146,7 +147,7 @@ export class SimulatorMcpEndpoint implements SimulatorMcpProvider {
   /** Reached only through `create()`'s request closure — not via `this`, which the lint rule
    * tracks; keep it package-private by convention rather than `private`. */
   async handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const token = RE_MCP_PATH.exec(req.url?.split('?', 1)[0] ?? '')?.[1];
+    const token = RE_MCP_PATH.exec(split0th(req.url ?? '', '?'))?.[1];
     const sessionId = token === undefined ? undefined : this.tokens.get(token);
     if (sessionId === undefined) {
       res.writeHead(404, { 'content-type': 'application/json' });

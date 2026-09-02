@@ -6,9 +6,14 @@ import { z } from 'zod';
 /**
  * The single better-auth client for LinkCode Cloud: session cookie in SecureStore,
  * OAuth in the system browser landing back through the `linkcode://` scheme.
+ *
+ * `EXPO_PUBLIC_CLOUD_URL` (an Expo built-in inlined-at-build-time env var, set via
+ * `.env.local` — gitignored, never committed) overrides the production origin for a
+ * local dev build pointed at a local `svc dev` stack.
+ * Unset in any build that isn't explicitly configured for local dev, so production
+ * and EAS builds are unaffected.
  */
-
-export const CLOUD_URL = 'https://api.linkcode.ai';
+export const CLOUD_URL = process.env.EXPO_PUBLIC_CLOUD_URL ?? 'https://api.linkcode.ai';
 
 export const cloudAuthClient = createAuthClient({
   baseURL: `${CLOUD_URL}/auth`,

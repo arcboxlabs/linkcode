@@ -33,13 +33,15 @@ export class SessionEventProcessor {
         : event.type === 'agent-message-chunk'
           ? [event.content]
           : [];
-    for (const block of links) {
+    for (let i = 0, len = links.length; i < len; i++) {
+      const block = links[i];
       if (block.type === 'resource_link') {
         this.registerResource(sessionId, 'output', block.uri, block.name, block.mimeType);
       }
     }
     if (event.type !== 'tool-call' || event.toolCall.status !== 'completed') return;
-    for (const item of event.toolCall.content) {
+    for (let i = 0, len = event.toolCall.content.length; i < len; i++) {
+      const item = event.toolCall.content[i];
       if (item.type === 'diff' && item.change === 'add') {
         this.registerResource(sessionId, 'output', item.path);
       }

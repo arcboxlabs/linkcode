@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "canonicalize": "3.0.0",
+    "foxts": "^5.9.1",
     "zod": "catalog:"
   },
   "devDependencies": {

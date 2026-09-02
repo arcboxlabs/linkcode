@@ -22,7 +22,9 @@ export function pluginConfigDefaults(
   values: Readonly<Record<string, PluginConfigValue>>,
 ): PluginConfigFormValues {
   const defaults: PluginConfigFormValues = {};
-  for (const [fieldId, field] of Object.entries(settings)) {
+  const settingEntries = Object.entries(settings);
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     const formKey = pluginConfigFormKey(fieldId);
     const stored = values[fieldId];
     if (field.type === 'boolean') {
@@ -90,7 +92,9 @@ export function buildPluginConfigPatch(
 ): { set?: Record<string, PluginConfigValue>; remove?: string[] } {
   const set: Record<string, PluginConfigValue> = {};
   const remove: string[] = [];
-  for (const [fieldId, field] of Object.entries(settings)) {
+  const settingEntries = Object.entries(settings);
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     // The form is keyed by form key; the patch is keyed by setting id. This is the only crossing.
     const formKey = pluginConfigFormKey(fieldId);
     if (!(formKey in form)) continue;

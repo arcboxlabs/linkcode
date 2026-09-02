@@ -54,7 +54,8 @@ export class ScriptPortPlan {
       const url = proxyUrl(hostnameFor(declaration.name));
       if (url) env.LINKCODE_URL = url;
     }
-    for (const sibling of declarations) {
+    for (let i = 0, len = declarations.length; i < len; i++) {
+      const sibling = declarations[i];
       if (sibling.type !== 'service') continue;
       const port = this.ports.get(sibling.name);
       if (port === undefined) continue;
@@ -67,7 +68,8 @@ export class ScriptPortPlan {
   }
 
   private async allocateMissing(declarations: ScriptDeclaration[]): Promise<void> {
-    for (const declaration of declarations) {
+    for (let i = 0, len = declarations.length; i < len; i++) {
+      const declaration = declarations[i];
       // eslint-disable-next-line no-await-in-loop -- ports are allocated one at a time on purpose
       const port = declaration.preferredPort ?? (await this.allocate());
       this.ensureAccepting();

@@ -21,7 +21,9 @@ interface ParsedStackLocation {
 
 export function parseStackTrace(trace: string): ParsedStackTrace {
   const lines: string[] = [];
-  for (const line of trace.split('\n')) {
+  const rawLines = trace.split('\n');
+  for (let i = 0, len = rawLines.length; i < len; i++) {
+    const line = rawLines[i];
     const trimmed = line.trim();
     if (trimmed.length > 0) lines.push(trimmed);
   }
@@ -29,7 +31,9 @@ export function parseStackTrace(trace: string): ParsedStackTrace {
   const firstLine = lines[0]?.trim() ?? '';
   const error = parseErrorLine(firstLine);
   const frames: ParsedStackFrame[] = [];
-  for (const line of lines.slice(1)) {
+  const frameLines = lines.slice(1);
+  for (let i = 0, len = frameLines.length; i < len; i++) {
+    const line = frameLines[i];
     if (line.startsWith('at ')) frames.push(parseStackFrame(line));
   }
 

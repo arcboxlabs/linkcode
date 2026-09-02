@@ -1,25 +1,43 @@
 /// <reference types="unplugin-icons/types/react" />
 import type { AgentKind } from '@linkcode/schema';
+import ClaudeGlyph from '~icons/lobe-icons/claude';
 import ClaudeColorGlyph from '~icons/lobe-icons/claude-color';
-import ClaudeCodeGlyph from '~icons/lobe-icons/claudecode';
 import CodexGlyph from '~icons/lobe-icons/codex';
 import CodexColorGlyph from '~icons/lobe-icons/codex-color';
+import GrokGlyph from '~icons/lobe-icons/grok';
 import OpenCodeGlyph from '~icons/lobe-icons/opencode';
 import { AGENT_INITIALS } from '../agent-meta';
 import { cn } from '../lib/cn';
 
 export { AGENT_LABELS } from '../agent-meta';
 
-const AGENT_GLYPHS: Partial<Record<AgentKind, typeof ClaudeCodeGlyph>> = {
-  'claude-code': ClaudeCodeGlyph,
+type AgentGlyph = React.ComponentType<React.SVGProps<SVGSVGElement>>;
+
+const AGENT_GLYPHS: Partial<Record<AgentKind, AgentGlyph>> = {
+  'claude-code': ClaudeGlyph,
   codex: CodexGlyph,
+  'grok-build': GrokGlyph,
   opencode: OpenCodeGlyph,
+  pi: PiGlyph,
 };
 
-const AGENT_COLOR_GLYPHS: Partial<Record<AgentKind, typeof ClaudeColorGlyph>> = {
+const AGENT_COLOR_GLYPHS: Partial<Record<AgentKind, AgentGlyph>> = {
   'claude-code': ClaudeColorGlyph,
   codex: CodexColorGlyph,
 };
+
+function PiGlyph(props: React.SVGProps<SVGSVGElement>): React.ReactNode {
+  return (
+    <svg viewBox="0 0 800 800" {...props}>
+      <path
+        d="M165.29 165.29H517.36V400H400V517.36H282.65V634.72H165.29ZM282.65 282.65V400H400V282.65Z"
+        fill="currentColor"
+        fillRule="evenodd"
+      />
+      <path d="M517.36 400H634.72V634.72H517.36Z" fill="currentColor" />
+    </svg>
+  );
+}
 
 export function AgentIcon({
   kind,

@@ -1,10 +1,11 @@
 import type { Server } from 'node:http';
 import { Agent, createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import type { EndpointService, ServiceModelList } from '@linkcode/providers';
 import type { WirePayload } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { probeEndpointModels, requestPublicModelList } from '../agent/model-probe';
+import { probeServiceModels, requestPublicModelList } from '../agent/model-probe';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
 import { createSessionHarness } from './fixtures/session-harness';
 
@@ -37,13 +38,33 @@ function baseUrl(server: Server): string {
 
 let relay: Server | undefined;
 
-/** Sends the catalog's own path at the local relay, so the relay records which path the service
- * descriptor resolved to while the real HTTP round-trip stays under test. */
-const localModelProbe: typeof probeEndpointModels = (source, secret) => {
-  const resolved = new URL(source.url);
+/** Rewrites every model-list URL a service carries — service-level and per-variant — to the
+ * local relay, so the relay records which path each one resolved to while the real HTTP
+ * round-trip stays under test. */
+function localize(list: ServiceModelList | undefined): ServiceModelList | undefined {
+  if (!list) return undefined;
+  const resolved = new URL(list.url);
   const local = `${baseUrl(nullthrow(relay, 'relay not started'))}${resolved.pathname}${resolved.search}`;
+  return { ...list, url: local };
+}
+
+const localModelProbe: typeof probeServiceModels = (service, secret) => {
+  const localized: EndpointService = {
+    ...service,
+    models: localize(service.models),
+    variants: Object.entries(service.variants).reduce<EndpointService['variants']>(
+      (acc, [protocol, variant]) => {
+        acc[protocol as keyof EndpointService['variants']] = variant && {
+          ...variant,
+          models: localize(variant.models),
+        };
+        return acc;
+      },
+      {},
+    ),
+  };
   // An unguarded agent: the relay is on loopback, which the probe policy exists to refuse.
-  return probeEndpointModels({ ...source, url: local }, secret, (url, headers) =>
+  return probeServiceModels(localized, secret, (url, headers) =>
     requestPublicModelList(url, headers, undefined, new Agent()),
   );
 };
@@ -89,10 +110,15 @@ describe('config.probe-models', () => {
       credential: { type: 'inline', secret: { type: 'api-key', key: 'sk-test' } },
     });
 
+    // deepseek's three variants share one list (no per-variant override), so both ids are
+    // tagged with all three protocols from the single request `seen` below confirms.
     await expect(replyFor(h.sent, 'probe-1')).resolves.toEqual({
       kind: 'config.probe-models.result',
       replyTo: 'probe-1',
-      models: [{ id: 'gpt-5' }, { id: 'gpt-5-mini' }],
+      models: [
+        { id: 'gpt-5', protocols: ['anthropic', 'openai-chat', 'openai-responses'] },
+        { id: 'gpt-5-mini', protocols: ['anthropic', 'openai-chat', 'openai-responses'] },
+      ],
     });
     // The service's own path, not one derived from a variant's baseUrl.
     expect(seen).toEqual(['/models']);
@@ -166,9 +192,54 @@ describe('config.probe-models', () => {
     await expect(replyFor(h.sent, 'probe-4')).resolves.toEqual({
       kind: 'config.probe-models.result',
       replyTo: 'probe-4',
-      models: [{ id: 'deepseek-v4-pro' }],
+      models: [
+        { id: 'deepseek-v4-pro', protocols: ['anthropic', 'openai-chat', 'openai-responses'] },
+      ],
     });
     expect(seen).toEqual(['/models']);
+  });
+
+  it('probes every distinct list a service carries and merges the results', async () => {
+    const seen: string[] = [];
+    relay = await startRelay((url) => {
+      seen.push(url);
+      if (url === '/v1/models?protocol=openai-responses') {
+        return { status: 200, body: JSON.stringify({ data: [{ id: 'openai/gpt-5.6' }] }) };
+      }
+      if (url === '/v1/models') {
+        return {
+          status: 200,
+          body: JSON.stringify({
+            data: [{ id: 'openai/gpt-5.6' }, { id: 'anthropic/claude-sonnet-5' }],
+          }),
+        };
+      }
+      return { status: 404, body: '{}' };
+    });
+    const h = createHarness();
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'config.probe-models',
+      clientReqId: 'probe-7',
+      service: 'linkcode-gateway',
+      credential: { type: 'inline', secret: { type: 'auth-token', token: 'lc-test' } },
+    });
+
+    const reply = await replyFor(h.sent, 'probe-7');
+    if (reply.kind !== 'config.probe-models.result') throw new Error('no result for probe-7');
+    expect(reply.models).toEqual(
+      expect.arrayContaining([
+        {
+          id: 'openai/gpt-5.6',
+          // Returned by both lists: tagged with every protocol whose list named it.
+          protocols: ['openai-chat', 'openai-responses'],
+        },
+        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat'] },
+      ]),
+    );
+    expect(reply.models).toHaveLength(2);
+    expect(seen.sort()).toEqual(['/v1/models', '/v1/models?protocol=openai-responses']);
   });
 
   it('refuses to send an account secret to a service it does not belong to', async () => {

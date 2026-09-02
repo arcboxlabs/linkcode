@@ -33,19 +33,20 @@ export function createLongThreadScript(messageId: (slug: string) => MessageId): 
   for (let turn = 0; turn < LONG_THREAD_TURNS; turn++) {
     const subject = SUBJECTS[turn % SUBJECTS.length];
     const ask = ASKS[turn % ASKS.length];
-    script.push({
-      type: 'user-message',
-      messageId: messageId(`mock-long-user-${turn}`),
-      content: [textBlock(`${ask} ${subject}.`)],
-    });
-    script.push({
-      type: 'agent-message-chunk',
-      messageId: messageId(`mock-long-reply-${turn}`),
-      content: textBlock(replyBody(turn, subject)),
-    });
+    script.push(
+      {
+        type: 'user-message',
+        messageId: messageId(`mock-long-user-${turn}`),
+        content: [textBlock(`${ask} ${subject}.`)],
+      },
+      {
+        type: 'agent-message-chunk',
+        messageId: messageId(`mock-long-reply-${turn}`),
+        content: textBlock(replyBody(turn, subject)),
+      },
+    );
   }
-  script.push({ type: 'stop', stopReason: 'end_turn' });
-  script.push({ type: 'status', status: 'idle' });
+  script.push({ type: 'stop', stopReason: 'end_turn' }, { type: 'status', status: 'idle' });
   return script;
 }
 

@@ -1297,6 +1297,7 @@ export const en = {
     account: {
       title: 'Account',
       signOut: 'Sign out',
+      signOutError: 'Could not sign out. Check your connection and try again.',
       devices: 'Devices',
       refresh: 'Refresh',
       devicesEmpty: 'No devices registered on this account yet.',
@@ -1316,6 +1317,30 @@ export const en = {
         'This is the phone you are using — revoking it also signs you out here.',
       revokeCancel: 'Cancel',
       revokeError: 'Could not revoke the device.',
+      deleteAccount: 'Delete Account',
+      deleteTitle: 'Delete your account?',
+      deleteMessage:
+        'This permanently deletes your LinkCode Cloud account and cannot be undone. Devices, tunnel connections, and message history tied to this account are removed. Apple In-App Purchase subscriptions are not cancelled automatically — manage them in App Store Settings.',
+      deleteCancel: 'Cancel',
+      deleteConfirm: 'Delete',
+      deleteReauthenticationFailed: 'Could not confirm it’s you. Please try again.',
+      deleteAppleDeviceRequired:
+        'This account must be confirmed on a device that supports Sign in with Apple.',
+      deleteAccountMismatch:
+        'A different account was signed in. Sign in again with the account you want to delete.',
+      deleteUnknown:
+        'We couldn’t confirm whether your deletion request was received. Check your account status when you’re back online.',
+      deleteFailed: 'Could not delete your account. Please try again.',
+      deleteSoleOwner:
+        'You own a shared organization with other members. Transfer ownership before deleting your account.',
+      deleteEmergencyHold:
+        'This account can’t be self-deleted. Contact support to complete the deletion.',
+      deleteCompleted: 'Your account has been deleted.',
+      deletePending:
+        'Your deletion request was received. A few steps need manual follow-up and will complete within 3–5 business days.',
+      deleteRevocationFailedTitle: 'Remove LinkCode’s Apple sign-in access',
+      deleteRevocationFailedMessage:
+        'Your account was deleted, but we couldn’t automatically remove Apple’s sign-in permission. Go to Settings → [Your Name] → Sign in with Apple, and remove LinkCode from the list.',
     },
     sessions: {
       title: 'Threads',
@@ -1428,6 +1453,15 @@ export const en = {
       keepHostsConnected: 'Keep every host connected',
       keepHostsConnectedHint:
         'Holds a connection to every saved host so switching is instant, at the cost of battery and data. Off keeps only the selected host dialed.',
+      notifications: 'Notifications',
+      notificationsHint: 'Notify you when a Thread finishes a turn or needs approval.',
+      notificationsRequiresCloud: 'Sign in to LinkCode Cloud to enable remote notifications.',
+      notificationsDeniedTitle: 'Notifications are off',
+      notificationsDenied: 'Allow notifications in system settings to enable this feature.',
+      notificationsErrorTitle: 'Could not update notifications',
+      notificationsError: 'Try again after checking your network and system settings.',
+      openSettings: 'Open Settings',
+      cancel: 'Cancel',
       legalAndSupport: 'Legal & Support',
       privacyPolicy: 'Privacy Policy',
       termsOfService: 'Terms of Service',

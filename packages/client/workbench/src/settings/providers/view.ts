@@ -54,7 +54,10 @@ export function accountConfigSnippet(
 ): string {
   const bound = boundAgentKinds(account, providers);
   const slice: Record<string, unknown> = {};
-  for (const kind of bound) slice[kind] = providers?.[kind];
+  for (let i = 0, len = bound.length; i < len; i++) {
+    const kind = bound[i];
+    slice[kind] = providers?.[kind];
+  }
   return JSON.stringify({ providers: slice }, null, 2);
 }
 
@@ -241,7 +244,8 @@ export function withEnabled(
 export function withoutAccount(providers: ProvidersConfig, accountId: string): ProvidersConfig {
   let changed = false;
   const next: ProvidersConfig = {};
-  for (const kind of AGENT_KINDS) {
+  for (let i = 0, len = AGENT_KINDS.length; i < len; i++) {
+    const kind = AGENT_KINDS[i];
     const entry = providers[kind];
     if (entry === undefined) continue;
     if (entry.enabledAccountIds?.includes(accountId)) {

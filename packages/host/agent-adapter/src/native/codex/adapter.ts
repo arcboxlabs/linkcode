@@ -32,6 +32,7 @@ import { noop } from 'foxts/noop';
 import type { AgentStartCatalogOptions } from '../../adapter';
 import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
+import type { AgentCredential } from '../../credential';
 import { codexEnv, readAgentCredential } from '../../credential';
 import { decodeHistoryBranchCursor } from '../../history-branch';
 import {
@@ -93,15 +94,20 @@ function resolveCodexEnvironment(cwd?: string): Promise<NodeJS.ProcessEnv> {
 
 const BRAND_COLOR_RE = /^#[0-9A-F]{6}$/i;
 
+const collator = new Intl.Collator();
+
 /** Map the app-server's `skills/list` response onto the normalized command catalog: only enabled
  * skills are invokable, and duplicate names resolve to the first provider result, like the TUI's
  * name-based mention lookup. */
 export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
   if (!isRecord(response) || !Array.isArray(response.data)) return [];
   const commands = new Map<string, CodexSkillCommand>();
-  for (const entry of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const entry = response.data[i];
     if (!isRecord(entry) || !Array.isArray(entry.skills)) continue;
-    for (const skill of entry.skills) {
+    const skills = entry.skills;
+    for (let j = 0, skillCount = skills.length; j < skillCount; j++) {
+      const skill = skills[j];
       if (!isRecord(skill) || skill.enabled !== true) continue;
       const name = stringField(skill, 'name');
       const path = stringField(skill, 'path');
@@ -123,7 +129,7 @@ export function codexSkillCommands(response: unknown): CodexSkillCommand[] {
       });
     }
   }
-  return [...commands.values()].sort((a, b) => a.name.localeCompare(b.name));
+  return [...commands.values()].sort((a, b) => collator.compare(a.name, b.name));
 }
 
 /** Composer icons render at chip size; anything bigger than this is not an icon. */
@@ -235,7 +241,8 @@ interface CodexModelCatalog {
 function codexModelCatalog(response: unknown): CodexModelCatalog {
   const catalog: CodexModelCatalog = { defaultModel: undefined, models: [] };
   if (!isRecord(response) || !Array.isArray(response.data)) return catalog;
-  for (const candidate of response.data) {
+  for (let i = 0, len = response.data.length; i < len; i++) {
+    const candidate = response.data[i];
     if (!isRecord(candidate)) continue;
     const model = stringField(candidate, 'model') ?? stringField(candidate, 'id');
     if (!model) continue;
@@ -243,7 +250,8 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
     let effortLevels: EffortLevel[] | undefined;
     if (Array.isArray(advertised)) {
       const supported = new Set<EffortLevel>();
-      for (const option of advertised) {
+      for (let j = 0, optionCount = advertised.length; j < optionCount; j++) {
+        const option = advertised[j];
         if (!isRecord(option)) continue;
         const effort = EffortLevelSchema.safeParse(stringField(option, 'reasoningEffort'));
         if (effort.success && effort.data !== 'ultracode') supported.add(effort.data);
@@ -269,6 +277,22 @@ function codexModelCatalog(response: unknown): CodexModelCatalog {
 export type CodexServerHandle = Pick<CodexAppServer, 'request' | 'setRequestHandler' | 'close'>;
 
 const CODEX_AUTH_FAILED_MESSAGE = 'Codex authentication failed — sign in to your ChatGPT account';
+const CODEX_PROVIDER_AUTH_FAILED_MESSAGE = 'Codex provider authentication failed';
+const CODEX_ACCOUNT_PROVIDER_ID = 'linkcode-account';
+
+function accountProviderOverrides(credential: AgentCredential): Record<string, unknown> {
+  const key = credential.apiKey ?? credential.authToken;
+  if (!key || !credential.baseUrl) return {};
+  const prefix = `model_providers.${CODEX_ACCOUNT_PROVIDER_ID}`;
+  return {
+    [`${prefix}.name`]: 'LinkCode Account',
+    [`${prefix}.base_url`]: credential.baseUrl,
+    [`${prefix}.wire_api`]: 'responses',
+    [`${prefix}.env_key`]: 'CODEX_API_KEY',
+    [`${prefix}.supports_websockets`]: false,
+    [`${prefix}.requires_openai_auth`]: false,
+  };
+}
 
 /** Whether an app-server `error` notification reports the 401 of a signed-out/expired login. The
  * structured status (`codexErrorInfo.responseStreamDisconnected.httpStatusCode`) rides only the
@@ -354,7 +378,8 @@ export function codexMcpConfigOverrides(
   const out: Record<string, unknown> = {};
   if (!servers?.length) return out;
   let hasHttp = false;
-  for (const server of servers) {
+  for (let i = 0, len = servers.length; i < len; i++) {
+    const server = servers[i];
     const prefix = `mcp_servers.${server.name}`;
     if (server.type === 'http') {
       if (server.headers && !isObjectEmpty(server.headers)) {
@@ -483,9 +508,7 @@ export class CodexAdapter extends BaseAgentAdapter {
   /** The contextCompaction item announced by item/started but not yet settled by item/completed.
    * Teardown settles it so an interrupted turn never strands a live "compacting…" row. */
   private pendingCompactionId: string | null = null;
-  /** Latched on the first 401; cleared when a fresh server spawns. The process caches credentials
-   * for its whole lifetime (verified live — an `auth.json` written after spawn is never re-read),
-   * so the flag both dedupes the retry storm's banners and marks this server unrecoverable in place. */
+  /** Latched on the first 401; credentials are process-cached, so the server cannot recover in place. */
   private authFailed = false;
 
   protected async onStart(opts: StartOptions): Promise<void> {
@@ -642,7 +665,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     // live-verified against codex app-server 0.144.1; nothing documents it (codex has no .d.ts) —
     // verify again if the app-server pin moves.
     const input: CodexTurnInput[] = [];
-    for (const block of content) {
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
       if (block.type === 'text') {
         const previous = input.at(-1);
         if (previous?.type === 'text') previous.text += `\n${block.text}`;
@@ -886,7 +910,9 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.processEnvironment,
       'codex: project environment not loaded',
     );
-    const credentialEnv = codexEnv(readAgentCredential(opts.config));
+    const credential = readAgentCredential(opts.config);
+    const credentialEnv = codexEnv(credential);
+    const providerOverrides = accountProviderOverrides(credential);
     const serverEnvironment = credentialEnv
       ? { ...processEnvironment, ...credentialEnv }
       : processEnvironment;
@@ -936,6 +962,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       }
       const preset = POLICY_PRESETS[this.policyId];
       const configOverrides = {
+        ...providerOverrides,
         ...(opts.additionalDirectories?.length && {
           'sandbox_workspace_write.writable_roots': opts.additionalDirectories,
         }),
@@ -944,6 +971,7 @@ export class CodexAdapter extends BaseAgentAdapter {
       const params = {
         cwd: opts.cwd,
         model: this.model,
+        ...(!isObjectEmpty(providerOverrides) && { modelProvider: CODEX_ACCOUNT_PROVIDER_ID }),
         approvalPolicy: preset.approvalPolicy,
         ...(this.sandboxOverrideAllowed() && { sandbox: preset.sandboxMode }),
         ...(!isObjectEmpty(configOverrides) && { config: configOverrides }),
@@ -1049,7 +1077,10 @@ export class CodexAdapter extends BaseAgentAdapter {
       // The icon reads awaited — re-check that a newer refresh or server didn't win meanwhile.
       if (this.server !== server || generation !== this.skillsRefreshGeneration) return;
       this.skillCommands.clear();
-      for (const skill of skills) this.skillCommands.set(skill.name, skill);
+      for (let i = 0, len = skills.length; i < len; i++) {
+        const skill = skills[i];
+        this.skillCommands.set(skill.name, skill);
+      }
       this.emitCommands([COMPACT_COMMAND, ...capSkillIconPayload(catalog)]);
     } catch {
       if (this.server === server && generation === this.skillsRefreshGeneration) {
@@ -1065,7 +1096,7 @@ export class CodexAdapter extends BaseAgentAdapter {
     const server = this.server;
     const threadId = this.threadId;
     if (server && threadId) return { server, threadId };
-    throw new Error(this.authFailed ? CODEX_AUTH_FAILED_MESSAGE : 'codex: session not started');
+    throw new Error(this.authFailed ? this.authFailureMessage() : 'codex: session not started');
   }
 
   private async startTurn(input: CodexTurnInput[]): Promise<void> {
@@ -1116,10 +1147,25 @@ export class CodexAdapter extends BaseAgentAdapter {
   private handleAuthFailure(): void {
     if (this.authFailed) return;
     this.authFailed = true;
-    this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    if (this.hasProviderCredential()) {
+      this.emitProviderError(CODEX_PROVIDER_AUTH_FAILED_MESSAGE, { statusCode: 401 });
+    } else {
+      this.emitError(CODEX_AUTH_FAILED_MESSAGE, AUTH_FAILED_ERROR_CODE, false);
+    }
     // Deliberate close(): CodexAppServer suppresses onExit for it, so no exit alarm follows.
     this.server?.close();
     this.finalizeServer();
+  }
+
+  private hasProviderCredential(): boolean {
+    const { apiKey, authToken } = readAgentCredential(this.opts?.config);
+    return Boolean(apiKey || authToken);
+  }
+
+  private authFailureMessage(): string {
+    return this.hasProviderCredential()
+      ? CODEX_PROVIDER_AUTH_FAILED_MESSAGE
+      : CODEX_AUTH_FAILED_MESSAGE;
   }
 
   /** Shared unwind for a crashed or retired server: finalize the turn and arm the next prompt to
@@ -1360,7 +1406,10 @@ export class CodexAdapter extends BaseAgentAdapter {
           this.emitTool(toolCall);
           break;
         }
-        for (const content of toolCall.content) this.appendToolContent(id, content);
+        for (let i = 0, len = toolCall.content.length; i < len; i++) {
+          const content = toolCall.content[i];
+          this.appendToolContent(id, content);
+        }
         this.emitTool({ ...toolCall, content: undefined });
         break;
       }
@@ -1368,7 +1417,8 @@ export class CodexAdapter extends BaseAgentAdapter {
         const changes = Array.isArray(item.changes) ? item.changes.filter(isRecord) : [];
         const locations: Array<{ path: string }> = [];
         const content: ToolCallContent[] = [];
-        for (const change of changes) {
+        for (let i = 0, len = changes.length; i < len; i++) {
+          const change = changes[i];
           const path = stringField(change, 'path');
           if (!path) continue;
           // An update kind can carry a rename: `kind: {type:'update', move_path}` with `path`
@@ -1469,6 +1519,8 @@ export class CodexAdapter extends BaseAgentAdapter {
       this.pendingCompactionId = null;
       this.emit({ type: 'compaction', compactionId: pending, status: 'completed' });
     }
+    // A turn ended by cancel/exit never reaches handleTurnCompleted, which owns the normal clear.
+    this.streamedTextLen.clear();
     super.teardown();
   }
 

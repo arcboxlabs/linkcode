@@ -47,7 +47,8 @@ export class TerminalReplayJournal {
    * everything after it reaches that attachment as ordinary live frames. */
   snapshotUpTo(seq: number): TerminalReplayEvent[] {
     const events: TerminalReplayEvent[] = [];
-    for (const { event } of this.entries) {
+    for (let i = 0, len = this.entries.length; i < len; i++) {
+      const { event } = this.entries[i];
       if (event.seq > seq) break;
       events.push(event);
     }

@@ -5,6 +5,8 @@ import { createScheduleStore } from '../../src/schedule-store';
 
 const sid = (id: string): ScheduleId => id as ScheduleId;
 
+const collator = new Intl.Collator();
+
 function makeSchedule(value: Record<string, unknown> & { scheduleId: string }): Schedule {
   return ScheduleSchema.parse({
     spec: {
@@ -53,7 +55,9 @@ describe('daemon sqlite schedule store', () => {
     await store.save(cronSessionTarget);
     await store.save(intervalNewSession);
 
-    const loaded = (await store.load()).sort((a, b) => a.scheduleId.localeCompare(b.scheduleId));
+    const loaded = (await store.load()).sort((a, b) =>
+      collator.compare(a.scheduleId, b.scheduleId),
+    );
     expect(loaded).toEqual([cronSessionTarget, intervalNewSession]);
   });
 

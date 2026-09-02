@@ -99,7 +99,9 @@ function configuredSecrets(
   const settings = entry.manifest.settings;
   if (settings === undefined) return [];
   const ids: string[] = [];
-  for (const [fieldId, field] of Object.entries(settings)) {
+  const settingEntries = Object.entries(settings);
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     if (field.secret === true && fieldId in merged) ids.push(fieldId);
   }
   return ids;
@@ -112,7 +114,9 @@ function maskValues(
   const settings = entry.manifest.settings;
   if (settings === undefined) return {};
   const masked: Record<string, PluginConfigValue> = {};
-  for (const [fieldId, field] of Object.entries(settings)) {
+  const settingEntries = Object.entries(settings);
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     if (field.secret) continue;
     if (fieldId in merged) masked[fieldId] = merged[fieldId];
   }

@@ -2,6 +2,7 @@ import { Badge } from 'coss-ui/components/badge';
 import { Dialog, DialogPopup, DialogTitle } from 'coss-ui/components/dialog';
 import { Spinner } from 'coss-ui/components/spinner';
 import { BotIcon } from 'lucide-react';
+import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
 import { cn } from '../lib/cn';
 import type { ToolTimelineItem } from './activity-groups';
@@ -42,8 +43,16 @@ export function SubagentViewer({
 }: SubagentViewerProps): React.ReactNode {
   const t = useTranslations('workbench.subagent');
 
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a conversation holds a handful of subagents at most; a lookup Map would outweigh the scan
-  const selected = tasks.find((task) => task.toolCall.toolCallId === selectedId) ?? tasks.at(0);
+  // Keyed once per task-list change: selection changes re-render the dialog far more often.
+  const tasksById = useMemo(() => {
+    const byId = new Map<string, ToolTimelineItem>();
+    for (let i = 0, len = tasks.length; i < len; i++) {
+      const task = tasks[i];
+      byId.set(task.toolCall.toolCallId, task);
+    }
+    return byId;
+  }, [tasks]);
+  const selected = (selectedId === null ? undefined : tasksById.get(selectedId)) ?? tasks.at(0);
 
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>

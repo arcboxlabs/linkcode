@@ -14,7 +14,8 @@ export function importedSessionByHistoryId(
   sessions: readonly SessionInfo[],
 ): Map<string, SessionId> {
   const map = new Map<string, SessionId>();
-  for (const session of sessions) {
+  for (let i = 0, len = sessions.length; i < len; i++) {
+    const session = sessions[i];
     if (session.historyId !== undefined) {
       map.set(importedSessionKey(session.kind, session.historyId), session.sessionId);
     }

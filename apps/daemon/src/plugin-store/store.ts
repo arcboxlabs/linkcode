@@ -67,7 +67,9 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
 
   list(): InstalledLinkCodePluginEntry[] {
     const entries: InstalledLinkCodePluginEntry[] = [];
-    for (const record of currentRegistryRecords()) {
+    const records = currentRegistryRecords();
+    for (let i = 0, len = records.length; i < len; i++) {
+      const record = records[i];
       const manifest = readManifest(record.path);
       if (manifest === undefined) continue;
       entries.push({ installed: record, manifest });
@@ -85,7 +87,9 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     const nonSecret = loadPluginConfigValues(pluginId);
     const secrets = pluginSecretStore(this.vault);
     const merged: Record<string, PluginConfigValue> = {};
-    for (const [fieldId, field] of Object.entries(manifest.settings)) {
+    const settingEntries = Object.entries(manifest.settings);
+    for (let i = 0, len = settingEntries.length; i < len; i++) {
+      const [fieldId, field] = settingEntries[i];
       if (field.secret) {
         // No default folding for secrets: a secret's default would be a plaintext credential in
         // the manifest, injected into env while the masked read hides where it came from.
@@ -115,7 +119,8 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
     const secretPatch = new Map<string, string | undefined>();
 
     if (patch.remove) {
-      for (const fieldId of patch.remove) {
+      for (let i = 0, len = patch.remove.length; i < len; i++) {
+        const fieldId = patch.remove[i];
         if (!(fieldId in settings)) continue;
         const field = settings[fieldId];
         if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, undefined);
@@ -126,7 +131,9 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       }
     }
     if (patch.set) {
-      for (const [fieldId, value] of Object.entries(patch.set)) {
+      const setEntries = Object.entries(patch.set);
+      for (let i = 0, len = setEntries.length; i < len; i++) {
+        const [fieldId, value] = setEntries[i];
         if (!(fieldId in settings)) continue;
         const field = settings[fieldId];
         if (field.secret) secretPatch.set(`${pluginId}/${fieldId}`, String(value));
@@ -134,7 +141,7 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
       }
     }
     const previousSecrets = new Map(
-      [...secretPatch.keys()].map((key) => [key, secrets.get(key)] as const),
+      Array.from(secretPatch.keys(), (key) => [key, secrets.get(key)] as const),
     );
 
     // There is no cross-file transaction between config.json and the vault. Commit config first;
@@ -190,11 +197,13 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
           retiredDir: string | undefined;
         }> = [];
         try {
-          for (const record of matches) {
+          for (let i = 0, len = matches.length; i < len; i++) {
+            const record = matches[i];
             retired.push({ record, retiredDir: retireForUninstall(record) });
           }
         } catch (error) {
-          for (const { record, retiredDir } of retired) {
+          for (let i = 0, len = retired.length; i < len; i++) {
+            const { record, retiredDir } = retired[i];
             if (retiredDir !== undefined) restorePluginPackage(retiredDir, record.path, pluginId);
           }
           throw error;
@@ -205,13 +214,15 @@ export class DaemonLinkCodePluginStore implements LinkCodePluginStore {
         try {
           writeRegistry(records.filter((entry) => entry.id !== pluginId));
         } catch (error) {
-          for (const { record, retiredDir } of retired) {
+          for (let i = 0, len = retired.length; i < len; i++) {
+            const { record, retiredDir } = retired[i];
             if (retiredDir !== undefined) restorePluginPackage(retiredDir, record.path, pluginId);
           }
           rmSync(tombstone, { force: true });
           throw error;
         }
-        for (const { retiredDir } of retired) {
+        for (let i = 0, len = retired.length; i < len; i++) {
+          const { retiredDir } = retired[i];
           if (retiredDir === undefined) continue;
           try {
             rmSync(retiredDir, { recursive: true, force: true });
@@ -360,7 +371,8 @@ async function installExclusive(
   }
   // A plugin id has one active settings block and one wire identity, so keep exactly one installed
   // version. Remove stale package directories only after the new package and registry record exist.
-  for (const previous of previousRecords) {
+  for (let i = 0, len = previousRecords.length; i < len; i++) {
+    const previous = previousRecords[i];
     if (previous.path === targetDir) continue;
     try {
       rmSync(previous.path, { recursive: true, force: true });
@@ -405,7 +417,8 @@ function sweepStagingDirs(): void {
     } catch {
       return;
     }
-    for (const entry of entries) {
+    for (let i = 0, len = entries.length; i < len; i++) {
+      const entry = entries[i];
       if (!entry.isDirectory()) continue;
       const path = join(dir, entry.name);
       if (entry.name.startsWith(PLUGIN_STAGING_PREFIX)) {
@@ -627,7 +640,8 @@ function sweepUninstallTombstones(secrets: SecretStore): void {
     );
     return;
   }
-  for (const name of markers) {
+  for (let i = 0, len = markers.length; i < len; i++) {
+    const name = markers[i];
     const path = join(pluginsRoot(), name);
     let pluginId: string;
     try {
@@ -676,14 +690,18 @@ function reconcileSettingsForManifest(
   const declared: Partial<Record<string, LinkCodePluginSettingField>> = manifest.settings ?? {};
   const next: Record<string, PluginConfigValue> = {};
   const secretPatch = new Map<string, string | undefined>();
-  for (const [fieldId, value] of Object.entries(loadPluginConfigValues(manifest.id))) {
+  const storedEntries = Object.entries(loadPluginConfigValues(manifest.id));
+  for (let i = 0, len = storedEntries.length; i < len; i++) {
+    const [fieldId, value] = storedEntries[i];
     const field = declared[fieldId];
     if (field === undefined || !isValidPluginSettingValue(field, value)) continue;
     if (field.secret) secretPatch.set(`${manifest.id}/${fieldId}`, String(value));
     else next[fieldId] = value;
   }
   const prefix = `${manifest.id}/`;
-  for (const key of secrets.keys()) {
+  const secretKeys = secrets.keys();
+  for (let i = 0, len = secretKeys.length; i < len; i++) {
+    const key = secretKeys[i];
     // A vanished field goes, obviously. A secret→public flip drops too, by the same logic that
     // protects the opposite direction: migrating the old secret into plaintext config.json would
     // serve it unmasked on the next masked read — re-entry costs the user one field. A still
@@ -728,7 +746,8 @@ function readRegistry(): InstalledLinkCodePlugin[] {
   }
   if (!Array.isArray(parsed)) return [];
   const records: InstalledLinkCodePlugin[] = [];
-  for (const value of parsed) {
+  for (let i = 0, len = parsed.length; i < len; i++) {
+    const value = parsed[i];
     const result = InstalledLinkCodePluginSchema.safeParse(value);
     if (!result.success || !hasExpectedPackagePath(result.data)) {
       logger.warn({ operation: 'plugin.registry' }, 'Dropping invalid plugin install record');
@@ -773,7 +792,11 @@ function hasExpectedPackagePath(record: InstalledLinkCodePlugin): boolean {
 
 function currentRegistryRecords(): InstalledLinkCodePlugin[] {
   const latestById = new Map<string, InstalledLinkCodePlugin>();
-  for (const record of readRegistry()) latestById.set(record.id, record);
+  const registry = readRegistry();
+  for (let i = 0, len = registry.length; i < len; i++) {
+    const record = registry[i];
+    latestById.set(record.id, record);
+  }
   // Old builds could write duplicate versions. The newest registry entry wins for reads, while the
   // next successful install or uninstall compacts the registry and removes every stale package dir.
   return [...latestById.values()];
@@ -832,7 +855,9 @@ function prunePluginSecrets(secrets: SecretStore, pluginId: string): void {
   // Do not infer orphans from manifests because unreadable survivors must keep their secrets.
   const prefix = `${pluginId}/`;
   const surviving = new Map<string, string>();
-  for (const key of secrets.keys()) {
+  const secretKeys = secrets.keys();
+  for (let i = 0, len = secretKeys.length; i < len; i++) {
+    const key = secretKeys[i];
     if (key.startsWith(prefix)) continue;
     const value = secrets.get(key);
     if (value !== null) surviving.set(key, value);

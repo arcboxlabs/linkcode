@@ -80,7 +80,10 @@ afterAll(() => {
   else process.env.GIT_CONFIG_GLOBAL = previousGitConfigGlobal;
   if (previousGitConfigNoSystem === undefined) delete process.env.GIT_CONFIG_NOSYSTEM;
   else process.env.GIT_CONFIG_NOSYSTEM = previousGitConfigNoSystem;
-  for (const dir of roots) rmSync(dir, { recursive: true, force: true });
+  for (let i = 0, len = roots.length; i < len; i++) {
+    const dir = roots[i];
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe('readGitStatus', () => {

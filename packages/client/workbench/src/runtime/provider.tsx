@@ -7,7 +7,6 @@ import { useSingleton } from 'foxact/use-singleton';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { trueFn } from 'foxts/noop';
 import { wait } from 'foxts/wait';
-import type * as React from 'react';
 import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
 import type { Cache, Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig, useSWRConfig } from 'swr';

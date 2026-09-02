@@ -300,12 +300,13 @@ describe('DaemonLinkCodeMarketplaceService.resolveRelease', () => {
     const service = new DaemonLinkCodeMarketplaceService(MARKETPLACES, fetchIndex);
     await service.refresh('linkcode-official');
 
-    for (const identity of [
+    const misses = [
       { marketplaceId: 'linkcode-official', pluginId: 'arcbox/other', version: '1.2.0' },
       { marketplaceId: 'linkcode-official', pluginId: 'arcbox/latex', version: '9.9.9' },
       { marketplaceId: 'community', pluginId: 'arcbox/latex', version: '1.2.0' },
-    ]) {
-      expect(service.resolveRelease(identity)).toBeUndefined();
+    ];
+    for (let i = 0, len = misses.length; i < len; i++) {
+      expect(service.resolveRelease(misses[i])).toBeUndefined();
     }
   });
 

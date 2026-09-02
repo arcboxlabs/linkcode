@@ -1,8 +1,8 @@
 import type { LinkCodeClient } from '@linkcode/client-core';
 import type { SimulatorConsentDecision, SimulatorConsentState } from '@linkcode/schema';
-import { useEffect } from 'foxact/use-abortable-effect';
 import { noop } from 'foxts/noop';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import useSWRImmutable from 'swr/immutable';
 
 /** The slice of `LinkCodeClient` the consent hooks need. */
 export type SimulatorConsentClient = Pick<
@@ -31,20 +31,21 @@ export interface SimulatorConsent {
  * showing the same device agrees rather than drifting on optimistic local edits.
  */
 export function useSimulatorConsent(client: SimulatorConsentClient): SimulatorConsent {
-  const [state, setState] = useState<SimulatorConsentState>(EMPTY);
-
+  // One host read seeds the state; the change broadcast keeps it live through `mutate`, which
+  // discards any still-in-flight read — a stale reply can never overwrite a fresher broadcast.
+  // A host with no simulator surface rejects the read; "never asked" (EMPTY) is the right default.
+  const { data: state = EMPTY, mutate } = useSWRImmutable(
+    'simulator-consent',
+    () => client.simulatorConsentGet(),
+    { shouldRetryOnError: false },
+  );
   useEffect(
-    (signal) => {
-      void client
-        .simulatorConsentGet()
-        .then((next) => {
-          if (!signal.aborted) setState(next);
-        })
-        // A host with no simulator surface answers nothing; "never asked" is the right default.
-        .catch(noop);
-      return client.subscribeSimulatorConsentChanged(setState);
-    },
-    [client],
+    () =>
+      client.subscribeSimulatorConsentChanged((next) => {
+        // update value directly and avoid re-fetch
+        mutate(next, { revalidate: false });
+      }),
+    [client, mutate],
   );
 
   return {

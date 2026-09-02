@@ -94,7 +94,9 @@ describe('engine session resources', () => {
       ],
     });
     const echoes: AgentEvent[] = [];
-    for (const payload of h.sent.slice(mark)) {
+    const sentSinceMark = h.sent.slice(mark);
+    for (let i = 0, len = sentSinceMark.length; i < len; i++) {
+      const payload = sentSinceMark[i];
       if (payload.kind === 'agent.event' && payload.event.type === 'user-message') {
         echoes.push(payload.event);
       }

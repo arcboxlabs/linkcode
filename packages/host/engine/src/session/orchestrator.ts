@@ -258,7 +258,10 @@ export class SessionOrchestrator {
             { type: 'conversation-rewind', messageId: rewindMessageId },
           ]);
           bufferEvents = false;
-          for (const event of startupEvents) events.handle(sessionId, session, event);
+          for (let i = 0, len = startupEvents.length; i < len; i++) {
+            const event = startupEvents[i];
+            events.handle(sessionId, session, event);
+          }
         }
         if (initialInput !== undefined) {
           yield* session

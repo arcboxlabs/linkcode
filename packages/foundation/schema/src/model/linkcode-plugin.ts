@@ -271,7 +271,8 @@ function rejectDuplicateComponents(
   ctx: z.RefinementCtx,
 ): void {
   const names = new Set<string>();
-  for (const component of manifest.components) {
+  for (let i = 0, len = manifest.components.length; i < len; i++) {
+    const component = manifest.components[i];
     const key = `${component.kind}:${component.name}`;
     if (names.has(key)) {
       ctx.addIssue({
@@ -290,9 +291,13 @@ function rejectUnresolvedEnvBindings(
   ctx: z.RefinementCtx,
 ): void {
   const declared = new Set(manifest.settings ? Object.keys(manifest.settings) : []);
-  for (const [index, component] of manifest.components.entries()) {
+  for (let i = 0, len = manifest.components.length; i < len; i++) {
+    const component = manifest.components[i];
     if (component.kind !== 'mcp-server' || !component.env) continue;
-    for (const [envName, settingId] of Object.entries(component.env)) {
+    const index = i;
+    const envEntries = Object.entries(component.env);
+    for (let j = 0, envCount = envEntries.length; j < envCount; j++) {
+      const [envName, settingId] = envEntries[j];
       if (!declared.has(settingId)) {
         ctx.addIssue({
           code: 'custom',

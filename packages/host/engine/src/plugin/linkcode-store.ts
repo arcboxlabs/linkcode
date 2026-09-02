@@ -42,7 +42,9 @@ export function validatePluginConfigPatch(
   patch: PluginConfigPatch,
 ): void {
   if (patch.set) {
-    for (const [fieldId, value] of Object.entries(patch.set)) {
+    const setEntries = Object.entries(patch.set);
+    for (let i = 0, len = setEntries.length; i < len; i++) {
+      const [fieldId, value] = setEntries[i];
       const field: LinkCodePluginSettingField | undefined = settings[fieldId];
       // eslint-disable-next-line sukka/prefer-nullthrow -- the write boundary requires the typed error the engine maps to invalid_request, not nullthrow's TypeError
       if (field === undefined) {
@@ -66,19 +68,31 @@ export function validatePluginConfigPatch(
     }
   }
   const effective: Record<string, PluginConfigValue> = { ...current };
-  for (const fieldId of patch.remove ?? []) {
-    // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- the patch is a per-key removal over a plain record
-    delete effective[fieldId];
+  if (patch.remove != null) {
+    for (let i = 0, len = patch.remove.length; i < len; i++) {
+      const fieldId = patch.remove[i];
+      // eslint-disable-next-line @typescript-eslint/no-dynamic-delete -- the patch is a per-key removal over a plain record
+      delete effective[fieldId];
+    }
   }
-  for (const [fieldId, value] of Object.entries(patch.set ?? {})) effective[fieldId] = value;
+  if (patch.set != null) {
+    const setEntries = Object.entries(patch.set);
+    for (let i = 0, len = setEntries.length; i < len; i++) {
+      const [fieldId, value] = setEntries[i];
+      effective[fieldId] = value;
+    }
+  }
   // A removal of a defaulted field re-exposes the manifest default on the next read, so fold it
   // back in here rather than rejecting the patch as missing a required value.
-  for (const [fieldId, field] of Object.entries(settings)) {
+  const settingEntries = Object.entries(settings);
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     if (!field.secret && field.default !== undefined && !(fieldId in effective)) {
       effective[fieldId] = field.default;
     }
   }
-  for (const [fieldId, field] of Object.entries(settings)) {
+  for (let i = 0, len = settingEntries.length; i < len; i++) {
+    const [fieldId, field] = settingEntries[i];
     if (field.required === true && !(fieldId in effective)) {
       throw new PluginConfigValidationError(`Missing required plugin setting: ${fieldId}`);
     }
@@ -119,7 +133,11 @@ export class InMemoryLinkCodePluginStore implements LinkCodePluginStore {
   ): void {
     this.entries.set(entry.installed.id, entry);
     const map = new Map<string, PluginConfigValue>();
-    for (const [k, v] of Object.entries(settings)) map.set(k, v);
+    const seedEntries = Object.entries(settings);
+    for (let i = 0, len = seedEntries.length; i < len; i++) {
+      const [k, v] = seedEntries[i];
+      map.set(k, v);
+    }
     this.values.set(entry.installed.id, map);
   }
 
@@ -134,10 +152,14 @@ export class InMemoryLinkCodePluginStore implements LinkCodePluginStore {
   getSettings(pluginId: string): Record<string, PluginConfigValue> {
     const merged = Object.fromEntries(this.values.get(pluginId) ?? []);
     const settings = this.entries.get(pluginId)?.manifest.settings;
-    for (const [fieldId, field] of Object.entries(settings ?? {})) {
-      // Mirrors the daemon store: defaults fold in for missing values, but never for secrets.
-      if (field.secret === true) continue;
-      if (!(fieldId in merged) && field.default !== undefined) merged[fieldId] = field.default;
+    if (settings != null) {
+      const settingEntries = Object.entries(settings);
+      for (let i = 0, len = settingEntries.length; i < len; i++) {
+        const [fieldId, field] = settingEntries[i];
+        // Mirrors the daemon store: defaults fold in for missing values, but never for secrets.
+        if (field.secret === true) continue;
+        if (!(fieldId in merged) && field.default !== undefined) merged[fieldId] = field.default;
+      }
     }
     return merged;
   }
@@ -151,8 +173,19 @@ export class InMemoryLinkCodePluginStore implements LinkCodePluginStore {
       map = new Map();
       this.values.set(pluginId, map);
     }
-    if (patch.remove) for (const key of patch.remove) map.delete(key);
-    if (patch.set) for (const [k, v] of Object.entries(patch.set)) map.set(k, v);
+    if (patch.remove) {
+      for (let i = 0, len = patch.remove.length; i < len; i++) {
+        const key = patch.remove[i];
+        map.delete(key);
+      }
+    }
+    if (patch.set) {
+      const setEntries = Object.entries(patch.set);
+      for (let i = 0, len = setEntries.length; i < len; i++) {
+        const [k, v] = setEntries[i];
+        map.set(k, v);
+      }
+    }
     return Promise.resolve();
   }
 

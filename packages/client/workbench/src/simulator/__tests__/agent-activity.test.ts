@@ -23,13 +23,16 @@ function fakeClient(): SimulatorActivityClient & { emit: (activity: Activity) =>
   };
 }
 
-const started = (
+function started(
   udid: string | undefined,
   tool = 'sim_tap',
   at?: { x: number; y: number },
-): Activity => ({ sessionId: 's1', udid, tool, phase: 'started', ...at }) as Activity;
-const settled = (udid: string | undefined, tool = 'sim_tap'): Activity =>
-  ({ sessionId: 's1', udid, tool, phase: 'settled' }) as Activity;
+): Activity {
+  return { sessionId: 's1', udid, tool, phase: 'started', ...at } as Activity;
+}
+function settled(udid: string | undefined, tool = 'sim_tap'): Activity {
+  return { sessionId: 's1', udid, tool, phase: 'settled' } as Activity;
+}
 
 describe('useSimulatorAgentActivity', () => {
   beforeEach(() => {

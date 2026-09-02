@@ -5,6 +5,8 @@ import { createLoopStore } from '../../src/loop-store';
 
 const lid = (id: string): LoopId => id as LoopId;
 
+const collator = new Intl.Collator();
+
 function makeLoop(value: Record<string, unknown> & { loopId: string }): LoopRecord {
   return LoopRecordSchema.parse({
     spec: {
@@ -61,7 +63,7 @@ describe('daemon sqlite loop store', () => {
     await store.save(withVerifier);
     await store.save(minimal);
 
-    const loaded = (await store.load()).sort((a, b) => a.loopId.localeCompare(b.loopId));
+    const loaded = (await store.load()).sort((a, b) => collator.compare(a.loopId, b.loopId));
     expect(loaded).toEqual([withVerifier, minimal]);
   });
 

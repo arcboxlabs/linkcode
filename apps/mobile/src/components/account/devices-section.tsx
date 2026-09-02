@@ -12,12 +12,7 @@ import { badge, buttonStyle, disabled, foregroundStyle } from '@expo/ui/swift-ui
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
 import { signOutOfCloud } from '@mobile/runtime/cloud/account';
 import type { CloudDevice } from '@mobile/runtime/cloud/devices';
-import {
-  clearDeviceEnrollment,
-  fetchDevices,
-  getEnrolledDeviceId,
-  revokeDevice,
-} from '@mobile/runtime/cloud/devices';
+import { fetchDevices, getEnrolledDeviceId, revokeDevice } from '@mobile/runtime/cloud/devices';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
 import { noop } from 'foxact/noop';
 import { useCallback, useEffect, useState } from 'react';
@@ -58,10 +53,8 @@ export function DevicesSection(): React.ReactNode {
     try {
       await revokeDevice(device.id);
       if (device.id === enrolledId) {
-        // The cloud already killed this phone's sessions along with the device; the
-        // sign-out is local cookie/enrollment cleanup against a dead session.
-        await clearDeviceEnrollment().catch(noop);
-        await signOutOfCloud().catch(noop);
+        // The device revoke already removed its push token and killed this phone's sessions.
+        await signOutOfCloud({ revokePushToken: false }).catch(noop);
         return;
       }
       refresh();

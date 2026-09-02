@@ -206,7 +206,8 @@ function parseMarketplaces(raw: unknown): LinkCodeMarketplaceConfigList {
   } else if (Array.isArray(raw)) {
     const seen = new Set<string>();
     marketplaces = [];
-    for (const value of raw) {
+    for (let i = 0, len = raw.length; i < len; i++) {
+      const value = raw[i];
       const parsed = LinkCodeMarketplaceConfigSchema.safeParse(value);
       if (!parsed.success || seen.has(parsed.data.id)) {
         logger.warn({ operation: 'config.load' }, 'Dropping invalid marketplace config');
@@ -280,13 +281,17 @@ function parsePluginConfigs(
     return undefined;
   }
   const out: Record<string, Record<string, string | number | boolean>> = {};
-  for (const [pluginId, fields] of Object.entries(raw)) {
+  const rawEntries = Object.entries(raw);
+  for (let i = 0, len = rawEntries.length; i < len; i++) {
+    const [pluginId, fields] = rawEntries[i];
     if (!isRecord(fields)) {
       logger.warn({ pluginId, operation: 'config.load' }, 'Dropping invalid plugin config values');
       continue;
     }
     const values: Record<string, string | number | boolean> = {};
-    for (const [fieldId, value] of Object.entries(fields)) {
+    const fieldEntries = Object.entries(fields);
+    for (let j = 0, fieldCount = fieldEntries.length; j < fieldCount; j++) {
+      const [fieldId, value] = fieldEntries[j];
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         values[fieldId] = value;
       }
@@ -304,7 +309,9 @@ export function loadPluginConfigValues(
   const block = isRecord(file.pluginConfigs) ? file.pluginConfigs[pluginId] : undefined;
   if (!isRecord(block)) return {};
   const values: Record<string, string | number | boolean> = {};
-  for (const [fieldId, value] of Object.entries(block)) {
+  const fieldEntries = Object.entries(block);
+  for (let i = 0, len = fieldEntries.length; i < len; i++) {
+    const [fieldId, value] = fieldEntries[i];
     if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
       values[fieldId] = value;
     }
@@ -345,7 +352,8 @@ function parseAccounts(store: SecretStore, raw: unknown): Parsed<Accounts> {
   }
   const accounts: Accounts = [];
   let migrated = false;
-  for (const value of raw) {
+  for (let i = 0, len = raw.length; i < len; i++) {
+    const value = raw[i];
     // The credential secret lives in the vault (CODE-371); merge it back before validating, so a
     // secret that is gone fails the schema and lands in the same drop-and-log path as a malformed one.
     const attached = withAccountSecret(store, value);
@@ -406,7 +414,8 @@ function parseCustomMcpServers(store: SecretStore, raw: unknown): Parsed<CustomM
   }
   const servers: CustomMcpServer[] = [];
   let migrated = false;
-  for (const value of snapshot.servers) {
+  for (let i = 0, len = snapshot.servers.length; i < len; i++) {
+    const value = snapshot.servers[i];
     const attached = withCustomMcpSecrets(store, value, snapshot.generation);
     migrated ||= attached.migrated;
     const server = CustomMcpServerSchema.safeParse(attached.value);
@@ -431,7 +440,9 @@ function parseProviders(store: SecretStore, raw: unknown): Parsed<ProvidersConfi
   }
   const providers: ProvidersConfig = {};
   let migrated = false;
-  for (const [key, value] of Object.entries(raw)) {
+  const entries = Object.entries(raw);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     const kind = AgentKindSchema.safeParse(key);
     if (!kind.success) {
       logger.warn(

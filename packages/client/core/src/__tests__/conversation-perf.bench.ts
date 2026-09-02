@@ -133,15 +133,23 @@ function streamTail(shape: LoadShape): AgentEvent[] {
 
 function foldAll(events: readonly AgentEvent[]): void {
   const builder = createConversationBuilder();
-  for (const event of events) builder.advance(event);
+  for (let i = 0, len = events.length; i < len; i++) {
+    const event = events[i];
+    builder.advance(event);
+  }
   builder.snapshot();
 }
 
 function foldStreamingCost(shape: LoadShape): void {
   const history = seedHistory(shape);
   const builder = createConversationBuilder();
-  for (const event of history) builder.advance(event);
-  for (const event of streamTail(shape)) {
+  for (let i = 0, len = history.length; i < len; i++) {
+    const event = history[i];
+    builder.advance(event);
+  }
+  const tail = streamTail(shape);
+  for (let i = 0, len = tail.length; i < len; i++) {
+    const event = tail[i];
     builder.advance(event);
     // Each live chunk invalidates the cache and forces a fresh items shallow-copy.
     builder.snapshot();
@@ -160,14 +168,19 @@ function storeStreamingCost(shape: LoadShape): void {
   const sessionId = 'sess-perf' as SessionId;
   const history = seedHistory(shape);
   const buffer = new EventBuffer();
-  for (const event of history) buffer.ingest(sessionId, event);
+  for (let i = 0, len = history.length; i < len; i++) {
+    const event = history[i];
+    buffer.ingest(sessionId, event);
+  }
 
   // createConversationStore only needs the event surface used by sync().
   const store = createConversationStore(bufferClient(buffer), sessionId);
   // Seed fold via first getSnapshot.
   store.getSnapshot();
 
-  for (const event of streamTail(shape)) {
+  const tail = streamTail(shape);
+  for (let i = 0, len = tail.length; i < len; i++) {
+    const event = tail[i];
     buffer.ingest(sessionId, event);
     store.getSnapshot();
   }
@@ -176,8 +189,16 @@ function storeStreamingCost(shape: LoadShape): void {
 function eventBufferSnapshotCost(shape: LoadShape): void {
   const sessionId = 'sess-buf' as SessionId;
   const buffer = new EventBuffer();
-  for (const event of seedHistory(shape)) buffer.ingest(sessionId, event);
-  for (const event of streamTail(shape)) buffer.ingest(sessionId, event);
+  const history = seedHistory(shape);
+  for (let i = 0, len = history.length; i < len; i++) {
+    const event = history[i];
+    buffer.ingest(sessionId, event);
+  }
+  const tail = streamTail(shape);
+  for (let i = 0, len = tail.length; i < len; i++) {
+    const event = tail[i];
+    buffer.ingest(sessionId, event);
+  }
   // snapshot copies the full buffer array when the cache is cold; force cold each time.
   buffer.ingest(sessionId, textChunk('force', '.'));
   buffer.snapshot(sessionId);

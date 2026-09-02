@@ -278,7 +278,9 @@ function parseEntries(raw: unknown, file: string): Map<string, string> {
     return new Map();
   }
   const secrets = new Map<string, string>();
-  for (const [ref, value] of Object.entries(raw)) {
+  const entries = Object.entries(raw);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [ref, value] = entries[i];
     if (typeof value === 'string') secrets.set(ref, value);
     else logger.warn({ operation: 'secrets.vault', ref }, 'Dropping a malformed stored secret');
   }

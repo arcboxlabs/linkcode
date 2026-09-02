@@ -4,6 +4,8 @@ import type { HistoryBrowserEntry } from './history-browser';
 /** How the history browser arranges entries: by project directory, or by recency. */
 export type HistorySortOrder = 'project' | 'latest' | 'oldest';
 
+const collator = new Intl.Collator();
+
 export function sortHistoryBrowserEntries(
   entries: readonly HistoryBrowserEntry[],
   order: HistorySortOrder,
@@ -18,8 +20,8 @@ export function sortHistoryBrowserEntries(
         return byTimestampDesc(a, b);
       }
       return (
-        repositoryLabel(a.cwd).localeCompare(repositoryLabel(b.cwd)) ||
-        a.cwd.localeCompare(b.cwd) ||
+        collator.compare(repositoryLabel(a.cwd), repositoryLabel(b.cwd)) ||
+        collator.compare(a.cwd, b.cwd) ||
         byTimestampDesc(a, b)
       );
     });
@@ -42,7 +44,8 @@ export function groupHistoryBrowserEntries(
 ): HistoryBrowserGroup[] {
   const groups: HistoryBrowserGroup[] = [];
   const byCwd = new Map<string | undefined, HistoryBrowserGroup>();
-  for (const entry of sorted) {
+  for (let i = 0, len = sorted.length; i < len; i++) {
+    const entry = sorted[i];
     const existing = byCwd.get(entry.cwd);
     if (existing) {
       existing.entries.push(entry);

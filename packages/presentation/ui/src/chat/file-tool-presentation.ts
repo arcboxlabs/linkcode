@@ -21,7 +21,8 @@ export interface ToolCallFilePresentation {
 
 function filePaths(toolCall: ToolCall): string[] {
   const paths = new Set(toolCall.locations?.map((location) => location.path));
-  for (const content of toolCall.content) {
+  for (let i = 0, len = toolCall.content.length; i < len; i++) {
+    const content = toolCall.content[i];
     if (content.type === 'diff') paths.add(content.path);
   }
   const fallback = toolCallFilePath(toolCall);

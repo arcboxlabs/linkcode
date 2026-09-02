@@ -188,8 +188,12 @@ function flattenReleases(
   index: LinkCodeMarketplaceIndexReader,
 ): MarketplaceRefreshResult['releases'] {
   const entries: MarketplaceCatalogEntry[] = [];
-  for (const plugin of index.plugins) {
-    for (const release of plugin.releases) {
+  const plugins = index.plugins;
+  for (let i = 0, len = plugins.length; i < len; i++) {
+    const plugin = plugins[i];
+    const releases = plugin.releases;
+    for (let j = 0, releaseCount = releases.length; j < releaseCount; j++) {
+      const release = releases[j];
       if (!isProjectablePluginRelease(release)) {
         // Deliberate, steady-state filtering: info would spam every refresh for marketplaces that
         // legitimately carry skill-only releases.

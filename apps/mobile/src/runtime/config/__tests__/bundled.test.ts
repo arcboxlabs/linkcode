@@ -28,10 +28,12 @@ describe('bundledConfigFromModule', () => {
   });
 
   it('derives the bootstrap and definitions from a generated platform bundle', async () => {
-    for (const [suffix, platform] of [
+    const cases = [
       ['-ios', 'ios'],
       ['-android', 'android'],
-    ] as const) {
+    ] as const;
+    for (let i = 0, len = cases.length; i < len; i++) {
+      const [suffix, platform] = cases[i];
       const { bootstrap, defaults, definitions } = bundledConfigFromModule({
         // eslint-disable-next-line no-await-in-loop -- two small fixture reads
         bundle: await loadFixture(suffix),

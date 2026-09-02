@@ -38,7 +38,8 @@ export function validateAskResponse(request: AskEvent, input: AskResponseInput):
     throw invalidRequest(`Question request ${input.requestId} has duplicate question IDs`);
   }
   const answers = new Map<string, (typeof input.outcome.answers)[number]>();
-  for (const answer of input.outcome.answers) {
+  for (let i = 0, len = input.outcome.answers.length; i < len; i++) {
+    const answer = input.outcome.answers[i];
     if (answers.has(answer.questionId)) {
       throw invalidRequest(`Duplicate answer for question: ${answer.questionId}`);
     }
@@ -48,7 +49,8 @@ export function validateAskResponse(request: AskEvent, input: AskResponseInput):
     answers.set(answer.questionId, answer);
   }
 
-  for (const question of request.questions) {
+  for (let i = 0, len = request.questions.length; i < len; i++) {
+    const question = request.questions[i];
     const answer = answers.get(question.questionId);
     if (!answer) throw invalidRequest(`Missing answer: ${question.questionId}`);
     if (answer.customText !== undefined) {
