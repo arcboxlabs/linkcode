@@ -626,6 +626,30 @@ describe('turn.submit saga', () => {
     expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
   });
 
+  it('starts a new root fresh when the created session’s earlier run never wrote provider history', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    // Run 1 dies before its first prompt, so the graph root lands on run 2.
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop-0', sessionId: h.sessionId });
+    await submitPrompt(h, 's1', 'first');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
+    const second = nullthrow(h.adapters[1]);
+    second.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    second.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+
+    // No earlier run left provider rows behind the root, so there is no hidden history to fork after.
+    const fresh = nullthrow(h.adapters[2]) as ForkingAdapter;
+    expect(fresh.startedWith).not.toBeNull();
+    expect(fresh.branchedFrom).toBeNull();
+    expect(fresh.resumedFrom).toBeNull();
+    expect(fresh.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'new root' }] },
+    ]);
+  });
+
   it('refuses to resume a checkpoint-less inactive tip on a forking harness', async () => {
     const h = await startedHarness(() => new ForkingAdapter());
     await submitPrompt(h, 's1', 'first');

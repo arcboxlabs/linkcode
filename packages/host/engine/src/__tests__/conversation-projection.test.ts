@@ -352,7 +352,7 @@ describe('conversation projection attribution gate', () => {
     };
   }
 
-  function providerUser(itemId: string, command: string): AgentHistoryEvent {
+  function providerUser(itemId: string, command: string, cursor?: string): AgentHistoryEvent {
     return {
       historyId: asHistoryId('hist-1'),
       itemId,
@@ -360,6 +360,7 @@ describe('conversation projection attribution gate', () => {
         type: 'user-message',
         messageId: itemId as MessageId,
         content: [{ type: 'text', text: `$ ${command}` }],
+        ...(cursor !== undefined && { branchCursor: cursor }),
       },
     };
   }
@@ -577,6 +578,106 @@ describe('conversation projection attribution gate', () => {
       ['ans-a2', 'turn-a'],
       ['ans-b', 'turn-b'],
     ]);
+  });
+
+  it('attributes nothing behind hidden history when a later suffix position mismatches', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: hiddenHistoryRecord('turn-b' as TurnId),
+      historyEvents: [
+        providerUser('u-h', 'hidden'),
+        providerAnswer('ans-h', 'answer hidden'),
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-x', 'x'),
+        providerAnswer('ans-x', 'answer x'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-a', 'b', 'completed'));
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    // Position 0 verifies, but end-anchored a verified prefix proves nothing about the offset.
+    expect(answers(result.events)).toEqual([]);
+    expect(placeholderTurnIds(result.events)).toEqual(['turn-a', 'turn-b']);
+  });
+
+  it('attributes nothing when the corpus grew past the host’s last turn and the prompts repeat', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: hiddenHistoryRecord('turn-b' as TurnId),
+      historyEvents: [
+        providerUser('u-h', 'go', 'before-h'),
+        providerAnswer('ans-h', 'answer hidden'),
+        providerUser('u-a', 'go', 'before-a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-b', 'go', 'before-b'),
+        providerAnswer('ans-b', 'answer b'),
+        providerUser('u-cli', 'go', 'before-cli'),
+        providerAnswer('ans-cli', 'answer from the CLI'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'go', 'completed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-a', 'go', 'completed'));
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    // The tail [u-b, u-cli] verifies as well as the truth [u-a, u-b]: ambiguous, so nothing
+    // attributes and no replay binding — which no later capture would correct — is backfilled.
+    expect(answers(result.events)).toEqual([]);
+    expect(placeholderTurnIds(result.events)).toEqual(['turn-a', 'turn-b']);
+    expect(await store.listBindings('turn-a' as TurnId)).toEqual([]);
+  });
+
+  it('attributes nothing when the peeled live row could equally be the host’s last turn', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: hiddenHistoryRecord('turn-b' as TurnId),
+      historyEvents: [
+        providerUser('u-h', 'go'),
+        providerAnswer('ans-h', 'answer hidden'),
+        providerUser('u-a', 'go'),
+        providerAnswer('ans-a', 'answer a'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'go', 'completed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-a', 'go', 'running'));
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    // The in-flight prompt may not be persisted yet: `u-a` is either the live row (then `u-h`
+    // is turn-a's) or turn-a's own row behind hidden history — nothing attributes.
+    expect(answers(result.events)).toEqual([]);
+    expect(placeholderTurnIds(result.events)).toEqual(['turn-a']);
+  });
+
+  it('never aligns to the corpus tail once a failed turn sits on the lineage', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: hiddenHistoryRecord('turn-b' as TurnId),
+      historyEvents: [
+        providerUser('u-h', 'go'),
+        providerAnswer('ans-h', 'answer hidden'),
+        providerUser('u-a', 'go'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'go'),
+        providerAnswer('ans-f', 'answer before the failure'),
+        providerUser('u-b', 'done'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'go', 'completed'));
+    await store.saveTurn(shellTurn('turn-f', 'turn-a', 'go', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f', 'done', 'completed'));
+
+    const result = await Effect.runPromise(service.read({ sessionId }));
+
+    // The failed turn's prompt did reach the provider, so the tail [u-f, u-b] verifies against
+    // [turn-a, turn-b] and would hand turn-a the failed turn's answer. A failed turn leaves the
+    // row count unknowable, so end-anchoring is off for the lineage.
+    expect(answers(result.events)).toEqual([]);
+    expect(placeholderTurnIds(result.events)).toEqual(['turn-a', 'turn-b']);
   });
 
   it('still tolerates the in-flight turn’s own trailing row behind hidden history', async () => {

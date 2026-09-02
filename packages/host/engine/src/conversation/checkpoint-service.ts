@@ -111,7 +111,9 @@ export class ConversationCheckpointService {
         corpus,
         hostFingerprints,
         liveFingerprint,
-        hasHiddenPrefix(record, path[0]),
+        // A failed turn may or may not have left provider rows, so the count behind the corpus
+        // tail is unknowable: end-anchored alignment is off for that lineage.
+        hasHiddenPrefix(record, path[0]) && !path.some((turn) => turn.state === 'failed'),
       );
       yield* backfill(expectsProvider, attribution, historyId);
       return attribution;
