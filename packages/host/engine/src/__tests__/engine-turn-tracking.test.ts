@@ -56,12 +56,13 @@ class WholeTurnCheckpointAdapter extends FakeAdapter {
   }
 }
 
+/** The opencode shape: the legacy `history.branch` path without turn-level forks. */
 class BranchingAdapter extends FakeAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
     read: true,
     resume: true,
-    forkAfterTurn: true,
+    forkAfterTurn: false,
     branch: true,
   };
 
@@ -130,6 +131,29 @@ describe('live checkpoint capture', () => {
         checkpoint: 'cp-1',
         capturedFrom: 'live',
       },
+    ]);
+  });
+
+  it('keeps the first live checkpoint of a (turn, history) when a later one arrives', async () => {
+    const h = await startedHarness();
+    await legacyPrompt(h, 'first');
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-1',
+      turn: 'ending',
+    });
+    // A compaction or a re-emitted prompt minting after the real cut must not move it.
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-late',
+      turn: 'ending',
+    });
+    await settleEngineTasks();
+
+    expect(await h.conversationStore.listBindings(turn.turnId)).toEqual([
+      expect.objectContaining({ checkpoint: 'cp-1', capturedFrom: 'live' }),
     ]);
   });
 

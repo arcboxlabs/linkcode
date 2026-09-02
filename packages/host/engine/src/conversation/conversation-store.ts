@@ -39,7 +39,8 @@ export interface ConversationStore {
   saveTurn(turn: ConversationTurn): Promise<void>;
   getPrompt(promptId: PromptId): Promise<PromptRecord | undefined>;
   listBindings(turnId: TurnId): Promise<ProviderTurnBinding[]>;
-  /** Upsert by `(turnId, historyId)` — one binding per provider history, re-captured on re-read. */
+  /** One binding per `(turnId, historyId)`: a `replay` row is re-captured on re-read, a `live` row
+   * is never overwritten — the first live capture is the cut, whatever arrives later. */
   saveBinding(binding: ProviderTurnBinding): Promise<void>;
   getOperation(operationId: OperationId): Promise<ConversationOperation | undefined>;
   /** Open operations, for the per-session admit gate and boot recovery (no argument = all). */
@@ -91,7 +92,10 @@ export class InMemoryConversationStore implements ConversationStore {
   }
 
   saveBinding(binding: ProviderTurnBinding): Promise<void> {
-    this.bindings.set(`${binding.turnId}\0${binding.historyId}`, structuredClone(binding));
+    const key = `${binding.turnId}\0${binding.historyId}`;
+    if (this.bindings.get(key)?.capturedFrom !== 'live') {
+      this.bindings.set(key, structuredClone(binding));
+    }
     return Promise.resolve();
   }
 

@@ -114,7 +114,8 @@ export class ConversationCheckpointService {
   }
 
   /** The full provider corpus behind the TTL cache, or undefined when unreadable — unsupported
-   * harness, failed read (CODE-645), deleted transcript — so callers degrade to prompt-only. */
+   * harness, failed read (an unforkable rollout), deleted transcript — so callers degrade to
+   * prompt-only. */
   readCorpus(
     record: SessionRecord,
     historyId: AgentHistoryId,
