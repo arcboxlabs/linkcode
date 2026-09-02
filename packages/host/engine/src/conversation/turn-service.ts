@@ -85,9 +85,10 @@ export const TERMINAL_TURN_STATES = new Set<ConversationTurnState>([
 interface RunningTurn {
   readonly turn: ConversationTurn;
   sawError: boolean;
-  /** False while the durable commit is still in flight (tracked off the adapter's `running`). */
+  /** False while only tracked off the adapter's `running`, before the dispatch commits it. */
   committed: boolean;
-  /** A settle that landed before the commit; the commit writes it behind its own row. */
+  /** A settle that landed before the commit; the commit writes it behind its own row, a failed
+   * dispatch discards it with the turn. */
   settledAs?: ConversationTurnState;
 }
 
@@ -239,24 +240,14 @@ export class ConversationTurnService {
     });
   }
 
-  /** The adapter announced `running` for `runId`'s dispatching turn: track it now and commit it.
-   * A whole-turn send() (pi, grok) settles before it resolves — committing only when the send
-   * resolves would let this turn's stop settle its predecessor and strand it `running`. */
+  /** The adapter announced `running` for `runId`'s dispatching turn: track it in memory only. A
+   * whole-turn send() (pi, grok) settles before it resolves — tracked late, its own stop would
+   * settle its predecessor. The durable commit stays with the dispatch resolution: an adapter that
+   * emits `running` and then rejects the send must resolve `failed`, never a phantom turn. */
   noteRunning(sessionId: SessionId, runId: RunId): void {
     const intent = this.dispatching.get(sessionId);
     if (intent?.turn.runId !== runId) return;
     this.track(intent.turn, false);
-    this.runTask(
-      this.commitRunning(intent).pipe(
-        Effect.catch((error) =>
-          Effect.logError(
-            error.publicMessage,
-            { operation: error.operation, sessionId },
-            error.cause,
-          ),
-        ),
-      ),
-    );
   }
 
   /** The provider accepted the dispatch: one transaction stores the success and flips the turn to

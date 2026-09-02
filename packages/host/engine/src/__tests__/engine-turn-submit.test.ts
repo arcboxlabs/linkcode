@@ -127,6 +127,17 @@ class GatedWholeTurnAdapter extends ForkingAdapter {
   }
 }
 
+/** The real adapters' rejection shape: `running` at dispatch, a bare `idle` on the provider's
+ * refusal, then the send rejects (opencode promptAsync error, claude createQuery throw, pi). */
+class RunIdleRejectAdapter extends FakeAdapter {
+  override send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    this.emit({ type: 'status', status: 'running' });
+    this.emit({ type: 'status', status: 'idle' });
+    return Promise.reject(new Error('provider refused the prompt'));
+  }
+}
+
 class LegacyBranchOnlyAdapter extends ForkingAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
@@ -586,6 +597,35 @@ describe('turn.submit saga', () => {
     expect(h.adapters.some((adapter) => adapter.resumedFrom === 'native-1')).toBe(false);
   });
 
+  it('a send rejected after `running` and `idle` fails the turn — never a phantom success', async () => {
+    const h = await startedHarness(() => new RunIdleRejectAdapter());
+
+    await submitPrompt(h, 's1', 'doomed');
+
+    expect(failure(h.sent, 's1').code).toBe('operation_failed');
+    const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s1'));
+    expect(operation?.state).toBe('failed');
+    expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('failed');
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
+    const [record] = await h.store.load();
+    expect(record.activeLeafTurnId).toBeUndefined();
+
+    // The same through the legacy input path.
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'legacy',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [{ type: 'text', text: 'doomed again' }] },
+    });
+    expect(failure(h.sent, 'legacy').code).toBe('operation_failed');
+    expect((await h.conversationStore.listTurns(h.sessionId)).map((turn) => turn.state)).toEqual([
+      'failed',
+      'failed',
+    ]);
+    expect(await h.conversationStore.listOpenOperations(h.sessionId)).toHaveLength(0);
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
+  });
+
   it('refuses to resume a checkpoint-less inactive tip on a forking harness', async () => {
     const h = await startedHarness(() => new ForkingAdapter());
     await submitPrompt(h, 's1', 'first');
@@ -621,16 +661,24 @@ describe('turn.submit saga', () => {
     adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
     await submitPrompt(h, 's1', 'first');
 
-    // Committed off the adapter's `running`, while send() is still in flight.
-    await vi.waitFor(async () => {
-      expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('running');
-    });
-    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(1);
+    // Tracked off the adapter's `running` while send() is still in flight: the status frame is
+    // stamped with the turn — but nothing is committed until the dispatch resolves.
+    await vi.waitFor(() => expect(adapter.sentInputs).toHaveLength(1));
+    const [preparing] = await h.conversationStore.listTurns(h.sessionId);
+    expect(preparing.state).toBe('preparing');
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.event',
+        turnId: preparing.turnId,
+        event: { type: 'status', status: 'running' },
+      }),
+    );
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
     adapter.release();
     await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
     const firstTurnId = submittedTurnId(h.sent, 's1');
     await settleEngineTasks();
-    // The turn's own stop settled THIS turn, with its checkpoint bound; no second commit.
+    // One commit, and the turn's own stop (held until then) settled THIS turn with its checkpoint.
     expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('completed');
     expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
       expect.objectContaining({ checkpoint: 'after-first', capturedFrom: 'live' }),
