@@ -103,6 +103,16 @@ class ForkingAdapter extends FakeAdapter {
   }
 }
 
+class LegacyBranchOnlyAdapter extends ForkingAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    forkAfterTurn: false,
+    branch: true,
+  };
+}
+
 /** Cold reads return the lineage's own prompts; a row without a cursor models a rollout the
  * provider cannot fork (codex `history_mode: paginated`). */
 class AlignedHistoryAdapter extends ForkingAdapter {
@@ -410,7 +420,7 @@ describe('turn.submit saga', () => {
 
     expect(failure(h.sent, 's3')).toMatchObject({
       code: 'unsupported',
-      message: 'claude-code: checkpoint row-b is no longer in transcript native-1',
+      message: 'The provider no longer honours this fork checkpoint',
     });
     const turns = await h.conversationStore.listTurns(h.sessionId);
     expect(turns).toHaveLength(3);
@@ -423,7 +433,8 @@ describe('turn.submit saga', () => {
   });
 
   it('refuses a fork on a harness without forkAfterTurn even when a checkpoint exists', async () => {
-    const h = await startedHarness();
+    // The opencode shape: the legacy `branch` path stays advertised, turn-level forks are dark.
+    const h = await startedHarness(() => new LegacyBranchOnlyAdapter());
     const firstTurnId = await twoCheckpointedTurns(h);
     expect(await h.conversationStore.listBindings(firstTurnId)).toHaveLength(1);
 

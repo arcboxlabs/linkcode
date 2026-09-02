@@ -16,7 +16,7 @@ import {
   PromptRecordSchema,
   ProviderTurnBindingSchema,
 } from '@linkcode/schema';
-import { and, asc, count, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, isNull, ne, notInArray } from 'drizzle-orm';
 import type { DaemonDatabaseClient } from './db/database';
 import {
   conversationOperations,
@@ -83,6 +83,8 @@ export function createConversationStore(db: DaemonDatabaseClient): ConversationS
         .onConflictDoUpdate({
           target: [providerTurnBindings.turnId, providerTurnBindings.historyId],
           set: binding,
+          // The first live capture stands: a later live or replay write cannot move the cut.
+          setWhere: ne(providerTurnBindings.capturedFrom, 'live'),
         })
         .run();
       return Promise.resolve();

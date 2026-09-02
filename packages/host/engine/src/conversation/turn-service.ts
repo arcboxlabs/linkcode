@@ -138,8 +138,8 @@ export class ConversationTurnService {
     return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
 
-  /** A binding derived from a cold read (`capturedFrom: 'replay'`); the caller owns the
-   * never-overwrite-a-live-capture rule. */
+  /** A binding derived from a cold read (`capturedFrom: 'replay'`); the store keeps an existing
+   * live capture over it. */
   saveReplayBinding(binding: ProviderTurnBinding): Effect.Effect<void, OperationError> {
     return storeOperation('conversation.binding.save', () => this.store.saveBinding(binding));
   }

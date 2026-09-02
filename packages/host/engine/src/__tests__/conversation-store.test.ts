@@ -89,22 +89,24 @@ describe('InMemoryConversationStore', () => {
     expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([running]);
   });
 
-  it('upserts bindings by (turnId, historyId)', async () => {
+  it('re-captures replay bindings but never overwrites a live one per (turnId, historyId)', async () => {
     const store = new InMemoryConversationStore();
-    const binding = ProviderTurnBindingSchema.parse({
+    const live = ProviderTurnBindingSchema.parse({
       turnId: 't-1',
       runId: 'run-1',
       historyId: 'native-1',
       checkpoint: '{"uuid":"a"}',
       capturedFrom: 'live',
     });
-    await store.saveBinding(binding);
-    const recaptured = { ...binding, checkpoint: '{"uuid":"b"}', capturedFrom: 'replay' as const };
+    await store.saveBinding(live);
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"b"}', capturedFrom: 'replay' });
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"c"}' });
+    const replay = { ...live, historyId: 'native-2', capturedFrom: 'replay' as const };
+    await store.saveBinding(replay);
+    const recaptured = { ...replay, checkpoint: '{"uuid":"d"}' };
     await store.saveBinding(recaptured);
-    const other = { ...binding, historyId: 'native-2' };
-    await store.saveBinding(other);
 
-    expect(await store.listBindings(TurnIdSchema.parse('t-1'))).toEqual([recaptured, other]);
+    expect(await store.listBindings(TurnIdSchema.parse('t-1'))).toEqual([live, recaptured]);
   });
 
   it('deleteSession keeps prompts still referenced by another session and drops the rest', async () => {

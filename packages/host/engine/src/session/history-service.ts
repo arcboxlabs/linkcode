@@ -194,15 +194,17 @@ export class HistoryService {
   }
 
   /** Fork provider history right after the cursor's checkpoint and start `adapter` on the child.
-   * A checkpoint the provider no longer honours (rewritten/deleted history, an unforkable rollout)
-   * is a typed `unsupported` — the adapter created nothing, and nothing was guessed. */
+   * Gated on the legacy `branch` capability — the turn-level `forkAfterTurn` gate is the submit
+   * saga's, at admit. A checkpoint the provider no longer honours (rewritten/deleted history, an
+   * unforkable rollout) is a typed `unsupported` with a fixed message; the adapter's detail names
+   * provider ids only and stays in the daemon log. */
   branch(
     adapter: AgentAdapter,
     opts: AgentHistoryBranchOptions,
     startOpts: StartOptions,
   ): Effect.Effect<void, RequestError | OperationError> {
     const branchHistory = adapter.branchHistory?.bind(adapter);
-    if (branchHistory === undefined || adapter.historyCapabilities.forkAfterTurn !== true) {
+    if (branchHistory === undefined || adapter.historyCapabilities.branch !== true) {
       return Effect.fail(
         new RequestError({
           code: 'unsupported',
@@ -213,13 +215,23 @@ export class HistoryService {
     return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
       branchHistory(opts, startOpts),
     ).pipe(
-      Effect.catch((error) =>
-        Effect.fail(
-          error.cause instanceof HistoryCheckpointInvalidError
-            ? new RequestError({ code: 'unsupported', message: error.cause.message })
-            : error,
-        ),
-      ),
+      Effect.catch((error): Effect.Effect<never, RequestError | OperationError> => {
+        if (!(error.cause instanceof HistoryCheckpointInvalidError)) return Effect.fail(error);
+        return Effect.logWarning(
+          'Provider refused the fork checkpoint',
+          { kind: adapter.kind, historyId: opts.historyId },
+          error.cause,
+        ).pipe(
+          Effect.andThen(
+            Effect.fail(
+              new RequestError({
+                code: 'unsupported',
+                message: 'The provider no longer honours this fork checkpoint',
+              }),
+            ),
+          ),
+        );
+      }),
     );
   }
 

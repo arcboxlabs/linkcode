@@ -125,38 +125,40 @@ describe('HistoryService', () => {
     const start = { kind: 'codex' as const, cwd: '/repo' };
     const opts = { historyId, cursor: 'opaque-cursor' };
 
-    it('is gated on forkAfterTurn, not on the legacy branch mirror', async () => {
+    it('is gated on the legacy branch capability, not on forkAfterTurn', async () => {
       const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
       const service = new HistoryService(fakeHistoryFactory(state));
-      const mirrorOnly = new ForkingHistoryAdapter(state, { branch: true });
+      const turnForksOnly = new ForkingHistoryAdapter(state, { forkAfterTurn: true });
 
       const failure = await Effect.runPromise(
-        service.branch(mirrorOnly, opts, start).pipe(Effect.flip),
+        service.branch(turnForksOnly, opts, start).pipe(Effect.flip),
       );
       expect(failure).toMatchObject({ _tag: 'RequestError', code: 'unsupported' });
-      expect(mirrorOnly.branched).toEqual([]);
+      expect(turnForksOnly.branched).toEqual([]);
 
-      const forking = new ForkingHistoryAdapter(state, { forkAfterTurn: true });
-      await Effect.runPromise(service.branch(forking, opts, start));
-      expect(forking.branched).toEqual([opts]);
+      // The opencode shape: turn-level forks dark, the legacy cold-read fork still shipped.
+      const legacyOnly = new ForkingHistoryAdapter(state, { branch: true });
+      await Effect.runPromise(service.branch(legacyOnly, opts, start));
+      expect(legacyOnly.branched).toEqual([opts]);
     });
 
-    it('maps an invalid checkpoint to a typed unsupported and keeps other failures opaque', async () => {
+    it('maps an invalid checkpoint to a fixed typed unsupported and keeps other failures opaque', async () => {
       const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
       const service = new HistoryService(fakeHistoryFactory(state));
 
-      const invalid = new ForkingHistoryAdapter(state, { forkAfterTurn: true });
+      const invalid = new ForkingHistoryAdapter(state, { branch: true });
       invalid.failWith = new HistoryCheckpointInvalidError('codex: thread/fork refused turn-9');
       const refused = await Effect.runPromise(
         service.branch(invalid, opts, start).pipe(Effect.flip),
       );
+      // Provider ids stay in the daemon log; the wire carries the fixed message only.
       expect(refused).toMatchObject({
         _tag: 'RequestError',
         code: 'unsupported',
-        message: 'codex: thread/fork refused turn-9',
+        message: 'The provider no longer honours this fork checkpoint',
       });
 
-      const broken = new ForkingHistoryAdapter(state, { forkAfterTurn: true });
+      const broken = new ForkingHistoryAdapter(state, { branch: true });
       broken.failWith = new Error('secret provider transcript path');
       const failure = await Effect.runPromise(
         service.branch(broken, opts, start).pipe(Effect.flip),
