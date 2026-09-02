@@ -1,4 +1,4 @@
-import type { AgentHistoryEvent, ConversationTurn, TurnId } from '@linkcode/schema';
+import type { AgentHistoryEvent, ConversationTurn, SessionRecord, TurnId } from '@linkcode/schema';
 import { RequestError } from '../failure';
 import { promptContentFingerprint } from '../session/live-session';
 
@@ -8,11 +8,21 @@ export interface ProviderPartition {
 }
 
 export interface CorpusAttribution {
-  /** Partition i is the i-th settled path turn's provider content; a prefix of the candidates. */
+  /** Partition i is the i-th settled path turn's provider content: a prefix of the candidates, or
+   * all of them when the corpus tail was aligned behind hidden pre-graph history. */
   readonly attributed: ProviderPartition[];
+  /** Rows before the first attributed partition — those ahead of the first user row, plus the
+   * hidden history's own partitions — rendered unattributed, as a cold read would. */
   readonly leading: AgentHistoryEvent[];
   /** The in-flight turn's own user row, when a trailing extra partition fingerprint-verified as it. */
   readonly trailingLive?: AgentHistoryEvent;
+}
+
+/** Whether provider rows can precede the lineage's root turn: an imported transcript, or a root
+ * recorded on a later run of a created session (a session older than its turn rows). A created
+ * session's first run starts empty, so nothing precedes a root there. */
+export function hasHiddenPrefix(record: SessionRecord, root: ConversationTurn): boolean {
+  return record.origin.type !== 'created' || root.runId !== record.runs[0]?.runId;
 }
 
 /** Root→leaf path through `parentTurnId`; a broken chain fails loud rather than rendering wrong. */
@@ -41,46 +51,61 @@ export function pathToLeaf(
 
 /**
  * The attribution gate (§9 discipline): positions attribute only while each partition's user row
- * fingerprint-matches the host prompt at that position; the FIRST mismatch degrades that turn and
- * every later one to placeholders — alignment is lost past a mismatch, never resynced positionally.
- * One trailing extra partition is tolerated only when it fingerprint-verifies as the in-flight
- * turn's own row (the live tail owns it); any other count anomaly attributes nothing.
+ * fingerprint-matches the host prompt at that position — fingerprints verify an alignment, they
+ * never search for one. With as many partitions as settled host turns the alignment is anchored at
+ * the START and the FIRST mismatch degrades that turn and every later one to placeholders, never
+ * resynced positionally. With MORE partitions — allowed only where hidden pre-graph history can
+ * exist — the host turns align to the LAST partitions and every position must verify, else nothing
+ * attributes; the unmatched head is hidden history. One trailing extra partition is tolerated only
+ * when it fingerprint-verifies as the in-flight turn's own row (the live tail owns it).
  */
 export function attributeCorpus(
   corpus: readonly AgentHistoryEvent[],
   hostFingerprints: ReadonlyArray<string | undefined>,
   liveFingerprint: string | undefined,
+  hiddenPrefixAllowed = false,
 ): CorpusAttribution {
   const none = { attributed: [], leading: [] };
   const split = partitionAtUserRows(corpus);
   let candidates = split.partitions;
   let trailingLive: AgentHistoryEvent | undefined;
   const trailing = candidates.at(-1);
-  if (trailing !== undefined && candidates.length === hostFingerprints.length + 1) {
-    if (liveFingerprint === undefined || userRowFingerprint(trailing.userRow) !== liveFingerprint) {
-      return none;
-    }
+  if (
+    trailing !== undefined &&
+    liveFingerprint !== undefined &&
+    candidates.length > hostFingerprints.length &&
+    userRowFingerprint(trailing.userRow) === liveFingerprint
+  ) {
     trailingLive = trailing.userRow;
     candidates = candidates.slice(0, -1);
   }
-  if (candidates.length !== hostFingerprints.length) return none;
+  const hidden = candidates.length - hostFingerprints.length;
+  if (hidden < 0 || (!hiddenPrefixAllowed && hidden > 0)) return none;
+  const aligned = candidates.slice(hidden);
   const attributed: ProviderPartition[] = [];
-  for (let i = 0, len = candidates.length; i < len; i++) {
+  for (let i = 0, len = aligned.length; i < len; i++) {
     const hostFingerprint = hostFingerprints[i];
     if (
       hostFingerprint === undefined ||
-      userRowFingerprint(candidates[i].userRow) !== hostFingerprint
+      userRowFingerprint(aligned[i].userRow) !== hostFingerprint
     ) {
       break;
     }
-    attributed.push(candidates[i]);
+    attributed.push(aligned[i]);
   }
-  if (attributed.length === 0) return none;
+  // Anchored at the end, one mismatch leaves the whole alignment unproven.
+  if (attributed.length === 0 || (hidden > 0 && attributed.length !== aligned.length)) return none;
+  const leading = [...split.leading];
+  for (let i = 0; i < hidden; i++) {
+    const partition = candidates[i];
+    leading.push(partition.userRow);
+    for (let j = 0, len = partition.rest.length; j < len; j++) leading.push(partition.rest[j]);
+  }
   return {
     attributed,
-    leading: split.leading,
+    leading,
     // The live row is the successor of the LAST settled turn only when every position verified.
-    ...(attributed.length === candidates.length && trailingLive !== undefined && { trailingLive }),
+    ...(attributed.length === aligned.length && trailingLive !== undefined && { trailingLive }),
   };
 }
 
