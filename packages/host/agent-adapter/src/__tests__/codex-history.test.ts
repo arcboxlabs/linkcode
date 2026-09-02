@@ -24,6 +24,42 @@ function base64WithByteLength(bytes: number): string {
 }
 
 describe('mapCodexHistoryEvents', () => {
+  it('mints no branch cursors for a paginated rollout the pinned app-server cannot fork', () => {
+    const rows = [
+      { type: 'session_meta', payload: { id: 'thread', history_mode: 'paginated' } },
+      { type: 'turn_context', payload: { turn_id: 'turn-1' } },
+      responseItem({
+        type: 'message',
+        id: 'first-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'first' }],
+      }),
+      { type: 'turn_context', payload: { turn_id: 'turn-2' } },
+      responseItem({
+        type: 'message',
+        id: 'second-prompt',
+        role: 'user',
+        content: [{ type: 'input_text', text: 'second' }],
+      }),
+    ];
+
+    const prompts = mapCodexHistoryEvents(HID, rows).filter(
+      (event) => event.event.type === 'user-message',
+    );
+    expect(prompts).toHaveLength(2);
+    expect(
+      prompts.map((entry) => entry.event.type === 'user-message' && entry.event.branchCursor),
+    ).toEqual([undefined, undefined]);
+
+    const legacy = mapCodexHistoryEvents(HID, [
+      { type: 'session_meta', payload: { id: 'thread', history_mode: 'legacy' } },
+      ...rows.slice(1),
+    ]).filter((event) => event.event.type === 'user-message');
+    expect(
+      legacy.every((entry) => entry.event.type === 'user-message' && entry.event.branchCursor),
+    ).toBe(true);
+  });
+
   it('maps each prompt to the previous completed turn', () => {
     const events = mapCodexHistoryEvents(HID, [
       { type: 'turn_context', payload: { turn_id: 'turn-1' } },

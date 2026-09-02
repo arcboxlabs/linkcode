@@ -1,11 +1,13 @@
 import type { AgentEvent, EffortLevel, StartOptions } from '@linkcode/schema';
 import { textBlock } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { encodeHistoryBranchCursor } from '../history-branch';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../history-branch';
 import { asHistoryId } from '../history-util';
 import { CodexAdapter } from '../native/codex';
 import type { CodexServerHandle } from '../native/codex/adapter';
 import type { CodexAppServerOptions } from '../native/codex/app-server';
+import type { CodexTranscriptSummary } from '../native/codex/history';
 
 function reasoningEfforts(...efforts: string[]) {
   return efforts.map((reasoningEffort) => ({ reasoningEffort, description: reasoningEffort }));
@@ -114,6 +116,11 @@ class TestCodex extends CodexAdapter {
   emptyModelList = false;
   rejectMethod: string | undefined;
   threadResponse: unknown;
+  /** The rollout summary a fork pre-checks; undefined = no rollout on disk (fork proceeds). */
+  transcriptSummary: CodexTranscriptSummary | undefined;
+  protected override findTranscript(): Promise<CodexTranscriptSummary | undefined> {
+    return Promise.resolve(this.transcriptSummary);
+  }
   protected override startAppServer(
     opts: Omit<CodexAppServerOptions, 'binaryPath'>,
   ): Promise<CodexServerHandle> {
@@ -161,6 +168,66 @@ describe('CodexAdapter history branching', () => {
       method: 'thread/resume',
       params: expect.objectContaining({ threadId: 'forked-thread', excludeTurns: true }),
     });
+  });
+
+  it('refuses a paginated rollout typed, before spawning a fork server', async () => {
+    const adapter = new TestCodex();
+    adapter.transcriptSummary = { id: 'source-thread', historyMode: 'paginated' };
+    const historyId = asHistoryId('source-thread');
+
+    await expect(
+      adapter.branchHistory(
+        { historyId, cursor: encodeHistoryBranchCursor('codex', historyId, 'turn-7') },
+        start,
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
+    expect(adapter.fakeServers).toHaveLength(0);
+  });
+
+  it('maps a thread/fork JSON-RPC refusal to the typed checkpoint error', async () => {
+    const adapter = new TestCodex();
+    adapter.rejectMethod = 'thread/fork';
+    const historyId = asHistoryId('source-thread');
+
+    await expect(
+      adapter.branchHistory(
+        { historyId, cursor: encodeHistoryBranchCursor('codex', historyId, 'turn-gone') },
+        start,
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
+    expect(adapter.fakeServers).toHaveLength(1);
+    expect(adapter.fakeServers[0].closed).toBe(true);
+  });
+
+  it('mints the completed turn id as the fork checkpoint (lastTurnId is inclusive)', async () => {
+    const adapter = new TestCodex();
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start(start);
+    const server = adapter.fakeServers[0];
+
+    await adapter.send({ type: 'shell-command', command: 'echo hi' });
+    driveShellTurn(server, {
+      itemId: 'item-1',
+      turnId: 'turn-9',
+      itemStatus: 'completed',
+      exitCode: 0,
+    });
+
+    expect(checkpoints).toEqual([
+      {
+        historyId: 'thread-1',
+        cursor: encodeHistoryBranchCursor('codex', asHistoryId('thread-1'), 'turn-9'),
+        turn: 'ending',
+      },
+    ]);
+    expect(events.at(-2)).toEqual({ type: 'stop', stopReason: 'end_turn' });
+
+    server.notify('turn/started', { turn: { id: 'turn-10' } });
+    server.notify('turn/completed', { turn: { id: 'turn-10', status: 'interrupted' } });
+    expect(checkpoints).toHaveLength(1);
   });
 
   it('starts an empty thread for the first-prompt cursor', async () => {

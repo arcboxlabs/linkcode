@@ -2,6 +2,9 @@ import type { AgentEvent } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor } from '../history-branch';
+import { asHistoryId } from '../history-util';
 import { OpenCodeAdapter } from '../native/opencode';
 
 const sdkMock = vi.hoisted(
@@ -153,6 +156,24 @@ function pushIdle(): void {
     type: 'session.idle',
     properties: { sessionID: 'sess-1' },
   });
+}
+
+function userMessageUpdated(id: string, eventId: string) {
+  return {
+    id: eventId,
+    type: 'message.updated' as const,
+    properties: {
+      sessionID: 'sess-1',
+      info: {
+        id,
+        sessionID: 'sess-1',
+        role: 'user' as const,
+        time: { created: 0 },
+        agent: 'build',
+        model: { providerID: 'openai', modelID: 'gpt-5.5' },
+      },
+    },
+  };
 }
 
 /** The server's on-stream acknowledgement that the active turn is running — always precedes the
@@ -385,6 +406,31 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       'mcp__notion__search_pages',
       'bash',
       'repo__prod_search_files',
+    ]);
+  });
+
+  it('mints each user message id once as the preceding turn’s fork checkpoint', async () => {
+    const { adapter } = await makeAdapter();
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
+
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1'));
+    // A late re-emit of a settled prompt (observed on 1.17.11) must not re-mint its cut.
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-again'));
+    client.stream.push(userMessageUpdated('msg-user-2', 'e-u2'));
+    await drained();
+
+    expect(checkpoints).toEqual([
+      {
+        historyId: 'sess-1',
+        cursor: encodeHistoryBranchCursor('opencode', asHistoryId('sess-1'), 'msg-user-1'),
+        turn: 'preceding',
+      },
+      {
+        historyId: 'sess-1',
+        cursor: encodeHistoryBranchCursor('opencode', asHistoryId('sess-1'), 'msg-user-2'),
+        turn: 'preceding',
+      },
     ]);
   });
 

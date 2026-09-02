@@ -33,7 +33,7 @@ import { renderBrowserToolResult } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import type { AgentCredential } from '../../credential';
 import { readAgentCredential } from '../../credential';
-import { decodeHistoryBranchCursor } from '../../history-branch';
+import { decodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../../history-branch';
 import { asHistoryId } from '../../history-util';
 import { agentRuntimeProber } from '../../probe';
 import {
@@ -298,7 +298,9 @@ export class PiAdapter extends BaseAgentAdapter {
     const predecessor = decodeHistoryBranchCursor(opts.cursor, 'pi', opts.historyId);
     const pi = await this.importSdk();
     const file = await findPiSessionFile(opts.historyId);
-    if (!file) throw new Error(`pi: history '${opts.historyId}' was not found`);
+    if (!file) {
+      throw new HistoryCheckpointInvalidError(`pi: history '${opts.historyId}' was not found`);
+    }
     const sourceManager = pi.SessionManager.open(file);
     if (predecessor === null) {
       this.pendingBranchManager = pi.SessionManager.create(
@@ -308,7 +310,9 @@ export class PiAdapter extends BaseAgentAdapter {
       );
     } else {
       if (!sourceManager.getEntry(predecessor)) {
-        throw new Error(`pi: history branch predecessor '${predecessor}' was not found`);
+        throw new HistoryCheckpointInvalidError(
+          `pi: checkpoint '${predecessor}' is no longer in history '${opts.historyId}'`,
+        );
       }
       sourceManager.createBranchedSession(predecessor);
       this.pendingBranchManager = sourceManager;
@@ -726,7 +730,13 @@ export class PiAdapter extends BaseAgentAdapter {
     if (this.finalOutcome.stopReason === 'aborted') this.emitStop('cancelled');
     else if (this.finalOutcome.stopReason === 'error') {
       this.emitProviderError(this.finalOutcome.errorMessage ?? 'Pi agent failed');
-    } else this.emitStop('end_turn');
+    } else {
+      // The session file is a tree: the leaf after a settled turn is what `createBranchedSession`
+      // branches from, and the next user entry's `parentId`.
+      const leafId = this.session?.sessionManager.getLeafId();
+      if (leafId && this.session) this.emitCheckpoint(asHistoryId(this.session.sessionId), leafId);
+      this.emitStop('end_turn');
+    }
     this.emitStatus('idle');
   }
 }

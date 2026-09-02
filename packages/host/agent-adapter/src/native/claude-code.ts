@@ -71,7 +71,11 @@ import type {
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
-import { decodeHistoryBranchCursor, encodeHistoryBranchCursor } from '../history-branch';
+import {
+  decodeHistoryBranchCursor,
+  encodeHistoryBranchCursor,
+  HistoryCheckpointInvalidError,
+} from '../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -463,6 +467,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
+  /** Transcript row uuid of the turn's last main-agent assistant frame — the row the next user
+   * row hangs off (its `parentUuid`), so a fork through it is the chain-correct cut (CODE-633). */
+  private lastAssistantUuid: string | undefined;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
   private stopped = false;
   /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
@@ -678,6 +685,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     const predecessor = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
     if (predecessor !== null) {
+      // forkSession would throw on an unknown uuid too, but untyped; the raw transcript is the
+      // authority on whether the checkpoint row still exists (deleted or rewritten history).
+      const supplement = await this.readTranscriptSupplement(opts.historyId);
+      if (!supplement.parentUuidByUuid.has(predecessor)) {
+        throw new HistoryCheckpointInvalidError(
+          `claude-code: checkpoint ${predecessor} is no longer in transcript ${opts.historyId}`,
+        );
+      }
       const mod = await this.loadSdk(
         '@anthropic-ai/claude-agent-sdk',
         () => import('@anthropic-ai/claude-agent-sdk'),
@@ -863,6 +878,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       parent_tool_use_id: null,
     };
     this.turnActive = true;
+    this.lastAssistantUuid = undefined;
     this.emitStatus('running');
     try {
       if (this.inputQueue) {
@@ -1421,6 +1437,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id);
       return;
     }
+    this.lastAssistantUuid = msg.uuid;
     const message = msg.message;
     // Every assistant frame carries the served model — the source of truth for a mid-session switch
     // (`init` fires only at Query creation, so it can't catch a live `setModel`).
@@ -1553,6 +1570,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         cacheCreationTokens: numberField(usage, 'cache_creation_input_tokens'),
         totalCostUsd: msg.total_cost_usd,
       });
+      if (this.lastSessionRef && this.lastAssistantUuid) {
+        this.emitCheckpoint(asHistoryId(this.lastSessionRef), this.lastAssistantUuid);
+      }
       this.emitStop(mapClaudeStop(msg.stop_reason));
     } else if (cancelling) {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real

@@ -36,7 +36,7 @@ import type { AgentHistoryReadContext, AgentStartCatalogOptions } from '../../ad
 import { AUTH_FAILED_ERROR_CODE, nextToolCallId } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import { readAgentCredential } from '../../credential';
-import { decodeHistoryBranchCursor } from '../../history-branch';
+import { decodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../../history-branch';
 import { asHistoryId, boundedLimit, cursorFromTotal, cursorOffset } from '../../history-util';
 import {
   contentToText,
@@ -284,6 +284,9 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `message.part.updated` for the user's own prompt text too (observed live on 1.17.11), and
    * replaying it would double-render the prompt as an agent bubble. Cleared at each turn settle. */
   private readonly userMessageIds = new Set<string>();
+  /** User message ids already minted as `preceding` checkpoints — never cleared per turn, so a
+   * late `message.updated` for a settled prompt cannot re-mint a cut for the wrong turn. */
+  private readonly checkpointedUserMessageIds = new Set<string>();
   /** Provider the spawn-time credential injection scoped to (null = nothing injected): the only
    * provider a mid-session set-model may target while a per-account credential is in play. */
   private credentialProviderId: string | null = null;
@@ -670,11 +673,24 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       'opencode: history branch cursor has no target prompt',
     );
     const childId = await this.withHistoryClient(async (client) => {
-      const source = okOrThrow(
-        await client.session.get({ sessionID: opts.historyId }),
-        'opencode: session.get',
-      );
-      invariant(source.data, 'opencode: session.get returned no session');
+      const source = await client.session.get({ sessionID: opts.historyId });
+      if (source.error !== undefined || !source.data) {
+        throw new HistoryCheckpointInvalidError(
+          `opencode: session ${opts.historyId} is no longer readable on the server`,
+        );
+      }
+      // The cut semantics on an unknown messageID are unverified: prove the message still exists
+      // before forking, or a vanished checkpoint could copy the whole session.
+      const target = await client.session.message({
+        sessionID: opts.historyId,
+        messageID,
+        directory: source.data.directory,
+      });
+      if (target.error !== undefined || !target.data) {
+        throw new HistoryCheckpointInvalidError(
+          `opencode: checkpoint ${messageID} is no longer in session ${opts.historyId}`,
+        );
+      }
       const forked = okOrThrow(
         await client.session.fork({
           sessionID: opts.historyId,
@@ -965,6 +981,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
             const { info } = ev.properties;
             if (info.role === 'user') {
               this.userMessageIds.add(info.id);
+              // `session.fork {messageID}` cuts BEFORE the message, so a prompt's own id is the
+              // checkpoint of the turn that preceded it (a tip has none until its successor).
+              if (!this.checkpointedUserMessageIds.has(info.id)) {
+                this.checkpointedUserMessageIds.add(info.id);
+                this.emitCheckpoint(asHistoryId(this.sessionId), info.id, 'preceding');
+              }
               this.reflectTurnModel(`${info.model.providerID}/${info.model.modelID}`);
             } else {
               this.reflectTurnModel(`${info.providerID}/${info.modelID}`);
