@@ -1,4 +1,6 @@
 import type {
+  AgentHistoryId,
+  AgentKind,
   ConversationReadItem,
   ConversationWatermark,
   SessionId,
@@ -6,6 +8,7 @@ import type {
 } from '@linkcode/schema';
 import { isErrorLikeObject } from 'foxts/extract-error-message';
 import type { LinkCodeClient } from './client';
+import type { ConversationSeed, ConversationSeedEvent } from './conversation';
 
 /**
  * A point-in-time projection of one lineage, read from the daemon's turn graph: host user rows,
@@ -91,4 +94,65 @@ async function walk(
 function isProjectionDrift(error: unknown): boolean {
   if (error instanceof ProjectionDriftError) return true;
   return isErrorLikeObject(error) && 'code' in error && error.code === 'conflict';
+}
+
+/** What a seed read needs to know about the session; `historyId` gates the transcript fallback. */
+export interface ConversationSeedSource {
+  sessionId: SessionId;
+  agentKind: AgentKind;
+  cwd: string;
+  historyId?: AgentHistoryId;
+}
+
+/** Transcript pages one history read follows before giving up on a buggy cursor. */
+const MAX_HISTORY_PAGES = 20;
+
+/**
+ * The seed a conversation store should fold for a session: the turn-graph projection when the
+ * host serves one for this session, else the provider transcript (≤v79 hosts, and sessions with no
+ * turn rows yet), else nothing — the store then runs live-only. Every client surface reads through
+ * here so the two paths and their fallback order live in one place.
+ */
+export async function readConversationSeed(
+  client: LinkCodeClient,
+  source: ConversationSeedSource,
+): Promise<ConversationProjectionSeed | ConversationSeed | undefined> {
+  if (client.supportsConversationGraph) {
+    const projection = await readConversationProjection(client, source.sessionId);
+    if (projection !== undefined) return projection;
+  }
+  if (source.historyId === undefined) return undefined;
+  return readHistorySeed(client, source.sessionId, source.agentKind, source.cwd, source.historyId);
+}
+
+/**
+ * The provider transcript as a point-in-time snapshot: pages walked to the end, the first page
+ * bypassing the daemon's history cache so the snapshot is current. `uptoSeq` (the live receive
+ * counter sampled at resolve) marks the cut: live events ≤ it are in the snapshot.
+ */
+async function readHistorySeed(
+  client: LinkCodeClient,
+  sessionId: SessionId,
+  agentKind: AgentKind,
+  cwd: string,
+  historyId: AgentHistoryId,
+): Promise<ConversationSeed> {
+  const events: ConversationSeedEvent[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_HISTORY_PAGES; page += 1) {
+    // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
+    const result = await client.readHistory(agentKind, {
+      historyId,
+      cwd,
+      cursor,
+      forceRefresh: page === 0,
+    });
+    for (let i = 0, len = result.events.length; i < len; i++) {
+      const entry = result.events[i];
+      events.push({ event: entry.event, ts: entry.ts });
+    }
+    cursor = result.cursor;
+    if (cursor === undefined) break;
+  }
+  return { events, uptoSeq: client.eventSeq(sessionId) };
 }

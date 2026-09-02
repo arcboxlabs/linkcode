@@ -5,15 +5,19 @@ import type {
   MessageId,
   SessionId,
   SessionInfo,
+  TurnId,
   WirePayload,
 } from '@linkcode/schema';
+import { userRowMessageId } from '@linkcode/schema';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { renderHook, waitFor } from '@testing-library/react';
 import { expect, it } from 'vitest';
+import type { ControlledTransport } from './client-test-helpers';
 import { clientWrapper, connectClient } from './client-test-helpers';
 
 const SESSION = 'session-1' as SessionId;
 const HISTORY = 'history-1' as AgentHistoryId;
+const TURN = 'turn-1' as TurnId;
 
 const SESSION_INFO: SessionInfo = {
   sessionId: SESSION,
@@ -25,7 +29,7 @@ const SESSION_INFO: SessionInfo = {
   historyId: HISTORY,
 };
 
-/** Same session with no `historyId`, so the seed read short-circuits and only attach runs. */
+/** Same session with no `historyId`: without a turn graph there is nothing left to read. */
 const NO_HISTORY: SessionInfo = { ...SESSION_INFO, historyId: undefined };
 
 function kinds(sent: readonly WirePayload[]): string[] {
@@ -40,6 +44,21 @@ async function mountSeeded(sessionId: SessionId | null, session: SessionInfo | n
   return { transport, client, view };
 }
 
+/** Answer the newest `conversation.read` as the daemon would for a session without turn rows. */
+async function answerEmptyGraph(transport: ControlledTransport): Promise<void> {
+  await waitFor(() => expect(kinds(transport.sent)).toContain('conversation.read'));
+  const read = transport.sent.findLast((payload) => payload.kind === 'conversation.read');
+  if (read?.kind !== 'conversation.read') throw new Error('no conversation.read');
+  transport.receive({
+    kind: 'conversation.read.result',
+    replyTo: read.clientReqId,
+    sessionId: SESSION,
+    graphRevision: 0,
+    watermark: { epoch: 0, seq: 0 },
+    events: [],
+  });
+}
+
 it('announces the route session before the session list resolves', async () => {
   // The screen has the id from the route immediately but `SessionInfo` only a round-trip later.
   // Waiting for it would let the connection sit in `attached` scope with nothing announced, and
@@ -47,21 +66,30 @@ it('announces the route session before the session list resolves', async () => {
   const { transport, client } = await mountSeeded(SESSION, null);
 
   expect(transport.sent).toContainEqual({ kind: 'session.attach', sessionId: SESSION });
+  expect(kinds(transport.sent)).not.toContain('conversation.read');
   expect(kinds(transport.sent)).not.toContain('history.read');
   client.dispose();
 });
 
-it('announces the session before reading its history', async () => {
+it('announces the session, reads its turn graph, and falls back to the transcript', async () => {
   const { transport, client } = await mountSeeded(SESSION, SESSION_INFO);
 
-  await waitFor(() => expect(kinds(transport.sent)).toContain('history.read'));
   // Attaching first is what asks the daemon to re-broadcast the buffered per-session state; the
-  // read then walks the transcript. Reversed, the re-broadcast would land after the seed sampled
-  // its cut.
+  // read then follows. Reversed, the re-broadcast would land after the seed sampled its cut.
+  await answerEmptyGraph(transport);
+  await waitFor(() => expect(kinds(transport.sent)).toContain('history.read'));
   expect(kinds(transport.sent).indexOf('session.attach')).toBeLessThan(
-    kinds(transport.sent).indexOf('history.read'),
+    kinds(transport.sent).indexOf('conversation.read'),
   );
-  expect(transport.sent).toContainEqual({ kind: 'session.attach', sessionId: SESSION });
+  client.dispose();
+});
+
+it('reads nothing further for a graph-less session without a transcript', async () => {
+  const { transport, client } = await mountSeeded(SESSION, NO_HISTORY);
+
+  await answerEmptyGraph(transport);
+  await waitFor(() => expect(kinds(transport.sent)).toContain('conversation.read'));
+  expect(kinds(transport.sent)).not.toContain('history.read');
   client.dispose();
 });
 
@@ -87,8 +115,55 @@ it('announces nothing when there is no session to observe', async () => {
   client.dispose();
 });
 
+it('seeds from the turn-graph projection and re-reads when the store asks to', async () => {
+  const { transport, client, view } = await mountSeeded(SESSION, SESSION_INFO);
+  await waitFor(() => expect(kinds(transport.sent)).toContain('conversation.read'));
+  const read = transport.sent.find((payload) => payload.kind === 'conversation.read');
+  if (read?.kind !== 'conversation.read') throw new Error('no conversation.read');
+  transport.receive({
+    kind: 'conversation.read.result',
+    replyTo: read.clientReqId,
+    sessionId: SESSION,
+    graphRevision: 1,
+    leafTurnId: TURN,
+    watermark: { epoch: 1, seq: 1 },
+    events: [
+      {
+        turnId: TURN,
+        event: {
+          type: 'user-message',
+          messageId: userRowMessageId(TURN),
+          content: [{ type: 'text', text: 'hi' }],
+        },
+      },
+    ],
+  });
+
+  await waitFor(() =>
+    expect(view.result.current.items).toContainEqual(
+      expect.objectContaining({ kind: 'message', role: 'user', id: userRowMessageId(TURN) }),
+    ),
+  );
+  // A projection covers the transcript; the legacy read never runs.
+  expect(kinds(transport.sent)).not.toContain('history.read');
+
+  // A relaunch (new epoch) must be re-read: the hook answers the store's request with a fresh read.
+  transport.receive({
+    kind: 'agent.event',
+    sessionId: SESSION,
+    epoch: 2,
+    seq: 1,
+    event: { type: 'status', status: 'running' },
+  });
+  await waitFor(() =>
+    expect(kinds(transport.sent).filter((kind) => kind === 'conversation.read')).toHaveLength(2),
+  );
+  client.dispose();
+});
+
 it('keeps an ask the re-broadcast delivered before the seed cut', async () => {
   const { transport, client, view } = await mountSeeded(SESSION, SESSION_INFO);
+  await answerEmptyGraph(transport);
   await waitFor(() => expect(kinds(transport.sent)).toContain('history.read'));
 
   // What `session.attach` buys: an ask raised while the thread was closed. It arrives before the
