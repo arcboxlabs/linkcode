@@ -5,6 +5,7 @@ import type {
   ConversationOperation,
   ConversationTurn,
   ConversationTurnState,
+  MessageId,
   OperationId,
   PromptBlock,
   PromptId,
@@ -16,6 +17,7 @@ import type {
   TurnId,
   TurnInput,
 } from '@linkcode/schema';
+import { MessageIdSchema } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -34,6 +36,12 @@ function mintTurnId(): TurnId {
 
 function mintPromptId(): PromptId {
   return `prompt-${randomUUID()}` as PromptId;
+}
+
+/** The one identity of a turn's user row: the live echo and every `conversation.read` mint it,
+ * so clients converge on one row per turn without reconciling host and provider ids. */
+export function userRowMessageId(turnId: TurnId): MessageId {
+  return MessageIdSchema.parse(`msg-${turnId}`);
 }
 
 /** Durable prompt blocks from legacy prompt content: text only for now — binary attachments
