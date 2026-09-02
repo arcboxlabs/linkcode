@@ -135,7 +135,11 @@ export class SessionEventProcessor {
       ) {
         return;
       }
-      // Captured before the settle below so a turn-ending event still carries its turn.
+      // `running` promotes the dispatching turn first so this frame already carries it; captured
+      // before the settle below so a turn-ending event still carries its turn.
+      if (event.type === 'status' && event.status === 'running') {
+        this.turns.noteRunning(sessionId, session.runId);
+      }
       const turnId = this.turns.runningTurnId(sessionId, session.runId);
       const derived = session.apply(event);
       for (let i = 0, len = derived.length; i < len; i++) {

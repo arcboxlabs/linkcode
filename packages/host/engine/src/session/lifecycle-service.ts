@@ -622,9 +622,11 @@ export class SessionLifecycleService {
               // Tip-continue on the active lineage: the provider history head IS this leaf.
               launch = { type: 'continue' };
             } else {
-              // A valid checkpoint forks — including at an inactive tip, whose provider history
-              // may since have branched in place (pi). Without one, a tip is continued by
-              // resuming the history its own run wrote to; an interior turn is fork-unavailable.
+              // A valid checkpoint forks — including at an inactive tip: pi's fork writes a new
+              // file, and the tip's own history may have grown outside LinkCode (CLI/TUI use), so
+              // a forking harness never continues a tip blind. Only a harness that cannot fork
+              // continues a tip by resuming the history its own run wrote to; an interior turn
+              // is fork-unavailable.
               const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
               const cut = forkable
                 ? yield* checkpoints.forkCutAfter(record, parent.turnId)
@@ -638,6 +640,13 @@ export class SessionLifecycleService {
                     message: forkable
                       ? 'This turn has no provider checkpoint to fork from'
                       : `${record.kind}: forking from an earlier turn is not supported`,
+                  }),
+                );
+              } else if (forkable) {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'unsupported',
+                    message: 'This turn has no provider checkpoint to continue from',
                   }),
                 );
               } else {

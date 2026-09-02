@@ -103,6 +103,29 @@ class ForkingAdapter extends FakeAdapter {
   }
 }
 
+/** send() spans the whole turn (pi/grok): `running`, then a gate, then the turn's own checkpoint,
+ * stop, and idle — all before it resolves. */
+class GatedWholeTurnAdapter extends ForkingAdapter {
+  release: () => void = noop;
+
+  override async send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    if (input.type !== 'prompt') return;
+    this.emit({ type: 'status', status: 'running' });
+    await new Promise<void>((resolve) => {
+      this.release = resolve;
+    });
+    const text = input.content[0]?.type === 'text' ? input.content[0].text : 'prompt';
+    this.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: `after-${text}`,
+      turn: 'ending',
+    });
+    this.emit({ type: 'stop', stopReason: 'end_turn' });
+    this.emit({ type: 'status', status: 'idle' });
+  }
+}
+
 class LegacyBranchOnlyAdapter extends ForkingAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
@@ -507,13 +530,89 @@ describe('turn.submit saga', () => {
     });
     await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
 
-    // pi branches in place: the file's current leaf may be another lineage, so a tip with a
-    // checkpoint goes through the checkpoint, not through a resume of "its" history.
+    // The tip's history may have grown outside LinkCode since, so a tip with a checkpoint goes
+    // through the checkpoint, not through a resume of "its" history.
     expect(forkedAdapter(h.adapters).branchedFrom).toEqual({
       historyId: 'native-1',
       cursor: 'cp-1',
     });
     expect(h.adapters.some((adapter) => adapter.resumedFrom === 'native-1')).toBe(false);
+  });
+
+  it('refuses to resume a checkpoint-less inactive tip on a forking harness', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const fresh = nullthrow(h.adapters[1]);
+    fresh.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    fresh.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(h, 's3', 'continue the old version', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+
+    // Its own run's history may have grown outside LinkCode (or the capture was lost): a blind
+    // resume would land the prompt on unknown content.
+    expect(failure(h.sent, 's3')).toMatchObject({
+      code: 'unsupported',
+      message: 'This turn has no provider checkpoint to continue from',
+    });
+    expect(h.adapters.some((adapter) => adapter.resumedFrom === 'native-1')).toBe(false);
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(2);
+  });
+
+  it('tracks a whole-turn send as running before it resolves, so its own stop settles it and it stays forkable', async () => {
+    const h = await startedHarness(() => new GatedWholeTurnAdapter());
+    const adapter = h.adapter as GatedWholeTurnAdapter;
+    adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    await submitPrompt(h, 's1', 'first');
+
+    // Committed off the adapter's `running`, while send() is still in flight.
+    await vi.waitFor(async () => {
+      expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('running');
+    });
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(1);
+    adapter.release();
+    await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    await settleEngineTasks();
+    // The turn's own stop settled THIS turn, with its checkpoint bound; no second commit.
+    expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('completed');
+    expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
+      expect.objectContaining({ checkpoint: 'after-first', capturedFrom: 'live' }),
+    ]);
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(1);
+
+    await submitPrompt(h, 's2', 'second');
+    await vi.waitFor(() => expect(adapter.sentInputs).toHaveLength(2));
+    adapter.release();
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    await settleEngineTasks();
+    // Stopping the idle session leaves the finished turns alone — nothing is stranded `running`.
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
+    expect((await h.conversationStore.listTurns(h.sessionId)).map((turn) => turn.state)).toEqual([
+      'completed',
+      'completed',
+    ]);
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => expect(forkedAdapter(h.adapters).sentInputs).toHaveLength(1));
+    (forkedAdapter(h.adapters) as GatedWholeTurnAdapter).release();
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+    expect(forkedAdapter(h.adapters).branchedFrom).toEqual({
+      historyId: 'native-1',
+      cursor: 'after-first',
+    });
   });
 
   it('replays the fork cut from an aligned cold read when no live checkpoint was captured', async () => {
