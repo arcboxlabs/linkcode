@@ -18,11 +18,15 @@ export interface CorpusAttribution {
   readonly trailingLive?: AgentHistoryEvent;
 }
 
-/** Whether provider rows can precede the lineage's root turn: an imported transcript, or a root
- * recorded on a later run of a created session (a session older than its turn rows). A created
- * session's first run starts empty, so nothing precedes a root there. */
+/** Whether provider rows can precede the lineage's root turn: an imported transcript, or a created
+ * session whose earlier runs wrote provider history before the root was recorded (a session older
+ * than its turn rows). A run that died before its first prompt left nothing behind. */
 export function hasHiddenPrefix(record: SessionRecord, root: ConversationTurn): boolean {
-  return record.origin.type !== 'created' || root.runId !== record.runs[0]?.runId;
+  if (record.origin.type !== 'created') return true;
+  const index = record.runs.findIndex((run) => run.runId === root.runId);
+  // A root whose run cannot be placed (a pre-runId record) takes the safe direction.
+  if (index < 0) return true;
+  return record.runs.slice(0, index).some((run) => run.historyId !== undefined);
 }
 
 /** Root→leaf path through `parentTurnId`; a broken chain fails loud rather than rendering wrong. */
@@ -55,7 +59,8 @@ export function pathToLeaf(
  * never search for one. With as many partitions as settled host turns the alignment is anchored at
  * the START and the FIRST mismatch degrades that turn and every later one to placeholders, never
  * resynced positionally. With MORE partitions — allowed only where hidden pre-graph history can
- * exist — the host turns align to the LAST partitions and every position must verify, else nothing
+ * exist — the host turns align to the LAST partitions, every position must verify, and no other
+ * offset may verify in full (repeated prompts let a shifted alignment verify too), else nothing
  * attributes; the unmatched head is hidden history. One trailing extra partition is tolerated only
  * when it fingerprint-verifies as the in-flight turn's own row (the live tail owns it).
  */
@@ -67,34 +72,37 @@ export function attributeCorpus(
 ): CorpusAttribution {
   const none = { attributed: [], leading: [] };
   const split = partitionAtUserRows(corpus);
-  let candidates = split.partitions;
+  const { partitions } = split;
+  let candidates = partitions;
   let trailingLive: AgentHistoryEvent | undefined;
-  const trailing = candidates.at(-1);
+  const trailing = partitions.at(-1);
   if (
     trailing !== undefined &&
     liveFingerprint !== undefined &&
-    candidates.length > hostFingerprints.length &&
+    partitions.length > hostFingerprints.length &&
     userRowFingerprint(trailing.userRow) === liveFingerprint
   ) {
     trailingLive = trailing.userRow;
-    candidates = candidates.slice(0, -1);
+    candidates = partitions.slice(0, -1);
   }
   const hidden = candidates.length - hostFingerprints.length;
   if (hidden < 0 || (!hiddenPrefixAllowed && hidden > 0)) return none;
   const aligned = candidates.slice(hidden);
   const attributed: ProviderPartition[] = [];
   for (let i = 0, len = aligned.length; i < len; i++) {
-    const hostFingerprint = hostFingerprints[i];
-    if (
-      hostFingerprint === undefined ||
-      userRowFingerprint(aligned[i].userRow) !== hostFingerprint
-    ) {
-      break;
-    }
+    if (!positionVerifies(aligned[i], hostFingerprints[i])) break;
     attributed.push(aligned[i]);
   }
-  // Anchored at the end, one mismatch leaves the whole alignment unproven.
-  if (attributed.length === 0 || (hidden > 0 && attributed.length !== aligned.length)) return none;
+  if (attributed.length === 0) return none;
+  // Anchored at the end (hidden rows ahead, or the live row peeled where hidden rows may exist),
+  // one mismatch leaves the whole alignment unproven — and so does any other offset that verifies
+  // in full: the replay binding a wrong alignment backfills is never corrected.
+  if (hiddenPrefixAllowed && (trailingLive !== undefined || hidden > 0)) {
+    if (attributed.length !== aligned.length) return none;
+    for (let k = 0, last = partitions.length - hostFingerprints.length; k <= last; k++) {
+      if (k !== hidden && windowVerifies(partitions, k, hostFingerprints)) return none;
+    }
+  }
   const leading = [...split.leading];
   for (let i = 0; i < hidden; i++) {
     const partition = candidates[i];
@@ -113,6 +121,25 @@ function userRowFingerprint(entry: AgentHistoryEvent): string | undefined {
   return entry.event.type === 'user-message'
     ? promptContentFingerprint(entry.event.content)
     : undefined;
+}
+
+function positionVerifies(
+  partition: ProviderPartition,
+  hostFingerprint: string | undefined,
+): boolean {
+  return hostFingerprint !== undefined && userRowFingerprint(partition.userRow) === hostFingerprint;
+}
+
+/** Whether the host turns verify against the partitions starting at `offset`, every position. */
+function windowVerifies(
+  partitions: readonly ProviderPartition[],
+  offset: number,
+  hostFingerprints: ReadonlyArray<string | undefined>,
+): boolean {
+  for (let i = 0, len = hostFingerprints.length; i < len; i++) {
+    if (!positionVerifies(partitions[offset + i], hostFingerprints[i])) return false;
+  }
+  return true;
 }
 
 /** Splits a provider corpus at its user rows: partition i is user row i plus what follows it. */
