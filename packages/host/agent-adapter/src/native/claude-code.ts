@@ -461,10 +461,11 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
-  /** Transcript row uuid of the turn's last main-agent assistant frame (one frame per persisted
-   * row) — a chain-correct inclusive fork cut. It is NOT the next user row's `parentUuid` whenever
-   * a Stop hook ran (every LinkCode query registers one): a `system/stop_hook_summary` row then
-   * sits between, so the cold-read cursor and this live checkpoint differ yet both fork validly. */
+  /** Transcript row uuid of the turn's last main-agent assistant frame — a chain-correct inclusive
+   * fork cut on the expectation, unverified on a live multi-block turn, that the SDK streams one
+   * frame per persisted row. It is NOT the next user row's `parentUuid` whenever a Stop hook ran
+   * (every LinkCode query registers one): a `system/stop_hook_summary` row then sits between, so
+   * the cold-read cursor and this live checkpoint differ yet both fork validly. */
   private lastAssistantUuid: string | undefined;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
   private stopped = false;

@@ -419,7 +419,7 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     });
   });
 
-  it('mints exactly one preceding checkpoint per turn: the prompt’s own user message', async () => {
+  it('mints exactly one preceding checkpoint per turn: the prompt’s own user message, first seen inside it', async () => {
     const { adapter, events } = await makeAdapter();
     const checkpoints: HistoryCheckpoint[] = [];
     adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
@@ -429,6 +429,9 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     await drained();
     await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'first' }] });
     pushBusy();
+    // The straggler re-emitted inside the turn, ahead of the prompt's own message: seen before
+    // the turn, so it is not this turn's cut.
+    client.stream.push(userMessageUpdated('msg-stale', 'e-stale-again'));
     client.stream.push(userMessageUpdated('msg-user-1', 'e-u1'));
     // A mid-turn compaction materializes as a second user message, and a settled prompt can be
     // re-emitted late (observed on 1.17.11): neither may move the cut past the turn's own prompt.
@@ -438,6 +441,9 @@ describe('OpenCodeAdapter.consumeEvents', () => {
     await vi.waitFor(() => expect(stops(events)).toHaveLength(1));
 
     await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'second' }] });
+    // The compaction message never minted, yet re-emitted in the next turn it is still not that
+    // turn's prompt.
+    client.stream.push(userMessageUpdated('msg-compaction', 'e-compaction-again'));
     client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-late'));
     client.stream.push(userMessageUpdated('msg-user-2', 'e-u2'));
     await drained();
