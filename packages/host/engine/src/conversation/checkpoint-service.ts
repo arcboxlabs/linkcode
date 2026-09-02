@@ -13,7 +13,7 @@ import type { HistoryService } from '../session/history-service';
 import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { CorpusAttribution } from './lineage-attribution';
-import { attributeCorpus, pathToLeaf } from './lineage-attribution';
+import { attributeCorpus, hasHiddenPrefix, pathToLeaf } from './lineage-attribution';
 import type { ConversationTurnService } from './turn-service';
 import { TERMINAL_TURN_STATES } from './turn-service';
 
@@ -107,7 +107,12 @@ export class ConversationCheckpointService {
           hostFingerprints.push(content && promptContentFingerprint(content));
         }
       }
-      const attribution = attributeCorpus(corpus, hostFingerprints, liveFingerprint);
+      const attribution = attributeCorpus(
+        corpus,
+        hostFingerprints,
+        liveFingerprint,
+        hasHiddenPrefix(record, path[0]),
+      );
       yield* backfill(expectsProvider, attribution, historyId);
       return attribution;
     });
@@ -185,7 +190,9 @@ export class ConversationCheckpointService {
   }
 
   /** Replay: `target`'s own user row on the active lineage carries the provider cursor that forks
-   * right before it. Only the active lineage aligns positionally (§9). */
+   * right before it. Only the active lineage aligns positionally (§9); a target off it shares its
+   * predecessor with the path's turn under the same parent ("before T" is "after parent(T)"), so
+   * that sibling's row names the same cut on the current history. */
   private replayCutBefore(
     record: SessionRecord,
     path: ConversationTurn[],
@@ -194,7 +201,10 @@ export class ConversationCheckpointService {
     const { records, turns } = this;
     const attributeActiveLineage = this.attributeActiveLineage.bind(this);
     return Effect.gen(function* () {
-      if (!path.some((turn) => turn.turnId === target.turnId)) return;
+      const anchor =
+        path.find((turn) => turn.turnId === target.turnId) ??
+        path.find((turn) => turn.parentTurnId === target.parentTurnId);
+      if (anchor === undefined) return;
       const contents: Array<ContentBlock[] | undefined> = [];
       for (let i = 0, len = path.length; i < len; i++) {
         contents.push(yield* turns.hostUserContent(path[i]));
@@ -202,11 +212,11 @@ export class ConversationCheckpointService {
       const attribution = yield* attributeActiveLineage(record, path, contents);
       const historyId = records.historyId(record.sessionId);
       if (attribution === undefined || historyId === undefined) return;
-      const position = settledWithProvider(path).findIndex((turn) => turn.turnId === target.turnId);
+      const position = settledWithProvider(path).findIndex((turn) => turn.turnId === anchor.turnId);
       const row =
         position >= 0
           ? attribution.attributed[position]?.userRow
-          : TERMINAL_TURN_STATES.has(target.state)
+          : TERMINAL_TURN_STATES.has(anchor.state)
             ? undefined
             : attribution.trailingLive;
       const cursor = row?.event.type === 'user-message' ? row.event.branchCursor : undefined;
