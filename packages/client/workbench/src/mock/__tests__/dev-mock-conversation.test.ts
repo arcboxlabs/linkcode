@@ -81,11 +81,15 @@ describe('dev mock host conversation parity', () => {
     if (read.kind !== 'conversation.read.result') throw new Error('no read result');
     expect(read.watermark).toBeDefined();
     expect(read.cursor).toBeUndefined();
-    expect(read.events).toHaveLength(2);
-    const [userRow, placeholder] = read.events;
+    // The attach replay precedes the turn in the journal; the echo is the turn's first frame.
+    const rowIndex = read.events.findIndex(
+      (item) => 'event' in item && item.event.type === 'user-message',
+    );
+    const userRow = read.events[rowIndex];
     if (!('event' in userRow) || userRow.event.type !== 'user-message') {
-      throw new Error('expected a user row first');
+      throw new Error('expected a user row');
     }
+    const placeholder = read.events[rowIndex + 1];
     expect(userRow.event.content).toEqual([{ type: 'text', text: '$ ls' }]);
     // Deterministic like the daemon: a re-read converges on the same row identity.
     expect(userRow.event.messageId).toBe(`msg-${submitted.turnId}`);
@@ -93,6 +97,80 @@ describe('dev mock host conversation parity', () => {
       type: 'history-unavailable',
       turnId: submitted.turnId,
     });
+    // The row is the stamped echo itself, and the watermark is the session's last position.
+    expect(userRow).toMatchObject({ turnId: submitted.turnId, epoch: 0 });
+    expect(read.watermark).toEqual({ epoch: 0, seq: userRow.seq });
+  }, 15000);
+
+  it('stamps every frame, records legacy prompts as turns, and replays them on a read', async () => {
+    const { sent, request } = createHost();
+    const started = await request(
+      { kind: 'session.start', clientReqId: 'r1', opts: { kind: 'claude-code', cwd: '/mock' } },
+      'r1',
+    );
+    if (started.kind !== 'session.started') throw new Error('session did not start');
+    const sessionId = started.sessionId;
+
+    await request(
+      {
+        kind: 'agent.input',
+        clientReqId: 'p1',
+        sessionId,
+        input: { type: 'prompt', content: [{ type: 'text', text: 'hello mock' }] },
+      },
+      'p1',
+    );
+    const frames = sent.filter(
+      (payload) => payload.kind === 'agent.event' && payload.sessionId === sessionId,
+    );
+    // One epoch per launch, contiguous seqs: what the client's merge relies on.
+    expect(frames.map((frame) => frame.kind === 'agent.event' && frame.epoch)).toEqual(
+      frames.map(() => 0),
+    );
+    expect(frames.map((frame) => frame.kind === 'agent.event' && frame.seq)).toEqual(
+      frames.map((_, index) => index + 1),
+    );
+
+    const graph = await request(
+      { kind: 'conversation.graph.get', clientReqId: 'g1', sessionId },
+      'g1',
+    );
+    if (graph.kind !== 'conversation.graph.result') throw new Error('no graph result');
+    expect(graph.turns).toHaveLength(1);
+    const [turn] = graph.turns;
+    expect(turn).toMatchObject({ state: 'completed', input: { type: 'prompt' } });
+    expect(sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'conversation.graph.changed',
+        sessionId,
+        graphRevision: 1,
+        activeLeafTurnId: turn.turnId,
+      }),
+    );
+
+    // A re-read reproduces exactly the frames the client already folded, under the same ids.
+    const read = await request({ kind: 'conversation.read', clientReqId: 'c1', sessionId }, 'c1');
+    if (read.kind !== 'conversation.read.result') throw new Error('no read result');
+    expect(read.leafTurnId).toBe(turn.turnId);
+    expect(read.events.filter((item) => 'event' in item)).toHaveLength(frames.length);
+    expect(read.events).toContainEqual(
+      expect.objectContaining({
+        turnId: turn.turnId,
+        event: expect.objectContaining({
+          type: 'user-message',
+          messageId: `msg-${turn.turnId}`,
+        }),
+      }),
+    );
+    expect(read.watermark).toEqual({ epoch: 0, seq: frames.length });
+
+    // A relaunch mints under the next epoch.
+    await request({ kind: 'session.stop', clientReqId: 'stop', sessionId }, 'stop');
+    await request({ kind: 'session.resume', clientReqId: 'resume', sessionId }, 'resume');
+    const resumed = sent.findLast(
+      (payload) => payload.kind === 'agent.event' && payload.sessionId === sessionId,
+    );
+    expect(resumed).toMatchObject({ epoch: 1, seq: expect.any(Number) as number });
   }, 15000);
 
   it('fails loudly on parameters it would otherwise ignore', async () => {

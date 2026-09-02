@@ -49,6 +49,7 @@ import {
   normalizeCwdKey,
   SessionResourceIdSchema,
   textBlock,
+  userRowMessageId,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage, pong } from '@linkcode/transport';
@@ -131,7 +132,15 @@ interface MockSession extends SessionInfo {
   effort?: EffortLevel;
   /** Bumped by cancel/stop so an in-flight prompt turn knows to bail out. */
   epoch: number;
-  /** Minimal turn tree: one lineage appended per `turn.submit` (showcase parity). */
+  /** The daemon's event-plane position: `eventEpoch` bumps per resume, `eventSeq` per frame. */
+  eventEpoch: number;
+  eventSeq: number;
+  /** Every stamped frame ever emitted — the mock's stand-in for provider history, so a
+   * `conversation.read` reproduces exactly what a client already had. */
+  journal: MockJournalEntry[];
+  /** The turn the next frames are attributed to; set from a turn's start until it settles. */
+  runningTurnId?: TurnId;
+  /** Minimal turn tree: one lineage appended per turn-starting input (showcase parity). */
   graphTurns: MockTurn[];
   showcase?: boolean;
   showcaseSeeded?: boolean;
@@ -143,6 +152,14 @@ interface MockSession extends SessionInfo {
 interface MockTurn {
   graph: ConversationGraphTurn;
   content: ContentBlock[];
+}
+
+interface MockJournalEntry {
+  epoch: number;
+  seq: number;
+  ts: number;
+  turnId?: TurnId;
+  event: AgentEvent;
 }
 
 interface PendingPermission {
@@ -404,30 +421,14 @@ export class DevMockHost {
           break;
         }
         const leaf = session.graphTurns.at(-1);
-        // Minimal parity: host user rows + the no-history placeholder, one final page. The mock
-        // has no provider transcripts, so this mirrors the daemon's prompt-only fallback.
-        const events = session.graphTurns.flatMap(({ graph, content }): ConversationReadItem[] => [
-          {
-            turnId: graph.turnId,
-            runId: graph.runId,
-            ts: graph.createdAt,
-            event: {
-              type: 'user-message',
-              // Deterministic like the daemon: re-reads must converge on one row per turn.
-              messageId: `msg-${graph.turnId}` as MessageId,
-              content: structuredClone(content),
-            },
-          },
-          { type: 'history-unavailable', turnId: graph.turnId, runId: graph.runId },
-        ]);
         this.send({
           kind: 'conversation.read.result',
           replyTo: p.clientReqId,
           sessionId: p.sessionId,
           graphRevision: session.graphTurns.length,
           ...(leaf !== undefined && { leafTurnId: leaf.graph.turnId }),
-          watermark: { epoch: 0, seq: 0 },
-          events,
+          watermark: { epoch: session.eventEpoch, seq: session.eventSeq },
+          events: readMockProjection(session),
         });
         break;
       }
@@ -833,7 +834,17 @@ export class DevMockHost {
   }
 
   private addSession(
-    init: Omit<MockSession, 'sessionId' | 'origin' | 'epoch' | 'status' | 'graphTurns'> & {
+    init: Omit<
+      MockSession,
+      | 'sessionId'
+      | 'origin'
+      | 'epoch'
+      | 'eventEpoch'
+      | 'eventSeq'
+      | 'journal'
+      | 'status'
+      | 'graphTurns'
+    > & {
       status: SessionStatus;
       origin?: SessionInfo['origin'];
     },
@@ -850,6 +861,9 @@ export class DevMockHost {
       sessionId: this.nextSessionId(),
       origin: origin ?? { type: 'created' },
       epoch: 0,
+      eventEpoch: 0,
+      eventSeq: 0,
+      journal: [],
       graphTurns: [],
     };
     this.sessions.set(session.sessionId, session);
@@ -1162,6 +1176,9 @@ export class DevMockHost {
       this.sendFailure(replyTo, `Session is already running: ${sessionId}`);
       return;
     }
+    // A relaunch mints under a new epoch, like the daemon's run launch.
+    session.eventEpoch += 1;
+    session.eventSeq = 0;
     session.status = 'idle';
     this.attachSession(sessionId);
     this.send({ kind: 'session.started', replyTo, sessionId });
@@ -1254,14 +1271,18 @@ export class DevMockHost {
       case 'command':
         this.invokeCommand(replyTo, session, input.name, input.arguments);
         break;
-      case 'shell-command':
+      case 'shell-command': {
+        const content = [textBlock(`$ ${input.command}`)];
+        const turn = this.beginTurn(session, content, input);
         this.emit(sessionId, {
           type: 'user-message',
-          messageId: this.nextMessageId('mock-user'),
-          content: [textBlock(`$ ${input.command}`)],
+          messageId: userRowMessageId(turn.graph.turnId),
+          content,
         });
+        settleTurn(session, turn, 'completed');
         this.sendSuccess(replyTo);
         break;
+      }
       case 'question-response':
         this.respondQuestion(replyTo, sessionId, input.requestId, input.outcome);
         break;
@@ -1290,10 +1311,16 @@ export class DevMockHost {
       return;
     }
 
+    const content = [textBlock(`/${name}${args ? ` ${args}` : ''}`)];
+    const turn = this.beginTurn(session, content, {
+      type: 'command',
+      name,
+      ...(args !== undefined && { arguments: args }),
+    });
     this.emit(session.sessionId, {
       type: 'user-message',
-      messageId: this.nextMessageId('mock-user'),
-      content: [textBlock(`/${name}${args ? ` ${args}` : ''}`)],
+      messageId: userRowMessageId(turn.graph.turnId),
+      content,
     });
     session.status = 'running';
     this.emit(session.sessionId, { type: 'status', status: 'running' });
@@ -1309,6 +1336,7 @@ export class DevMockHost {
     }
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
+    settleTurn(session, turn, 'completed');
     this.sendSuccess(replyTo);
   }
 
@@ -1334,36 +1362,56 @@ export class DevMockHost {
       return;
     }
     const content = turnSubmitContent(p.input);
-    this.turnSeq += 1;
-    const turnId = `turn-mock-${this.turnSeq.toString(36)}` as TurnId;
-    const parent = session.graphTurns.at(-1);
-    const graph: ConversationGraphTurn = {
-      turnId,
-      sessionId: p.sessionId,
-      parentTurnId: parent?.graph.turnId ?? null,
-      siblingOrdinal: 1,
-      input:
-        p.input.type === 'prompt'
-          ? { type: 'prompt', promptId: `prompt-mock-${this.turnSeq.toString(36)}` as PromptId }
-          : p.input,
-      runId: `run-mock-${this.turnSeq.toString(36)}` as RunId,
-      state: 'completed',
-      createdAt: Date.now(),
-      inputSummary: promptText(content).slice(0, 140),
-    };
-    session.graphTurns.push({ graph, content });
-    this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId });
+    const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
+    this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
-      const result = await this.streamMockTurn(session, content);
-      if (!result.ok) graph.state = 'failed';
+      const result = await this.streamMockReply(session, turn, content);
+      settleTurn(session, turn, result.ok ? 'completed' : 'failed');
       return;
     }
     // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
     this.emit(p.sessionId, {
       type: 'user-message',
-      messageId: this.nextMessageId('mock-user'),
+      messageId: userRowMessageId(turn.graph.turnId),
       content,
     });
+    settleTurn(session, turn, 'completed');
+  }
+
+  /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
+   * and point the frames that follow at it. */
+  private beginTurn(
+    session: MockSession,
+    content: ContentBlock[],
+    input?: Exclude<TurnSubmitInput, { type: 'prompt' }>,
+  ): MockTurn {
+    this.turnSeq += 1;
+    const id = this.turnSeq.toString(36);
+    const turnId = `turn-mock-${id}` as TurnId;
+    const parent = session.graphTurns.at(-1);
+    const turn: MockTurn = {
+      graph: {
+        turnId,
+        sessionId: session.sessionId,
+        parentTurnId: parent?.graph.turnId ?? null,
+        siblingOrdinal: 1,
+        input: input ?? { type: 'prompt', promptId: `prompt-mock-${id}` as PromptId },
+        runId: `run-mock-${id}` as RunId,
+        state: 'running',
+        createdAt: Date.now(),
+        inputSummary: promptText(content).slice(0, 140),
+      },
+      content,
+    };
+    session.graphTurns.push(turn);
+    session.runningTurnId = turnId;
+    this.send({
+      kind: 'conversation.graph.changed',
+      sessionId: session.sessionId,
+      graphRevision: session.graphTurns.length,
+      activeLeafTurnId: turnId,
+    });
+    return turn;
   }
 
   private async prompt(
@@ -1371,13 +1419,16 @@ export class DevMockHost {
     session: MockSession,
     content: ContentBlock[],
   ): Promise<void> {
-    const result = await this.streamMockTurn(session, content);
+    const turn = this.beginTurn(session, content);
+    const result = await this.streamMockReply(session, turn, content);
+    settleTurn(session, turn, result.ok ? 'completed' : 'failed');
     if (result.ok) this.sendSuccess(replyTo);
     else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
   }
 
-  private async streamMockTurn(
+  private async streamMockReply(
     session: MockSession,
+    turn: MockTurn,
     content: ContentBlock[],
   ): Promise<{ ok: true } | { ok: false; message: string }> {
     const text = promptText(content);
@@ -1385,7 +1436,7 @@ export class DevMockHost {
     session.status = 'running';
     this.emit(session.sessionId, {
       type: 'user-message',
-      messageId: this.nextMessageId('mock-user'),
+      messageId: userRowMessageId(turn.graph.turnId),
       content,
     });
     this.emit(session.sessionId, { type: 'status', status: 'running' });
@@ -1793,8 +1844,31 @@ export class DevMockHost {
     this.emit(sessionId, { type: 'tool-call', toolCall });
   }
 
+  /** The mock's stamped exit: every frame takes the session's next `(epoch, seq)` position, its
+   * running turn, and a journal entry — wire stream ≡ journal, as on the daemon. */
   private emit(sessionId: SessionId, event: AgentEvent): void {
-    this.send({ kind: 'agent.event', sessionId, event });
+    const session = this.sessions.get(sessionId);
+    if (!session) {
+      this.send({ kind: 'agent.event', sessionId, event });
+      return;
+    }
+    session.eventSeq += 1;
+    const entry: MockJournalEntry = {
+      epoch: session.eventEpoch,
+      seq: session.eventSeq,
+      ts: Date.now(),
+      ...(session.runningTurnId !== undefined && { turnId: session.runningTurnId }),
+      event,
+    };
+    session.journal.push(entry);
+    this.send({
+      kind: 'agent.event',
+      sessionId,
+      epoch: entry.epoch,
+      seq: entry.seq,
+      ...(entry.turnId !== undefined && { turnId: entry.turnId }),
+      event,
+    });
   }
 
   private send(payload: WirePayload): void {
@@ -1858,6 +1932,42 @@ function promptText(content: readonly ContentBlock[]): string {
       return text ? `${text}\n${block.text}` : block.text;
     }, '')
     .trim();
+}
+
+function settleTurn(session: MockSession, turn: MockTurn, state: 'completed' | 'failed'): void {
+  turn.graph.state = state;
+  if (session.runningTurnId === turn.graph.turnId) session.runningTurnId = undefined;
+}
+
+/** The journal as one final page: every stamped frame in order, plus the daemon's prompt-only
+ * placeholder under any turn whose frames hold nothing but its own echo. */
+function readMockProjection(session: MockSession): ConversationReadItem[] {
+  const withOutput = new Set<TurnId>();
+  for (let i = 0, len = session.journal.length; i < len; i++) {
+    const entry = session.journal[i];
+    if (entry.turnId !== undefined && entry.event.type !== 'user-message') {
+      withOutput.add(entry.turnId);
+    }
+  }
+  const items: ConversationReadItem[] = [];
+  for (let i = 0, len = session.journal.length; i < len; i++) {
+    const entry = session.journal[i];
+    items.push({
+      ...(entry.turnId !== undefined && { turnId: entry.turnId }),
+      epoch: entry.epoch,
+      seq: entry.seq,
+      ts: entry.ts,
+      event: entry.event,
+    });
+    if (
+      entry.turnId !== undefined &&
+      entry.event.type === 'user-message' &&
+      !withOutput.has(entry.turnId)
+    ) {
+      items.push({ type: 'history-unavailable', turnId: entry.turnId });
+    }
+  }
+  return items;
 }
 
 function toSessionInfo(session: MockSession): SessionInfo {
