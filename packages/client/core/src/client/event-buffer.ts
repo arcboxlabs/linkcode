@@ -51,7 +51,9 @@ export class EventBuffer {
    * monotone, or a seed's `uptoSeq` sampled before the stop swallows the resumed session's events. */
   private readonly seqs = new Map<SessionId, number>();
   /** Terminal prompt outcomes are immutable by request ID. Attach may replay them, but retaining
-   * the same outcome repeatedly would grow the live buffer without changing the projection. */
+   * the same outcome repeatedly would grow the live buffer without changing the projection.
+   * Unstamped frames only: a stamped repeat is a distinct daemon position the projection merge
+   * must see to keep its sequence contiguous, and the builder folds it idempotently. */
   private readonly resolvedRequestIds = new Map<SessionId, Set<string>>();
 
   /** Record an incoming event, assigning it the session's next receive sequence number. */
@@ -78,7 +80,10 @@ export class EventBuffer {
       this.snapshots.delete(sessionId);
       this.resolvedRequestIds.delete(sessionId);
     }
-    if (event.type === 'permission-resolved' || event.type === 'question-resolved') {
+    if (
+      sequenced.position === undefined &&
+      (event.type === 'permission-resolved' || event.type === 'question-resolved')
+    ) {
       let resolved = this.resolvedRequestIds.get(sessionId);
       if (!resolved) {
         resolved = new Set();

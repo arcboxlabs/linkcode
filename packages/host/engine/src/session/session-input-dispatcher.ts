@@ -1,13 +1,9 @@
 import type { AgentInput, SessionId } from '@linkcode/schema';
-import { agentCommandMatches } from '@linkcode/schema';
+import { agentCommandMatches, userRowMessageId } from '@linkcode/schema';
 import { Cause, Effect, Exit } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
-import {
-  mintOperationId,
-  promptBlocksFromContent,
-  userRowMessageId,
-} from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import { causeToRequestFailure, OperationError, RequestError } from '../failure';
 import type { ResourceService } from '../resource/service';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';

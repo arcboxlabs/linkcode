@@ -81,6 +81,13 @@ export type ConversationItem = (
       summary?: string;
     }
   | {
+      /** The daemon could not project this turn's provider output (no-history harness, lost or
+       * compacted transcript, migrated turn): the host prompt row is all there is. */
+      kind: 'history-unavailable';
+      id: string;
+      turnId: ConversationTurnId;
+    }
+  | {
       kind: 'plan';
       id: string;
       /** Timeline placement stays fixed at first sight so turn segments remain contiguous. */
@@ -186,10 +193,17 @@ export interface ConversationBuilder {
    * this event touches: the client receive time for live events, the provider's own event
    * timestamp for history-read replays (omitted when the provider recorded none). */
   advance(event: AgentEvent, receivedAt?: number): void;
+  /** Mark the current turn's provider output as unavailable — a read's `history-unavailable`
+   * placeholder, rendered where that output would have been. */
+  unavailable(receivedAt?: number): void;
   /** The current view-model. Cached between advances; every changed item is a fresh object
    * (copy-on-write), so React memoization over items keeps working across snapshots. */
   snapshot(): Conversation;
 }
+
+type ProjectionInput =
+  | { readonly kind: 'event'; readonly event: AgentEvent; readonly receivedAt?: number }
+  | { readonly kind: 'unavailable'; readonly receivedAt?: number };
 
 /**
  * Incremental form of {@link buildConversation}: advanced one event at a time (O(delta), not a full
@@ -197,20 +211,29 @@ export interface ConversationBuilder {
  */
 export function createConversationBuilder(): ConversationBuilder {
   let projection = createConversationProjection();
-  let entries: Array<{ event: AgentEvent; receivedAt?: number }> = [];
+  let entries: ProjectionInput[] = [];
+
+  const replay = (input: ProjectionInput): void => {
+    if (input.kind === 'event') projection.advance(input.event, input.receivedAt);
+    else projection.unavailable(input.receivedAt);
+  };
 
   return {
     advance(event, receivedAt) {
       if (event.type !== 'conversation-rewind') {
-        entries.push({ event, receivedAt });
+        entries.push({ kind: 'event', event, receivedAt });
         projection.advance(event, receivedAt);
         return;
       }
 
       let cut = -1;
       for (let index = entries.length - 1; index >= 0; index -= 1) {
-        const candidate = entries[index].event;
-        if (candidate.type === 'user-message' && candidate.messageId === event.messageId) {
+        const candidate = entries[index];
+        if (
+          candidate.kind === 'event' &&
+          candidate.event.type === 'user-message' &&
+          candidate.event.messageId === event.messageId
+        ) {
           cut = index;
           break;
         }
@@ -218,10 +241,11 @@ export function createConversationBuilder(): ConversationBuilder {
       if (cut < 0) return;
       entries = entries.slice(0, cut);
       projection = createConversationProjection();
-      for (let i = 0, len = entries.length; i < len; i++) {
-        const entry = entries[i];
-        projection.advance(entry.event, entry.receivedAt);
-      }
+      for (let i = 0, len = entries.length; i < len; i++) replay(entries[i]);
+    },
+    unavailable(receivedAt) {
+      entries.push({ kind: 'unavailable', receivedAt });
+      projection.unavailable(receivedAt);
     },
     snapshot: () => projection.snapshot(),
   };
@@ -703,6 +727,17 @@ function createConversationProjection(): ConversationBuilder {
     }
   };
 
+  const unavailable = (receivedAt?: number): void => {
+    cached = null;
+    endActiveReasoning(undefined, receivedAt);
+    items.push({
+      kind: 'history-unavailable',
+      id: genId('unavailable'),
+      turnId: currentTurnId,
+      receivedAt,
+    });
+  };
+
   const snapshot = (): Conversation => {
     if (cached) return cached;
 
@@ -738,7 +773,7 @@ function createConversationProjection(): ConversationBuilder {
     return cached;
   };
 
-  return { advance, snapshot };
+  return { advance, unavailable, snapshot };
 }
 
 /** Build a structured Conversation from the flat, append-only agent event stream. Pure & deterministic. */

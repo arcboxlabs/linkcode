@@ -71,6 +71,9 @@ export type ConversationItem =
       postTokens?: number;
       summary?: string;
     })
+  /** The daemon could not project this turn's provider output (no-history harness, lost or
+   * compacted transcript, migrated turn): the host prompt row is all there is. */
+  | (ConversationItemBase & { kind: 'history-unavailable' })
   | (ConversationItemBase & {
       kind: 'plan';
       /** Turn that most recently emitted this stable plan identity. */
