@@ -14,6 +14,10 @@ import {
 } from '../model/primitives';
 import { WireRequestIdSchema } from './request';
 
+/** The wire version that introduced the turn graph: `conversation.read`/`graph.get`, `turn.submit`,
+ * and the `(epoch, seq)` stamps on `agent.event`. Clients feature-detect the merge path on it. */
+export const CONVERSATION_GRAPH_WIRE_VERSION = 80 as const;
+
 /** What a submit carries over the wire. Prompt content travels as blocks — the daemon mints the
  * durable `PromptRecord` (and its id) when it persists the turn intent. */
 export const TurnSubmitInputSchema = z.discriminatedUnion('type', [

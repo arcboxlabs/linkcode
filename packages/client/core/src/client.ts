@@ -2,7 +2,6 @@ import type {
   AccountModel,
   AccountSecret,
   Accounts,
-  AgentEvent,
   AgentHistoryBranchCursor,
   AgentHistoryId,
   AgentHistoryListResult,
@@ -75,7 +74,11 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
-import { MIN_COMPATIBLE_WIRE_VERSION, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import {
+  CONVERSATION_GRAPH_WIRE_VERSION,
+  MIN_COMPATIBLE_WIRE_VERSION,
+  WIRE_PROTOCOL_VERSION,
+} from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
@@ -84,12 +87,20 @@ import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
 import type { BrowserCommandExecutor } from './client/browser-host-channel';
 import { BrowserHostChannel } from './client/browser-host-channel';
-import type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
+import type {
+  ConversationReadClientOptions,
+  HistoryListClientOptions,
+  HistoryReadClientOptions,
+} from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
+import type { ConversationGraphChange } from './client/conversation-graph-changes';
+import { ConversationGraphChanges } from './client/conversation-graph-changes';
 import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
 import type {
+  ConversationGraphSnapshot,
+  ConversationReadPage,
   PluginList,
   PluginMutation,
   RandomUUID,
@@ -101,11 +112,23 @@ import { TerminalChannel } from './client/terminal-channel';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
-export type { HistoryListClientOptions, HistoryReadClientOptions } from './client/control-channel';
-export type { SequencedAgentEvent } from './client/event-buffer';
-export type { PluginList, PluginMutation, SessionStartResult } from './client/pending-registry';
+export type {
+  ConversationReadClientOptions,
+  HistoryListClientOptions,
+  HistoryReadClientOptions,
+} from './client/control-channel';
+export type { ConversationGraphChange } from './client/conversation-graph-changes';
+export type { AgentEventEnvelope, SequencedAgentEvent } from './client/event-buffer';
+export type {
+  ConversationGraphSnapshot,
+  ConversationReadPage,
+  PluginList,
+  PluginMutation,
+  SessionStartResult,
+} from './client/pending-registry';
 
-type EventCb = (event: AgentEvent, seq: number) => void;
+type EventCb = (entry: SequencedAgentEvent) => void;
+type GraphChangeCb = (change: ConversationGraphChange) => void;
 type TerminalOutputCb = (data: string) => void;
 type TerminalEventCb = (event: TerminalReplayEvent) => void;
 type ScriptStatusCb = (cwd: string, script: WorkspaceScript) => void;
@@ -218,6 +241,7 @@ export class LinkCodeClient {
   private readonly pending: PendingRegistry;
   private readonly control: ControlChannel;
   private readonly events = new EventBuffer();
+  private readonly graphChanges = new ConversationGraphChanges();
   private readonly terminals: TerminalChannel;
   private readonly browserHost: BrowserHostChannel;
   private readonly agentLogin: AgentLoginChannel;
@@ -294,6 +318,12 @@ export class LinkCodeClient {
   /** What the host answered at handshake — for gating a frame an older host would drop. */
   get peerWireVersion(): number | null {
     return this.peerWire?.version ?? null;
+  }
+
+  /** Whether the host serves the turn graph (`conversation.read`/`graph.get`) and stamps
+   * `agent.event` with `(epoch, seq)` — the gate for the projection merge path. */
+  get supportsConversationGraph(): boolean {
+    return this.peerWire !== null && this.peerWire.version >= CONVERSATION_GRAPH_WIRE_VERSION;
   }
 
   private async handshake(): Promise<void> {
@@ -400,6 +430,30 @@ export class LinkCodeClient {
         break;
       case 'history.read.result':
         this.pending.resolve('historyRead', p.replyTo, p.result);
+        break;
+      case 'conversation.graph.result':
+        this.pending.resolve('conversationGraph', p.replyTo, {
+          sessionId: p.sessionId,
+          graphRevision: p.graphRevision,
+          ...(p.activeLeafTurnId !== undefined && { activeLeafTurnId: p.activeLeafTurnId }),
+          turns: p.turns,
+        });
+        break;
+      case 'conversation.read.result':
+        this.pending.resolve('conversationRead', p.replyTo, {
+          sessionId: p.sessionId,
+          graphRevision: p.graphRevision,
+          ...(p.leafTurnId !== undefined && { leafTurnId: p.leafTurnId }),
+          ...(p.watermark !== undefined && { watermark: p.watermark }),
+          events: p.events,
+          ...(p.cursor !== undefined && { cursor: p.cursor }),
+        });
+        break;
+      case 'conversation.graph.changed':
+        this.graphChanges.note(p.sessionId, {
+          graphRevision: p.graphRevision,
+          ...(p.activeLeafTurnId !== undefined && { activeLeafTurnId: p.activeLeafTurnId }),
+        });
         break;
       case 'config.get.result':
         // One result carries all three; each resolve is a no-op unless a request awaits that reply id.
@@ -636,7 +690,12 @@ export class LinkCodeClient {
         this.pending.resolve('ack', p.replyTo, { ok: true });
         break;
       case 'agent.event':
-        this.events.ingest(p.sessionId, p.event);
+        this.events.ingest(p.sessionId, p.event, {
+          runId: p.runId,
+          turnId: p.turnId,
+          epoch: p.epoch,
+          seq: p.seq,
+        });
         break;
       case 'terminal.listed':
       case 'terminal.opened':
@@ -707,6 +766,28 @@ export class LinkCodeClient {
     opts: HistoryReadClientOptions,
   ): Promise<AgentHistoryReadResult> {
     return this.control.readHistory(agentKind, opts);
+  }
+
+  /** See {@link ControlChannel.getConversationGraph}. */
+  getConversationGraph(sessionId: SessionId): Promise<ConversationGraphSnapshot> {
+    return this.control.getConversationGraph(sessionId);
+  }
+
+  /** See {@link ControlChannel.readConversation}. */
+  readConversation(
+    sessionId: SessionId,
+    opts?: ConversationReadClientOptions,
+  ): Promise<ConversationReadPage> {
+    return this.control.readConversation(sessionId, opts);
+  }
+
+  /** The newest `conversation.graph.changed` seen for the session on this connection. */
+  latestGraphChange(sessionId: SessionId): ConversationGraphChange | undefined {
+    return this.graphChanges.get(sessionId);
+  }
+
+  subscribeGraphChanges(sessionId: SessionId, cb: GraphChangeCb): Unsubscribe {
+    return this.graphChanges.subscribe(sessionId, cb);
   }
 
   resumeHistory(
@@ -826,6 +907,7 @@ export class LinkCodeClient {
   stopSession(sessionId: SessionId): Promise<RequestAck> {
     return this.control.stopSession(sessionId).then((ack) => {
       this.events.clearSession(sessionId);
+      this.graphChanges.clearSession(sessionId);
       return ack;
     });
   }
@@ -834,6 +916,7 @@ export class LinkCodeClient {
   deleteSession(sessionId: SessionId): Promise<RequestAck> {
     return this.control.deleteSession(sessionId).then((ack) => {
       this.events.clearSession(sessionId);
+      this.graphChanges.clearSession(sessionId);
       return ack;
     });
   }
@@ -1472,6 +1555,7 @@ export class LinkCodeClient {
     this.connectionCloseSubs.clear();
     this.pending.failAll(error);
     this.events.clearAll();
+    this.graphChanges.clearAll();
     this.loopLogs.clear();
     this.terminals.disposeAll();
     this.agentLogin.disposeAll();
