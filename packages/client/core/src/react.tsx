@@ -8,6 +8,7 @@ import type {
 import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
+import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
 import {
   createContext,
   useCallback,
@@ -19,6 +20,8 @@ import {
 } from 'react';
 import type { LinkCodeClient, SequencedAgentEvent } from './client';
 import type { Conversation, ConversationSeed } from './conversation';
+import type { ConversationProjectionSeed } from './conversation-read';
+import type { ConversationResyncReason } from './conversation-store';
 import { createConversationStore } from './conversation-store';
 
 const ClientContext = createContext<LinkCodeClient | null>(null);
@@ -99,17 +102,20 @@ export function useSendInput(sessionId: SessionId | null): (input: AgentInput) =
 
 /**
  * Subscribe to a session's structured conversation view-model, optionally seeded (see
- * `ConversationSeed`). Folds are O(delta) and unchanged items keep their identity, so memoized
- * message components skip re-rendering during streaming.
+ * `ConversationSeed` / `ConversationProjectionSeed`). Folds are O(delta) and unchanged items keep
+ * their identity, so memoized message components skip re-rendering during streaming. A projection
+ * seed reports through `onResync` when it must be re-read (see `ConversationStoreOptions`).
  */
 export function useConversation(
   sessionId: SessionId | null,
-  seed?: ConversationSeed,
+  seed?: ConversationSeed | ConversationProjectionSeed,
+  onResync?: (reason: ConversationResyncReason) => void,
 ): Conversation {
   const client = useLinkCodeClient();
+  const handleResync = useStableHandler(onResync ?? noop);
   const store = useMemo(
-    () => createConversationStore(client, sessionId, seed),
-    [client, sessionId, seed],
+    () => createConversationStore(client, sessionId, seed, { onResync: handleResync }),
+    [client, sessionId, seed, handleResync],
   );
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }

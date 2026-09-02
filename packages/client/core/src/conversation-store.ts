@@ -1,15 +1,26 @@
-import type { AgentEvent, SessionId } from '@linkcode/schema';
+import type { AgentEvent, ContentBlock, ConversationWatermark, SessionId } from '@linkcode/schema';
+import { compareConversationWatermarks, userRowMessageId } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
-import type { LinkCodeClient, SequencedAgentEvent } from './client';
+import type { ConversationGraphChange, LinkCodeClient, SequencedAgentEvent } from './client';
 import type { Conversation, ConversationBuilder, ConversationSeed } from './conversation';
 import { createConversationBuilder } from './conversation';
+import type { ConversationProjectionSeed } from './conversation-read';
 
 /** A `useSyncExternalStore`-shaped incremental projection of one session's conversation.
  * Function-typed properties (not methods): both get detached and handed to React. */
 export interface ConversationStore {
   subscribe: (onStoreChange: () => void) => Unsubscribe;
   getSnapshot: () => Conversation;
+}
+
+/** Why a projection store wants its seed re-read: the live stream can no longer be trusted to
+ * extend the read it was folded onto. */
+export type ConversationResyncReason = 'epoch' | 'gap' | 'graph';
+
+export interface ConversationStoreOptions {
+  /** Called at most once per store, never during a render, when the seed must be re-read. */
+  onResync?: (reason: ConversationResyncReason) => void;
 }
 
 const EMPTY_CONVERSATION: Conversation = {
@@ -28,6 +39,176 @@ const EMPTY_CONVERSATION: Conversation = {
   pendingPermissionIds: [],
   pendingQuestionIds: [],
 };
+
+/**
+ * Project a session's conversation from a seed plus the live event buffer. A projection seed (a
+ * `conversation.read` walk) merges by the daemon's `(epoch, seq)` positions; a history seed (a
+ * `history.read` transcript, the path for ≤v79 daemons and sessions without a turn graph) merges
+ * by the connection's receive cut. Either way the sync is idempotent and monotone with a stable
+ * snapshot identity between events — the `useSyncExternalStore` getSnapshot contract. A store is
+ * bound to one (session, seed) pair; create a fresh one when either changes.
+ */
+export function createConversationStore(
+  client: LinkCodeClient,
+  sessionId: SessionId | null,
+  seed?: ConversationSeed | ConversationProjectionSeed,
+  options: ConversationStoreOptions = {},
+): ConversationStore {
+  if (!sessionId) {
+    return { subscribe: () => noop, getSnapshot: () => EMPTY_CONVERSATION };
+  }
+  if (seed !== undefined && 'items' in seed) {
+    return createProjectionStore(client, sessionId, seed, options.onResync ?? noop);
+  }
+  return createHistoryStore(client, sessionId, seed);
+}
+
+/** Kinds the projection merge never drops on the watermark: their authoritative state lives in
+ * the daemon's interaction registry, a read may predate them, and the builder folds repeats
+ * idempotently — so the backstop that keeps a permission card renderable costs nothing. */
+const INTERACTIVE_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'permission-request',
+  'question-request',
+  'permission-resolved',
+  'question-resolved',
+  'prompt-response-status',
+]);
+
+/**
+ * The projection merge: the seed's items fold first, then every live event whose position is
+ * above the seed's watermark. Nothing is matched by content — the daemon mints one identity per
+ * user row for the echo and the read alike, so re-reads converge on the rows they already hold.
+ * A position that skips ahead (a sequence gap, an epoch jump) or a graph revision past the read
+ * asks the owner to re-read once; folding continues meanwhile so streaming never stalls.
+ */
+function createProjectionStore(
+  client: LinkCodeClient,
+  sessionId: SessionId,
+  seed: ConversationProjectionSeed,
+  onResync: (reason: ConversationResyncReason) => void,
+): ConversationStore {
+  const builder = createConversationBuilder();
+  const userMessageIds = new Set<string>();
+  let seeded = false;
+  /** Highest receive seq already examined. */
+  let consumedSeq = 0;
+  /** The newest daemon position covered or folded; a persisted seed starts with none and the first
+   * stamped event becomes the baseline. */
+  let cursor: ConversationWatermark | null = seed.watermark ?? null;
+  let resyncRequested = false;
+
+  const requestResync = (reason: ConversationResyncReason): void => {
+    if (resyncRequested) return;
+    resyncRequested = true;
+    // Detection runs inside getSnapshot (a render); the owner's re-read must not.
+    queueMicrotask(() => onResync(reason));
+  };
+
+  const fold = (event: AgentEvent, receivedAt: number | undefined): void => {
+    if (event.type === 'user-message') userMessageIds.add(event.messageId);
+    builder.advance(event, receivedAt);
+  };
+
+  const foldSeed = (): void => {
+    const echoes = attachmentBearingEchoes(client.eventsSnapshot(sessionId));
+    for (let i = 0, len = seed.items.length; i < len; i++) {
+      const item = seed.items[i];
+      if (!('event' in item)) {
+        builder.unavailable();
+        continue;
+      }
+      const { event } = item;
+      if (event.type !== 'user-message') {
+        fold(event, item.ts);
+        continue;
+      }
+      const content = echoes.get(event.messageId);
+      fold(content === undefined ? event : { ...event, content }, item.ts);
+    }
+  };
+
+  /** Whether a live entry extends the seed; advances the cursor and flags gaps and jumps. */
+  const admit = (entry: SequencedAgentEvent): boolean => {
+    const { position } = entry;
+    if (position === undefined) return true;
+    if (cursor !== null) {
+      // Covered by the read, or an older epoch's straggler: gone either way.
+      if (compareConversationWatermarks(position, cursor) <= 0) {
+        return INTERACTIVE_EVENT_TYPES.has(entry.event.type);
+      }
+      if (position.epoch !== cursor.epoch) requestResync('epoch');
+      else if (position.seq !== cursor.seq + 1) requestResync('gap');
+    }
+    cursor = position;
+    return true;
+  };
+
+  const sync = (): void => {
+    if (!seeded) {
+      seeded = true;
+      foldSeed();
+    }
+    if (client.eventSeq(sessionId) <= consumedSeq) return;
+    const events = client.eventsSnapshot(sessionId);
+    for (let i = firstIndexAfter(events, consumedSeq), len = events.length; i < len; i += 1) {
+      const entry = events[i];
+      if (admit(entry)) fold(entry.event, entry.receivedAt);
+    }
+    consumedSeq = client.eventSeq(sessionId);
+  };
+
+  /** A revision past this read means a lineage moved. A plain continuation is already covered
+   * live — its new leaf's own user row has arrived — so only a leaf this store has never seen
+   * (an edit or rewrite from any device, a stale read) needs the re-read. */
+  const checkGraph = (change: ConversationGraphChange | undefined): void => {
+    if (change === undefined || change.graphRevision <= seed.graphRevision) return;
+    if (
+      change.activeLeafTurnId !== undefined &&
+      userMessageIds.has(userRowMessageId(change.activeLeafTurnId))
+    ) {
+      return;
+    }
+    requestResync('graph');
+  };
+
+  return {
+    subscribe(onStoreChange) {
+      sync();
+      checkGraph(client.latestGraphChange(sessionId));
+      const unsubscribeEvents = client.subscribe(sessionId, () => {
+        sync();
+        onStoreChange();
+      });
+      const unsubscribeGraph = client.subscribeGraphChanges(sessionId, (change) => {
+        sync();
+        checkGraph(change);
+      });
+      return () => {
+        unsubscribeEvents();
+        unsubscribeGraph();
+      };
+    },
+    getSnapshot() {
+      sync();
+      return builder.snapshot();
+    },
+  };
+}
+
+/** Live user echoes carry the prompt's attachment blocks while durable rows are text-only until
+ * attachment refs land: for the row sharing an echo's identity, the echo's content wins. */
+function attachmentBearingEchoes(
+  events: readonly SequencedAgentEvent[],
+): Map<string, ContentBlock[]> {
+  const byId = new Map<string, ContentBlock[]>();
+  for (let i = 0, len = events.length; i < len; i++) {
+    const { event } = events[i];
+    if (event.type === 'user-message' && event.content.some((block) => block.type !== 'text')) {
+      byId.set(event.messageId, event.content);
+    }
+  }
+  return byId;
+}
 
 type UserMessageEvent = Extract<AgentEvent, { type: 'user-message' }>;
 interface SeedUserMessageQueue {
@@ -100,21 +281,16 @@ function foldPreCutEvent(
 }
 
 /**
- * Project a session's conversation from a transcript seed plus the live event buffer: the seed
- * folds once, then `getSnapshot` lazily advances by unconsumed events, skipping events inside the
- * `uptoSeq` cut that the snapshot verifiably covers (see {@link foldPreCutEvent}). The sync is idempotent and monotone with a stable snapshot identity
- * between events — the `useSyncExternalStore` getSnapshot contract. A store is bound to one
- * (session, seed) pair; create a fresh one when either changes.
+ * The transcript merge for hosts without a turn graph: the seed folds once, then `getSnapshot`
+ * lazily advances by unconsumed events, skipping events inside the `uptoSeq` cut that the snapshot
+ * verifiably covers (see {@link foldPreCutEvent}). Provider and host ids never converge here, so
+ * user rows are matched by content — the path retires with the compatibility floor.
  */
-export function createConversationStore(
+function createHistoryStore(
   client: LinkCodeClient,
-  sessionId: SessionId | null,
-  seed?: ConversationSeed,
+  sessionId: SessionId,
+  seed: ConversationSeed | undefined,
 ): ConversationStore {
-  if (!sessionId) {
-    return { subscribe: () => noop, getSnapshot: () => EMPTY_CONVERSATION };
-  }
-
   const builder = createConversationBuilder();
   const uptoSeq = seed?.uptoSeq ?? 0;
   // Identities the snapshot actually holds, for the per-event coverage check of the cut.
