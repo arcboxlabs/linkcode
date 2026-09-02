@@ -89,7 +89,7 @@ describe('InMemoryConversationStore', () => {
     expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([running]);
   });
 
-  it('re-captures replay bindings but never overwrites a live one per (turnId, historyId)', async () => {
+  it('re-captures replay bindings, lets a live one replace them, and never overwrites a live one', async () => {
     const store = new InMemoryConversationStore();
     const live = ProviderTurnBindingSchema.parse({
       turnId: 't-1',
@@ -98,6 +98,8 @@ describe('InMemoryConversationStore', () => {
       checkpoint: '{"uuid":"a"}',
       capturedFrom: 'live',
     });
+    // A cold read can land first; the live capture that follows replaces it.
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"early"}', capturedFrom: 'replay' });
     await store.saveBinding(live);
     await store.saveBinding({ ...live, checkpoint: '{"uuid":"b"}', capturedFrom: 'replay' });
     await store.saveBinding({ ...live, checkpoint: '{"uuid":"c"}' });
