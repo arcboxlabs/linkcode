@@ -8,6 +8,7 @@ import type {
   AgentHistoryResumeOptions,
   AgentInput,
   MessageId,
+  SessionId,
   StartOptions,
   TurnId,
   WirePayload,
@@ -136,17 +137,20 @@ class LegacyBranchOnlyAdapter extends ForkingAdapter {
   };
 }
 
-/** Cold reads return the lineage's own prompts; a row without a cursor models a rollout the
- * provider cannot fork (codex `history_mode: paginated`). */
+type HistoryRow = { text: string; cursor?: string };
+
+/** Cold reads return the lineage's own prompts (one row set, or one per history id); a row
+ * without a cursor models a rollout the provider cannot fork (codex `history_mode: paginated`). */
 class AlignedHistoryAdapter extends ForkingAdapter {
-  constructor(private readonly rows: Array<{ text: string; cursor?: string }>) {
+  constructor(private readonly rows: HistoryRow[] | Record<string, HistoryRow[]>) {
     super();
   }
 
   override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
+    const rows = Array.isArray(this.rows) ? this.rows : (this.rows[opts.historyId] ?? []);
     return Promise.resolve({
       session: { historyId: opts.historyId, kind: this.kind, cwd: '/repo' },
-      events: this.rows.map((row, index) => ({
+      events: rows.map((row, index) => ({
         historyId: opts.historyId,
         itemId: `u${index}`,
         event: {
@@ -192,6 +196,49 @@ function failure(sent: WirePayload[], replyTo: string) {
   );
   if (reply?.kind !== 'request.failed') throw new Error(`no request.failed for ${replyTo}`);
   return reply;
+}
+
+/** The live echo of prompt `text`, as a ≤v79 client would hand it back to `history.branch`. */
+function livePrompt(sent: WirePayload[], sessionId: SessionId, text: string) {
+  const event = sent
+    .flatMap((payload) =>
+      payload.kind === 'agent.event' && payload.sessionId === sessionId ? [payload.event] : [],
+    )
+    .findLast(
+      (candidate) =>
+        candidate.type === 'user-message' &&
+        candidate.branchCursor !== undefined &&
+        candidate.content[0]?.type === 'text' &&
+        candidate.content[0].text === text,
+    );
+  if (event?.type !== 'user-message' || event.branchCursor === undefined) {
+    throw new Error(`no live prompt echo for ${text}`);
+  }
+  return { sourceMessageId: event.messageId, branchCursor: event.branchCursor };
+}
+
+/** Every fork the harness performed, in order. */
+function forks(adapters: FakeAdapter[]): AgentHistoryBranchOptions[] {
+  return adapters.flatMap((adapter) =>
+    adapter instanceof ForkingAdapter && adapter.branchedFrom !== null
+      ? [adapter.branchedFrom]
+      : [],
+  );
+}
+
+/** A session older than its turn rows: provider history exists, no turn was ever recorded. */
+async function preExistingSession(rows: HistoryRow[] | Record<string, HistoryRow[]>) {
+  const h = await startedHarness(() => new AlignedHistoryAdapter(rows));
+  h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+  await h.inject({ kind: 'session.stop', clientReqId: 'stop-0', sessionId: h.sessionId });
+  // The first post-upgrade prompt: a graph root on the resume run, hidden history behind it.
+  await submitPrompt(h, 's1', 'first');
+  await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
+  const resumed = nullthrow(h.adapters[1]);
+  resumed.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+  resumed.emit({ type: 'status', status: 'idle' });
+  await settleEngineTasks();
+  return { ...h, firstTurnId: submittedTurnId(h.sent, 's1') };
 }
 
 async function startedHarness(makeAdapter: () => FakeAdapter = () => new FakeAdapter()) {
@@ -775,6 +822,179 @@ describe('turn.submit saga', () => {
       parentTurnId: null,
       siblingOrdinal: 2,
       state: 'running',
+    });
+  });
+
+  it('forks the first post-upgrade prompt of a pre-existing session after its hidden history — never fresh', async () => {
+    const h = await preExistingSession([
+      { text: 'hidden one', cursor: 'before-hidden' },
+      { text: 'first', cursor: 'before-first' },
+    ]);
+
+    await submitPrompt(h, 's2', 'edited first', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+
+    // The cut is the root's own row on the provider: everything before it stays in context.
+    expect(forks(h.adapters)).toEqual([{ historyId: 'native-1', cursor: 'before-first' }]);
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === submittedTurnId(h.sent, 's2'))).toMatchObject({
+      parentTurnId: null,
+      siblingOrdinal: 2,
+      state: 'running',
+    });
+  });
+
+  it('refuses typed, never fresh, when a pre-existing session’s hidden history cannot be aligned', async () => {
+    const h = await preExistingSession([
+      { text: 'hidden one', cursor: 'before-hidden' },
+      { text: 'not the first prompt', cursor: 'before-other' },
+    ]);
+
+    await submitPrompt(h, 's2', 'edited first', { parentTurnId: null, expectedGraphRevision: 1 });
+
+    expect(failure(h.sent, 's2')).toMatchObject({
+      code: 'unsupported',
+      message: 'This turn has no provider checkpoint to fork from',
+    });
+    expect(forks(h.adapters)).toEqual([]);
+    // No fresh start either: the only adapters ever started are the original and the resume.
+    expect(
+      h.adapters.filter((adapter) => adapter.startedWith !== null || adapter.resumedFrom !== null),
+    ).toHaveLength(2);
+  });
+
+  it('legacy rewrite of a pre-existing session’s first recorded prompt forks after the hidden history, and again after an edit', async () => {
+    const h = await preExistingSession({
+      'native-1': [
+        { text: 'hidden one', cursor: 'before-hidden' },
+        { text: 'first', cursor: 'before-first' },
+      ],
+      'native-child': [
+        { text: 'hidden one', cursor: 'before-hidden' },
+        { text: 'first, edited', cursor: 'before-edited' },
+      ],
+    });
+    const original = livePrompt(h.sent, h.sessionId, 'first');
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-1',
+      sourceSessionId: h.sessionId,
+      ...original,
+      content: [{ type: 'text', text: 'first, edited' }],
+    });
+    await vi.waitFor(() =>
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'session.started', replyTo: 'rewrite-1' }),
+      ),
+    );
+    nullthrow(h.adapters.at(-1)).emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    // The original root is off the active path now; it shares its predecessor with the active
+    // root, so its cut is that sibling's row on the current (forked) history.
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite-2',
+      sourceSessionId: h.sessionId,
+      ...original,
+      content: [{ type: 'text', text: 'first, edited again' }],
+    });
+    await vi.waitFor(() =>
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'session.started', replyTo: 'rewrite-2' }),
+      ),
+    );
+
+    expect(forks(h.adapters)).toEqual([
+      { historyId: 'native-1', cursor: 'before-first' },
+      { historyId: 'native-child', cursor: 'before-edited' },
+    ]);
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.map((turn) => [turn.parentTurnId, turn.siblingOrdinal])).toEqual([
+      [null, 1],
+      [null, 2],
+      [null, 3],
+    ]);
+  });
+
+  it('forks the first post-import prompt of an imported-then-continued session at its own row', async () => {
+    const conversationStore = new InMemoryConversationStore();
+    const h = harness(
+      new InMemorySessionStore(),
+      () =>
+        new AlignedHistoryAdapter([
+          { text: 'imported one', cursor: 'before-imported' },
+          { text: 'first', cursor: 'before-first' },
+        ]),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'history.resume',
+      clientReqId: 'r1',
+      agentKind: 'claude-code',
+      historyId: asHistoryId('native-1'),
+      startOpts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const imported = { ...h, conversationStore, sessionId, adapter: nullthrow(h.adapters[0]) };
+    await submitPrompt(imported, 's1', 'first');
+    imported.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await submitPrompt(imported, 's2', 'edited first', {
+      parentTurnId: null,
+      expectedGraphRevision: 1,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+
+    expect(forks(h.adapters)).toEqual([{ historyId: 'native-1', cursor: 'before-first' }]);
+  });
+
+  it('forks at the live checkpoint even when the cold-read cursor names a different row', async () => {
+    // claude: a Stop hook summary row sits between the last assistant row (the live checkpoint)
+    // and the next user row (whose parentUuid is the cold-read cursor); both are valid cuts.
+    const h = await startedHarness(
+      () =>
+        new AlignedHistoryAdapter([
+          { text: 'first', cursor: 'before-first' },
+          { text: 'second', cursor: 'system-row' },
+        ]),
+    );
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'assistant-row',
+      turn: 'ending',
+    });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'second');
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    // A read attributes the lineage and backfills replay cuts — never over the live one.
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId: h.sessionId });
+    await settleEngineTasks();
+    expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
+      expect.objectContaining({ checkpoint: 'assistant-row', capturedFrom: 'live' }),
+    ]);
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    expect(forkedAdapter(h.adapters).branchedFrom).toEqual({
+      historyId: 'native-1',
+      cursor: 'assistant-row',
     });
   });
 
