@@ -21,6 +21,7 @@ import { Effect, Exit, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { SessionDriver } from '../automation';
 import type { ConversationCheckpointService, ForkCut } from '../conversation/checkpoint-service';
+import { hasHiddenPrefix, pathToLeaf } from '../conversation/lineage-attribution';
 import type {
   ConversationTurnService,
   PersistedTurnIntent,
@@ -347,9 +348,11 @@ export class SessionLifecycleService {
             const historyId = nullthrow(sourceHistoryId, 'checked above for provider cursors');
             startAdapter = (adapter) =>
               history.branch(adapter, { historyId, cursor: branchCursor }, resolved.options);
-          } else if (target.parentTurnId === null && source.origin.type === 'created') {
-            // The first prompt of a session LinkCode created: nothing precedes it in provider
-            // history, so its replacement starts a fresh provider session (the saga's root rule).
+          } else if (target.parentTurnId === null && !hasHiddenPrefix(source, target)) {
+            // A root on a created session's first run: nothing precedes it in provider history,
+            // so its replacement starts a fresh provider session (the saga's root rule). Any other
+            // root — the first recorded prompt of a session older than its turn rows, or of an
+            // import — forks after the hidden history before it, or fails typed.
             startAdapter = (adapter) => sessions.startAdapter(adapter, resolved.options);
           } else {
             // Resolved before the intent persists: a checkpoint-less prompt fails typed here
@@ -569,7 +572,7 @@ export class SessionLifecycleService {
           );
         }
         // Seam: the worktree co-leaseholder busy gate joins this critical section later.
-        const { checkpoints, sessions, turns } = this;
+        const { checkpoints, records, sessions, turns } = this;
         return Effect.gen(function* () {
           if (yield* turns.hasOpenOperation(request.sessionId)) {
             return yield* Effect.fail(
@@ -592,7 +595,37 @@ export class SessionLifecycleService {
               );
             }
             parentTurnId = null;
-            launch = { type: 'fresh' };
+            // Editing "the first prompt" starts fresh only when nothing can precede a root here;
+            // otherwise the active lineage's root names the hidden history the new root forks after.
+            const existingTurns = yield* turns.listTurns(request.sessionId);
+            const root = pathToLeaf(
+              new Map(existingTurns.map((turn) => [turn.turnId, turn])),
+              record.activeLeafTurnId,
+            ).at(0);
+            const nothingPrecedes =
+              root === undefined
+                ? records.historyId(request.sessionId) === undefined
+                : !hasHiddenPrefix(record, root);
+            if (nothingPrecedes) {
+              launch = { type: 'fresh' };
+            } else {
+              const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
+              const cut =
+                forkable && root !== undefined
+                  ? yield* checkpoints.forkCutBefore(record, root.turnId)
+                  : undefined;
+              if (cut === undefined) {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'unsupported',
+                    message: forkable
+                      ? 'This turn has no provider checkpoint to fork from'
+                      : `${record.kind}: forking from an earlier turn is not supported`,
+                  }),
+                );
+              }
+              launch = { type: 'fork', cut };
+            }
           } else {
             const existingTurns = yield* turns.listTurns(request.sessionId);
             const parent = existingTurns.find((turn) => turn.turnId === request.parentTurnId);

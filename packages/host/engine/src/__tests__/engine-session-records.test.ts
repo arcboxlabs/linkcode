@@ -426,8 +426,8 @@ describe('engine session records', () => {
     await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-running')).toBe(sourceSessionId));
 
     expect(sourceAdapter.stopped).toBe(true);
-    // The first prompt of a created session has nothing before it: its rewrite starts a fresh
-    // provider session instead of forking at a guessed cut.
+    // The first prompt on a created session's first run has nothing before it: its rewrite starts
+    // a fresh provider session instead of forking at a guessed cut.
     const replacementAdapter = nullthrow(h.adapters.at(-1)) as BranchingHistoryAdapter;
     expect(replacementAdapter.branchedFrom).toBeNull();
     expect(replacementAdapter.resumedFrom).toBeNull();
@@ -553,7 +553,8 @@ describe('engine session records', () => {
     });
     await vi.waitFor(() => expect(startedId(h.sent, 'rewrite-original')).toBe(sourceSessionId));
 
-    // The original prompt is the created session's first: its rewrite starts fresh, no fork.
+    // The original prompt is the first on the created session's first run: its rewrite starts
+    // fresh, no fork.
     const last = nullthrow(h.adapters.at(-1)) as BranchingHistoryAdapter;
     expect(last.branchedFrom).toBeNull();
     expect(last.startedWith).not.toBeNull();
