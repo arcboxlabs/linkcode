@@ -1,5 +1,18 @@
-import type { AgentEvent, SessionId } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  ConversationWatermark,
+  RunId,
+  SessionId,
+  TurnId,
+  WirePayload,
+} from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
+
+/** The attribution and position fields of an `agent.event` frame; all absent from ≤v79 hosts. */
+export type AgentEventEnvelope = Pick<
+  Extract<WirePayload, { kind: 'agent.event' }>,
+  'runId' | 'turnId' | 'epoch' | 'seq'
+>;
 
 /**
  * An event plus its connection-scoped receive sequence (1-based, monotone per connection): a
@@ -11,9 +24,16 @@ export interface SequencedAgentEvent {
   /** Client receive time (ms epoch), stamped when the event is ingested from the live stream.
    * Drives relative timestamps in the UI; absent for events replayed from a history read. */
   receivedAt?: number;
+  /** Daemon-minted `(epoch, seq)` position — the projection merge cut; absent from unstamped
+   * hosts (≤v79 daemons, the dev mock). */
+  position?: ConversationWatermark;
+  runId?: RunId;
+  /** The turn the daemon attributed the event to. A live user echo carries none: it is broadcast
+   * before its turn is tracked, so echoes are never bucketed by this field. */
+  turnId?: TurnId;
 }
 
-type EventCb = (event: AgentEvent, seq: number) => void;
+type EventCb = (entry: SequencedAgentEvent) => void;
 
 const EMPTY_EVENTS: readonly SequencedAgentEvent[] = [];
 
@@ -35,10 +55,22 @@ export class EventBuffer {
   private readonly resolvedRequestIds = new Map<SessionId, Set<string>>();
 
   /** Record an incoming event, assigning it the session's next receive sequence number. */
-  ingest(sessionId: SessionId, event: AgentEvent): SequencedAgentEvent {
+  ingest(
+    sessionId: SessionId,
+    event: AgentEvent,
+    envelope: AgentEventEnvelope = {},
+  ): SequencedAgentEvent {
     const seq = (this.seqs.get(sessionId) ?? 0) + 1;
     this.seqs.set(sessionId, seq);
-    const sequenced: SequencedAgentEvent = { event, seq, receivedAt: Date.now() };
+    const sequenced: SequencedAgentEvent = {
+      event,
+      seq,
+      receivedAt: Date.now(),
+      ...(envelope.epoch !== undefined &&
+        envelope.seq !== undefined && { position: { epoch: envelope.epoch, seq: envelope.seq } }),
+      ...(envelope.runId !== undefined && { runId: envelope.runId }),
+      ...(envelope.turnId !== undefined && { turnId: envelope.turnId }),
+    };
     if (event.type === 'conversation-rewind') {
       // The reducer also rewinds, but the receive buffer must drop the suffix or a later reseed
       // can fold discarded live events back over the provider's replacement transcript.
@@ -60,7 +92,7 @@ export class EventBuffer {
     else this.events.set(sessionId, [sequenced]);
     this.snapshots.delete(sessionId);
     const subs = this.subscribers.get(sessionId);
-    if (subs) for (const cb of subs) cb(sequenced.event, sequenced.seq);
+    if (subs) for (const cb of subs) cb(sequenced);
     return sequenced;
   }
 
@@ -75,8 +107,7 @@ export class EventBuffer {
     const buf = this.events.get(sessionId);
     if (buf) {
       for (let i = 0, len = buf.length; i < len; i++) {
-        const { event, seq } = buf[i];
-        cb(event, seq);
+        cb(buf[i]);
       }
     }
     return () => set.delete(cb);
