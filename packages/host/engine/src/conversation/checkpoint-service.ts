@@ -1,15 +1,17 @@
 import { asHistoryId } from '@linkcode/agent-adapter';
 import type {
+  AgentHistoryBranchOptions,
   AgentHistoryEvent,
   AgentHistoryId,
   ContentBlock,
   ConversationTurn,
+  ProviderTurnBinding,
   SessionRecord,
   TurnId,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { OperationError } from '../failure';
-import type { HistoryService } from '../session/history-service';
+import type { HistoryBranchCut, HistoryService } from '../session/history-service';
 import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { CorpusAttribution } from './lineage-attribution';
@@ -17,11 +19,9 @@ import { attributeCorpus, hasHiddenPrefix, pathToLeaf } from './lineage-attribut
 import type { ConversationTurnService } from './turn-service';
 import { TERMINAL_TURN_STATES } from './turn-service';
 
-/** What `branchHistory` needs: the provider history and the adapter-opaque cut inside it. */
-export interface ForkCut {
-  readonly historyId: AgentHistoryId;
-  readonly cursor: string;
-}
+/** What `branchHistory` needs: the provider history and the adapter-opaque cut inside it, plus
+ * the turn's cut on the current history should the provider no longer honour the first. */
+export type ForkCut = HistoryBranchCut;
 
 /**
  * Resolves provider fork cuts from per-turn bindings — live-captured at turn end, or replayed
@@ -176,17 +176,25 @@ export class ConversationCheckpointService {
     );
   }
 
-  /** `parent`'s persisted binding, preferring the history its own run wrote to. */
+  /** `parent`'s persisted binding: the history its own run wrote to first (the live capture), the
+   * current history's — the one known to be alive — behind it as the fallback, or as the pick when
+   * the own run captured none. */
   private boundCut(
     record: SessionRecord,
     parent: ConversationTurn,
   ): Effect.Effect<ForkCut | undefined, OperationError> {
     return this.turns.listBindings(parent.turnId).pipe(
       Effect.map((bindings) => {
-        if (bindings.length === 0) return;
         const own = record.runs.find((run) => run.runId === parent.runId)?.historyId;
-        const pick = bindings.find((binding) => binding.historyId === own) ?? bindings[0];
-        return { historyId: asHistoryId(pick.historyId), cursor: pick.checkpoint };
+        const current = this.records.historyId(record.sessionId);
+        const onOwn = bindings.find((binding) => binding.historyId === own);
+        const onCurrent = bindings.find((binding) => binding.historyId === current);
+        const pick = onOwn ?? onCurrent ?? bindings.at(0);
+        if (pick === undefined) return;
+        return {
+          ...toCut(pick),
+          ...(onCurrent !== undefined && onCurrent !== pick && { fallback: toCut(onCurrent) }),
+        };
       }),
     );
   }
@@ -252,6 +260,10 @@ export class ConversationCheckpointService {
       }
     });
   }
+}
+
+function toCut(binding: ProviderTurnBinding): AgentHistoryBranchOptions {
+  return { historyId: asHistoryId(binding.historyId), cursor: binding.checkpoint };
 }
 
 function activePath(record: SessionRecord, turns: ConversationTurn[]): ConversationTurn[] {

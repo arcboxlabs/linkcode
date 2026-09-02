@@ -209,7 +209,7 @@ describe('SQLite conversation store', () => {
     ).toEqual(prompt('p-1'));
   });
 
-  it('round-trips bindings: replay rows re-capture, a live row is never overwritten', async () => {
+  it('round-trips bindings: replay rows re-capture and yield to a live one, which nothing overwrites', async () => {
     const { database } = await databaseWithSessions('s-1');
     const store = createConversationStore(database.client);
     await seedIntent(store);
@@ -220,6 +220,8 @@ describe('SQLite conversation store', () => {
       checkpoint: '{"uuid":"a"}',
       capturedFrom: 'live',
     });
+    // A cold read can land first; the live capture that follows replaces it.
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"early"}', capturedFrom: 'replay' });
     await store.saveBinding(live);
     // Neither a later live capture nor a cold-read replay may move the first live cut.
     await store.saveBinding(

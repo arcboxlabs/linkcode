@@ -23,6 +23,12 @@ export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
 };
 
+/** What `branch` forks at; `fallback` is the same turn's cut on another history, tried only when
+ * the provider no longer honours the cut itself — never for a refused capability. */
+export interface HistoryBranchCut extends AgentHistoryBranchOptions {
+  readonly fallback?: AgentHistoryBranchOptions;
+}
+
 export type HistoryReadOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
   /** Bypass a cache entry built at or before this timestamp — the caller knows the corpus moved
@@ -193,14 +199,14 @@ export class HistoryService {
     );
   }
 
-  /** Fork provider history right after the cursor's checkpoint and start `adapter` on the child.
+  /** Fork provider history right after the cut's checkpoint and start `adapter` on the child.
    * Gated on the legacy `branch` capability — the turn-level `forkAfterTurn` gate is the submit
    * saga's, at admit. A checkpoint the provider no longer honours (rewritten/deleted history, an
-   * unforkable rollout) is a typed `unsupported` with a fixed message; the adapter's detail names
-   * provider ids only and stays in the daemon log. */
+   * unforkable rollout) moves on to the cut's `fallback`, else is a typed `unsupported` with a
+   * fixed message; the adapter's detail names provider ids only and stays in the daemon log. */
   branch(
     adapter: AgentAdapter,
-    opts: AgentHistoryBranchOptions,
+    cut: HistoryBranchCut,
     startOpts: StartOptions,
   ): Effect.Effect<void, RequestError | OperationError> {
     const branchHistory = adapter.branchHistory?.bind(adapter);
@@ -212,10 +218,11 @@ export class HistoryService {
         }),
       );
     }
+    const { fallback, ...opts } = cut;
     return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
       branchHistory(opts, startOpts),
     ).pipe(
-      Effect.catch((error): Effect.Effect<never, RequestError | OperationError> => {
+      Effect.catch((error): Effect.Effect<void, RequestError | OperationError> => {
         if (!(error.cause instanceof HistoryCheckpointInvalidError)) return Effect.fail(error);
         return Effect.logWarning(
           'Provider refused the fork checkpoint',
@@ -223,12 +230,15 @@ export class HistoryService {
           error.cause,
         ).pipe(
           Effect.andThen(
-            Effect.fail(
-              new RequestError({
-                code: 'unsupported',
-                message: 'The provider no longer honours this fork checkpoint',
-              }),
-            ),
+            fallback === undefined
+              ? Effect.fail(
+                  new RequestError({
+                    code: 'unsupported',
+                    message: 'The provider no longer honours this fork checkpoint',
+                  }),
+                )
+              : // Every adapter refuses before it spawns or starts anything, so the same instance retries.
+                this.branch(adapter, fallback, startOpts),
           ),
         );
       }),

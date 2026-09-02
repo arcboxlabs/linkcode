@@ -138,6 +138,22 @@ class RunIdleRejectAdapter extends FakeAdapter {
   }
 }
 
+/** A forking adapter whose provider refuses cuts on the histories in `dead` — a deleted transcript. */
+class DeadHistoryForkingAdapter extends ForkingAdapter {
+  constructor(private readonly dead: ReadonlySet<string>) {
+    super();
+  }
+
+  override branchHistory(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void> {
+    if (this.dead.has(opts.historyId)) {
+      return Promise.reject(
+        new HistoryCheckpointInvalidError(`claude-code: transcript ${opts.historyId} is gone`),
+      );
+    }
+    return super.branchHistory(opts, startOpts);
+  }
+}
+
 class LegacyBranchOnlyAdapter extends ForkingAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
@@ -511,6 +527,80 @@ describe('turn.submit saga', () => {
     expect(h.adapters.every((adapter) => (adapter as ForkingAdapter).branchedFrom === null)).toBe(
       true,
     );
+  });
+
+  it('falls back to the parent’s binding on the current history when its own run’s history is dead', async () => {
+    const dead = new Set<string>();
+    const h = await startedHarness(() => new DeadHistoryForkingAdapter(dead));
+    const firstTurnId = await twoCheckpointedTurns(h);
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+    forkedAdapter(h.adapters).emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    // The child history carries the parent's copy; a cold read of it backfilled the parent there.
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    const { runId } = nullthrow(turns.find((turn) => turn.turnId === firstTurnId));
+    await h.conversationStore.saveBinding({
+      turnId: firstTurnId,
+      runId,
+      historyId: 'native-child',
+      checkpoint: 'child-cp-1',
+      capturedFrom: 'replay',
+    });
+    dead.add('native-1');
+
+    await submitPrompt(h, 's4', 'edited again', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 3,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's4'));
+
+    // The live capture on the parent's own history is tried first; its refusal moves the fork to
+    // the same turn's cut on the history the session actually runs on.
+    expect(forks(h.adapters)).toEqual([
+      { historyId: 'native-1', cursor: 'cp-1' },
+      { historyId: 'native-child', cursor: 'child-cp-1' },
+    ]);
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(4);
+  });
+
+  it('picks the parent’s binding on the current history, not the first stored one, when its own run captured none', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const fresh = nullthrow(h.adapters[1]);
+    fresh.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    fresh.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    const { runId } = nullthrow(turns.find((turn) => turn.turnId === firstTurnId));
+    const replay = { turnId: firstTurnId, runId, capturedFrom: 'replay' as const };
+    await h.conversationStore.saveBinding({
+      ...replay,
+      historyId: 'native-stale',
+      checkpoint: 'stale-cp',
+    });
+    await h.conversationStore.saveBinding({
+      ...replay,
+      historyId: 'native-2',
+      checkpoint: 'current-cp',
+    });
+
+    await submitPrompt(h, 's3', 'continue the old version', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    expect(forks(h.adapters)).toEqual([{ historyId: 'native-2', cursor: 'current-cp' }]);
   });
 
   it('refuses a fork on a harness without forkAfterTurn even when a checkpoint exists', async () => {
