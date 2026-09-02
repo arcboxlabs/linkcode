@@ -136,6 +136,7 @@ export const en = {
       compacting: 'Compacting context…',
       compacted: 'Context compacted',
       compactedTokens: '{pre} → {post} tokens',
+      historyUnavailable: 'Output for this turn is unavailable',
       insufficientCreditsTitle: 'LinkCode credits needed',
       insufficientCreditsHint: 'Top up your balance, then retry this message.',
       topUpCredits: 'Top up credits',
@@ -1392,6 +1393,7 @@ export const en = {
       compacting: 'Compacting context…',
       compacted: 'Context compacted',
       compactedTokens: '{pre} → {post} tokens',
+      historyUnavailable: 'Output for this turn is unavailable',
     },
     chat: {
       allowTitle: 'Allow "{title}"?',
