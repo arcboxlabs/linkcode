@@ -2,6 +2,7 @@ import type { AgentEvent, AgentHistoryId } from '@linkcode/schema';
 import type { Session } from '@opencode-ai/sdk/v2';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
+import { HistoryCheckpointInvalidError } from '../history-branch';
 import { OpenCodeAdapter } from '../native/opencode';
 import type { OpencodeHistoryServerLike } from '../native/opencode/history-server';
 import { FakeEventStream } from './fake-event-stream';
@@ -372,9 +373,11 @@ describe('OpenCodeAdapter.branchHistory', () => {
       directory: source.directory,
     });
     const fork = vi.fn(() => Promise.resolve({ data: child }));
+    const message = vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } }));
     sdkMock.createOpencodeClient = () => ({
       session: {
         get: vi.fn(() => Promise.resolve({ data: source })),
+        message,
         fork,
       },
     });
@@ -397,6 +400,11 @@ describe('OpenCodeAdapter.branchHistory', () => {
       { kind: 'opencode', cwd: '/different/repo' },
     );
 
+    expect(message).toHaveBeenCalledWith({
+      sessionID: 'ses-source',
+      messageID: 'msg-target',
+      directory: '/canonical/repo',
+    });
     expect(fork).toHaveBeenCalledWith({
       sessionID: 'ses-source',
       messageID: 'msg-target',
@@ -407,6 +415,60 @@ describe('OpenCodeAdapter.branchHistory', () => {
     expect(client.session.promptAsync).toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: 'ses-child', directory: '/canonical/repo' }),
     );
+  });
+
+  it('refuses typed, without forking, when the checkpoint message is gone from the server', async () => {
+    const source = makeSession({ id: 'ses-source', directory: '/canonical/repo' });
+    const fork = vi.fn();
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: source })),
+        message: vi.fn(() =>
+          Promise.resolve({ error: { name: 'NotFoundError', data: { message: 'gone' } } }),
+        ),
+        fork,
+      },
+    });
+
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-source',
+            branchPoint: 'msg-vanished',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
+    expect(fork).not.toHaveBeenCalled();
+  });
+
+  it('refuses typed when the source session itself is unreadable', async () => {
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ error: { name: 'NotFoundError' } })),
+        fork: vi.fn(),
+      },
+    });
+
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-source',
+            branchPoint: 'msg-target',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
   });
 
   it('rejects a cursor minted for another source before calling the provider', async () => {

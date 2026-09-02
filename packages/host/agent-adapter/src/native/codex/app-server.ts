@@ -226,7 +226,10 @@ export class CodexAppServer {
       if ('error' in message) {
         const error = message.error;
         const detail = isRecord(error) && typeof error.message === 'string' ? error.message : line;
-        pending.reject(new Error(`codex: ${detail}`));
+        // The JSON-RPC code travels on the rejection: a method-level refusal (unknown thread,
+        // unsupported rollout) is distinguishable from a dead connection only by its presence.
+        const code = isRecord(error) && typeof error.code === 'number' ? error.code : undefined;
+        pending.reject(Object.assign(new Error(`codex: ${detail}`), { code }));
       } else {
         pending.resolve(message.result);
       }
