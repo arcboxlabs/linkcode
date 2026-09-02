@@ -443,7 +443,7 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
-  // Advertised per the CODE-633 spike (`thread/fork {threadId, lastTurnId}` inclusive on 0.144.6);
+  // `thread/fork {threadId, lastTurnId}` is live-verified inclusive on the 0.144.6 pin;
   // paginated-mode rollouts go dark per history (see `branchHistory` and history.ts).
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
@@ -599,7 +599,7 @@ export class CodexAdapter extends BaseAgentAdapter {
 
     const processEnvironment = await resolveCodexEnvironment(startOpts.cwd);
     // A paginated rollout would fail thread/fork (and resume) with -32601 on the pinned
-    // app-server; refuse typed before spawning one (CODE-645).
+    // app-server; refuse typed before spawning one.
     const summary = await this.findTranscript(opts.historyId, codexHome(processEnvironment));
     if (summary && !isCodexRolloutForkable(summary)) {
       throw new HistoryCheckpointInvalidError(

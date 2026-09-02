@@ -231,11 +231,14 @@ function opencodeAgentPolicies(
  */
 export class OpenCodeAdapter extends BaseAgentAdapter {
   readonly kind = 'opencode' as const;
+  // `session.fork {messageID}` cut inclusivity is mock-verified only (no binary on the verifying
+  // machine): turn-level forks stay dark until a live server confirms the cut excludes the message;
+  // the legacy `history.branch` path keeps the cold-read cut it always shipped with.
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
     resume: true,
-    forkAfterTurn: true,
+    forkAfterTurn: false,
     branch: true,
   };
 
@@ -284,9 +287,14 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
    * `message.part.updated` for the user's own prompt text too (observed live on 1.17.11), and
    * replaying it would double-render the prompt as an agent bubble. Cleared at each turn settle. */
   private readonly userMessageIds = new Set<string>();
-  /** User message ids already minted as `preceding` checkpoints — never cleared per turn, so a
-   * late `message.updated` for a settled prompt cannot re-mint a cut for the wrong turn. */
+  /** User message ids already minted as `preceding` checkpoints — never cleared per turn and
+   * pre-seeded from a resumed session's messages, so a late `message.updated` for a settled
+   * prompt cannot re-mint a cut for the wrong turn. */
   private readonly checkpointedUserMessageIds = new Set<string>();
+  /** True once the active turn minted its `preceding` checkpoint: only the turn's own prompt cuts
+   * before it — a mid-turn compaction lands as a later user message (`CompactionPart`) and would
+   * aim the parent's fork past this turn's prompt. */
+  private turnCheckpointMinted = false;
   /** Provider the spawn-time credential injection scoped to (null = nothing injected): the only
    * provider a mid-session set-model may target while a per-account credential is in play. */
   private credentialProviderId: string | null = null;
@@ -373,6 +381,20 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
       this.directory = got.data.directory;
       this.sessionTitle = got.data.title.trim() || null;
       if (this.sessionTitle) this.emitTitle(this.sessionTitle);
+      // Settled prompts can be re-emitted on the stream; every existing user message is already
+      // checkpointed so the next turn's cut can only be its own prompt.
+      const messages = okOrThrow(
+        await this.client.session.messages({
+          sessionID: got.data.id,
+          directory: got.data.directory,
+        }),
+        'opencode: session.messages',
+      );
+      const existing = messages.data ?? [];
+      for (let i = 0, len = existing.length; i < len; i++) {
+        const { info } = existing[i];
+        if (info.role === 'user') this.checkpointedUserMessageIds.add(info.id);
+      }
       // A resumed session continues under its recorded control state unless the caller overrode
       // it: the Session record tracks the last-used model/agent (live-verified on 1.18.2 — both
       // fields update after every turn), so the next turn resends what the session last ran with.
@@ -489,6 +511,7 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
     this.turnStarted = false;
     this.cancelling = false;
     this.turnFailed = false;
+    this.turnCheckpointMinted = false;
     this.emitStatus('running');
     return this.turnEpoch;
   }
@@ -983,7 +1006,12 @@ export class OpenCodeAdapter extends BaseAgentAdapter {
               this.userMessageIds.add(info.id);
               // `session.fork {messageID}` cuts BEFORE the message, so a prompt's own id is the
               // checkpoint of the turn that preceded it (a tip has none until its successor).
-              if (!this.checkpointedUserMessageIds.has(info.id)) {
+              if (
+                this.turnActive &&
+                !this.turnCheckpointMinted &&
+                !this.checkpointedUserMessageIds.has(info.id)
+              ) {
+                this.turnCheckpointMinted = true;
                 this.checkpointedUserMessageIds.add(info.id);
                 this.emitCheckpoint(asHistoryId(this.sessionId), info.id, 'preceding');
               }

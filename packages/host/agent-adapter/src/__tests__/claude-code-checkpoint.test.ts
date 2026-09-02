@@ -5,10 +5,10 @@ import type { HistoryCheckpoint } from '../history-branch';
 import { encodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../history-branch';
 import { asHistoryId } from '../history-util';
 import type { ClaudeTranscriptSupplement } from '../native/claude-code';
-import { ClaudeCodeAdapter } from '../native/claude-code';
+import { buildClaudeTranscriptSupplement, ClaudeCodeAdapter } from '../native/claude-code';
 
 /**
- * Fork checkpoints (CODE-632/633): the cut claude's `forkSession` needs is the uuid of the row the
+ * Fork checkpoints: the cut claude's `forkSession` needs is the uuid of the row the
  * next user row hangs off — the turn's last main-agent assistant frame on a linear history — and
  * a fork must re-verify that row still exists in the raw transcript before cutting.
  */
@@ -49,14 +49,18 @@ class TestClaude extends ClaudeCodeAdapter {
   }
 }
 
-function assistantFrame(uuid: string, parentToolUseId: string | null = null): object {
+function assistantFrame(
+  uuid: string,
+  parentToolUseId: string | null = null,
+  apiMessageId = `api-${uuid}`,
+): object {
   return {
     type: 'assistant',
     session_id: SESSION,
     uuid,
     parent_tool_use_id: parentToolUseId,
     message: {
-      id: `api-${uuid}`,
+      id: apiMessageId,
       model: 'claude-test',
       content: [{ type: 'text', text: 'hi' }],
     },
@@ -113,6 +117,20 @@ describe('ClaudeCodeAdapter live fork checkpoints', () => {
     expect(stop).toBeGreaterThan(marker);
   });
 
+  it('mints the LAST frame of a multi-block API message — one frame per persisted row', () => {
+    const { adapter, checkpoints } = harness();
+
+    // The CLI persists one transcript row per content block, each with its own uuid, all sharing
+    // the API `message.id`; the next user row hangs off the last of them.
+    adapter.feed(assistantFrame('row-b1', null, 'api-multi'));
+    adapter.feed(assistantFrame('row-b2', null, 'api-multi'));
+    adapter.feed(resultFrame('success'));
+
+    expect(checkpoints.map((checkpoint) => JSON.parse(checkpoint.cursor).branchPoint)).toEqual([
+      'row-b2',
+    ]);
+  });
+
   it('mints nothing for a failed result', () => {
     const { adapter, checkpoints } = harness();
 
@@ -120,6 +138,46 @@ describe('ClaudeCodeAdapter live fork checkpoints', () => {
     adapter.feed(resultFrame('error_during_execution'));
 
     expect(checkpoints).toEqual([]);
+  });
+});
+
+describe('claude fork cuts across a Stop hook summary row', () => {
+  const start: StartOptions = { kind: 'claude-code', cwd: '/repo' };
+  const row = (value: object) => JSON.stringify(value);
+  const transcript = [
+    row({ type: 'user', uuid: 'u0', parentUuid: null, message: { role: 'user', content: 'q' } }),
+    row({ type: 'assistant', uuid: 'row-a', parentUuid: 'u0', message: { role: 'assistant' } }),
+    row({ type: 'system', subtype: 'stop_hook_summary', uuid: 'row-s', parentUuid: 'row-a' }),
+    row({
+      type: 'user',
+      uuid: 'u1',
+      parentUuid: 'row-s',
+      message: { role: 'user', content: 'q2' },
+    }),
+  ];
+
+  it('the cold-read cursor is the system row, the live checkpoint the assistant row — both cut', async () => {
+    const supplement = buildClaudeTranscriptSupplement(transcript);
+    expect(supplement.parentUuidByUuid.get('u1')).toBe('row-s');
+
+    const cuts = ['row-s', 'row-a'];
+    for (let i = 0, len = cuts.length; i < len; i++) {
+      const cut = cuts[i];
+      const adapter = new TestClaude();
+      adapter.supplementUuids = [...supplement.parentUuidByUuid.keys()];
+      // eslint-disable-next-line no-await-in-loop -- one fork per cut, sequential by construction
+      await adapter.branchHistory(
+        {
+          historyId: asHistoryId(SESSION),
+          cursor: encodeHistoryBranchCursor('claude-code', asHistoryId(SESSION), cut),
+        },
+        start,
+      );
+      expect(adapter.forkSession).toHaveBeenCalledWith(SESSION, {
+        upToMessageId: cut,
+        dir: '/repo',
+      });
+    }
   });
 });
 
