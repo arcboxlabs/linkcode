@@ -18,6 +18,7 @@ import {
   compareConversationWatermarks,
   MAX_ATTACHMENT_TOTAL_BASE64_LENGTH,
   TurnIdSchema,
+  userRowMessageId,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
 import type { OperationError } from '../failure';
@@ -30,7 +31,7 @@ import { pathToLeaf } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
 import type { ConversationTurnService } from './turn-service';
-import { TERMINAL_TURN_STATES, turnInputText, userRowMessageId } from './turn-service';
+import { TERMINAL_TURN_STATES, turnInputText } from './turn-service';
 
 export interface ConversationGraphResult {
   readonly sessionId: SessionId;
