@@ -16,6 +16,7 @@ import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import type { AttachmentStore } from '../attachment/attachment-store';
 import type { BlobStore } from '../attachment/blob-store';
+import { AttachmentIoMutex } from '../attachment/io-mutex';
 import { declaredMimeTypeMatches } from '../attachment/mime-sniff';
 import { OperationError, RequestError } from '../failure';
 import type { FileHostService } from '../preview/file-host-service';
@@ -67,6 +68,7 @@ export class ResourceService {
     private readonly fileHost: FileHostService,
     private readonly blobs: BlobStore,
     private readonly attachments: AttachmentStore,
+    private readonly io: AttachmentIoMutex = new AttachmentIoMutex(),
   ) {}
 
   list(sessionId: SessionId): Effect.Effect<SessionResource[], OperationError> {
@@ -79,7 +81,7 @@ export class ResourceService {
     mimeType: string | undefined,
     data: string,
   ): Effect.Effect<SessionResource, OperationError | RequestError> {
-    const { attachments, blobs, records, transport } = this;
+    const { attachments, blobs, io, records, transport } = this;
     return Effect.gen({ self: this }, function* () {
       if (!records.has(sessionId)) {
         return yield* new RequestError({ code: 'not_found', message: 'Session not found' });
@@ -102,44 +104,32 @@ export class ResourceService {
       const sha256 = createHash('sha256').update(bytes).digest('hex');
       const blobId = blobIdFromSha256(sha256);
       const now = Date.now();
-      // The harness reads the blob's own path: immutable, shared, mode 0444.
-      let resource: SessionResource = {
-        resourceId,
-        sessionId,
-        direction: 'source',
-        name,
-        kind: classify(name, mimeType),
-        status: 'processing',
-        locator: { type: 'managed-file', path: blobs.pathOf(blobId) },
-        attachmentId,
-        mimeType,
-        sizeBytes: bytes.byteLength,
-        createdAt: now,
-        updatedAt: now,
-      };
-      yield* this.run('save', () => this.store.save(resource));
-      transport.send(createWireMessage({ kind: 'resource.changed', resource }));
+      const kind = classify(name, mimeType);
+      const locator = { type: 'managed-file' as const, path: blobs.pathOf(blobId) };
       const written = yield* Effect.tryPromise({
         async try() {
-          const stage = await blobs.stage(resourceId);
-          try {
-            await stage.write(0, bytes);
-            await stage.commit({ sha256, sizeBytes: bytes.byteLength });
-          } catch (error) {
-            await stage.abort().catch(noop);
-            throw error;
-          }
-          await attachments.commitAttachment({
-            blob: { blobId, sizeBytes: bytes.byteLength, createdAt: now },
-            attachment: {
-              attachmentId,
-              kind: resource.kind,
-              name,
-              mimeType: mimeType ?? 'application/octet-stream',
-              sizeBytes: bytes.byteLength,
-              metadata: {},
-              createdAt: now,
-            },
+          await io.run(async () => {
+            const stage = await blobs.stage(resourceId);
+            try {
+              await stage.write(0, bytes);
+              await stage.commit({ sha256, sizeBytes: bytes.byteLength });
+              await attachments.commitAttachment({
+                blob: { blobId, sizeBytes: bytes.byteLength, createdAt: now },
+                attachment: {
+                  attachmentId,
+                  kind,
+                  name,
+                  mimeType: mimeType ?? 'application/octet-stream',
+                  sizeBytes: bytes.byteLength,
+                  metadata: {},
+                  createdAt: now,
+                },
+              });
+            } catch (error) {
+              await stage.abort().catch(noop);
+              await blobs.delete(blobId);
+              throw error;
+            }
           });
         },
         catch: (cause) => cause,
@@ -147,14 +137,36 @@ export class ResourceService {
         Effect.as(true),
         Effect.catch(() => Effect.succeed(false)),
       );
-      resource = written
-        ? { ...resource, status: 'ready', updatedAt: Date.now() }
-        : {
-            ...resource,
-            status: 'failed',
-            error: 'Failed to persist uploaded resource',
-            updatedAt: Date.now(),
-          };
+      if (!written) {
+        return {
+          resourceId,
+          sessionId,
+          direction: 'source',
+          name,
+          kind,
+          status: 'failed',
+          locator,
+          error: 'Failed to persist uploaded resource',
+          mimeType,
+          sizeBytes: bytes.byteLength,
+          createdAt: now,
+          updatedAt: Date.now(),
+        };
+      }
+      const resource: SessionResource = {
+        resourceId,
+        sessionId,
+        direction: 'source',
+        name,
+        kind,
+        status: 'ready',
+        locator,
+        attachmentId,
+        mimeType,
+        sizeBytes: bytes.byteLength,
+        createdAt: now,
+        updatedAt: Date.now(),
+      };
       yield* this.run('save', () => this.store.save(resource));
       transport.send(createWireMessage({ kind: 'resource.changed', resource }));
       return resource;

@@ -19,6 +19,7 @@ import { ManagedAssetService } from './asset/service';
 import { InMemoryAttachmentStore } from './attachment/attachment-store';
 import { FsBlobStore } from './attachment/blob-store';
 import { AttachmentGc } from './attachment/gc';
+import { AttachmentIoMutex } from './attachment/io-mutex';
 import {
   InMemoryLoopStore,
   InMemoryScheduleStore,
@@ -128,7 +129,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         ? resourceStore.referencedAttachmentIds()
         : []),
     ]);
-  const attachmentGc = new AttachmentGc(attachmentStore, blobStore);
+  const attachmentIo = new AttachmentIoMutex();
+  const attachmentGc = new AttachmentGc(attachmentStore, blobStore, Date.now, attachmentIo);
   const resources = new ResourceService(
     transport,
     resourceStore,
@@ -137,6 +139,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     fileHost,
     blobStore,
     attachmentStore,
+    attachmentIo,
   );
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;

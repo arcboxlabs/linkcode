@@ -110,10 +110,13 @@ describe('mime sniff', () => {
     expect(sniffImageMimeType(new Uint8Array(0))).toBeUndefined();
   });
 
-  it('holds image declarations to their bytes and trusts the rest', () => {
+  it('holds sniffable image declarations to their bytes and trusts the rest', () => {
     expect(declaredMimeTypeMatches('image/png', png)).toBe(true);
     expect(declaredMimeTypeMatches('image/jpeg', png)).toBe(false);
-    expect(declaredMimeTypeMatches('image/svg+xml', Buffer.from('<svg/>'))).toBe(false);
+    expect(declaredMimeTypeMatches('image/jpeg', Buffer.from('<svg/>'))).toBe(false);
+    expect(declaredMimeTypeMatches('image/svg+xml', Buffer.from('<svg/>'))).toBe(true);
+    expect(declaredMimeTypeMatches('image/svg+xml', png)).toBe(false);
+    expect(declaredMimeTypeMatches('image/heic', Buffer.from('ftypheic'))).toBe(true);
     expect(declaredMimeTypeMatches('application/pdf', Buffer.from('%PDF-1.7'))).toBe(true);
     expect(declaredMimeTypeMatches('text/plain', png)).toBe(true);
   });
