@@ -103,7 +103,7 @@ describe('legacy input turn tracking', () => {
       input: { type: 'prompt' },
     });
     if (turn.input.type !== 'prompt') throw new Error('expected a prompt turn');
-    const prompt = await h.conversationStore.getPrompt(turn.input.promptId);
+    const prompt = await h.conversationStore.getPrompt(nullthrow(turn.input.promptId));
     expect(prompt?.blocks).toEqual([{ type: 'text', text: 'hello' }]);
     expect(await h.conversationStore.listOpenOperations(h.sessionId)).toHaveLength(0);
     const [record] = await h.store.load();
@@ -301,7 +301,7 @@ describe('legacy input turn tracking', () => {
     // The replacement is a sibling under the rewritten turn's parent, never a child of the leaf.
     expect(replacement).toMatchObject({ parentTurnId: null, state: 'running' });
     if (replacement.input.type !== 'prompt') throw new Error('expected a prompt turn');
-    const prompt = await h.conversationStore.getPrompt(replacement.input.promptId);
+    const prompt = await h.conversationStore.getPrompt(nullthrow(replacement.input.promptId));
     expect(prompt?.blocks).toEqual([{ type: 'text', text: 'edited prompt' }]);
     const [record] = await h.store.load();
     expect(record.activeLeafTurnId).toBe(replacement.turnId);
@@ -316,7 +316,6 @@ describe('legacy input turn tracking', () => {
         turnId: TurnIdSchema.parse('turn-preparing'),
         sessionId,
         parentTurnId: null,
-        siblingOrdinal: 1,
         input: { type: 'shell-command', command: 'sleep 1' },
         runId: RunIdSchema.parse('run-dead'),
         state: 'preparing',
@@ -381,7 +380,6 @@ describe('legacy input turn tracking', () => {
         turnId: TurnIdSchema.parse('turn-open'),
         sessionId: h.sessionId,
         parentTurnId: null,
-        siblingOrdinal: 1,
         input: { type: 'shell-command', command: 'sleep 1' },
         runId: RunIdSchema.parse('run-elsewhere'),
         state: 'preparing',

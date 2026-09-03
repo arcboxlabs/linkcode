@@ -204,7 +204,6 @@ describe('turn.submit saga', () => {
         turnId: TurnIdSchema.parse('turn-open'),
         sessionId: h.sessionId,
         parentTurnId: null,
-        siblingOrdinal: 1,
         input: { type: 'shell-command', command: 'sleep 1' },
         runId: RunIdSchema.parse('run-elsewhere'),
         state: 'preparing',

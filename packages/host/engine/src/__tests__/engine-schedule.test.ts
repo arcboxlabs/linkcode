@@ -219,7 +219,7 @@ describe('engine schedule wiring', () => {
       input: { type: 'prompt' },
     });
     if (turn.input.type !== 'prompt') throw new Error('expected a prompt turn');
-    expect((await h.conversationStore.getPrompt(turn.input.promptId))?.blocks).toEqual([
+    expect((await h.conversationStore.getPrompt(nullthrow(turn.input.promptId)))?.blocks).toEqual([
       { type: 'text', text: SPEC.prompt },
     ]);
     expect(await h.conversationStore.listOpenOperations(sessionId)).toHaveLength(0);

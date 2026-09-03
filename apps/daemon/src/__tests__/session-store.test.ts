@@ -152,8 +152,7 @@ describe('SQLite session store', () => {
       runs: [{ startedAt: 1 }],
     });
 
-    await expect(async () => createSessionStore(database).save(record)).rejects.toThrow(
-      'without runId',
-    );
+    const store = createSessionStore(openDatabase(database).client);
+    await expect(async () => store.save(record)).rejects.toThrow('without runId');
   });
 });

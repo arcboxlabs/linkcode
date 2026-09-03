@@ -135,22 +135,14 @@ export class SessionOrchestrator {
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { conversations, resources } = this;
+    const { resources } = this;
     return Effect.gen({ self: this }, function* () {
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
       }
       yield* resources.deleteSession(sessionId);
-      yield* Effect.tryPromise({
-        try: () => conversations.deleteSession(sessionId),
-        catch: (cause) =>
-          toOperationFailure(cause, {
-            subsystem: 'store',
-            operation: 'conversation.delete-session',
-            publicMessage: 'Failed to delete conversation graph',
-          }),
-      });
+      yield* this.turns.deleteSession(sessionId);
       yield* this.records.delete(sessionId);
     });
   }

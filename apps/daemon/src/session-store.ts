@@ -1,8 +1,8 @@
-import { randomUUID } from 'node:crypto';
 import type { SessionStore } from '@linkcode/engine';
 import type { SessionRecord } from '@linkcode/schema';
 import { SessionRecordSchema } from '@linkcode/schema';
 import { asc, eq } from 'drizzle-orm';
+import { nullthrow } from 'foxts/guard';
 import type { DaemonDatabaseClient } from './db/database';
 import { sessionRuns, sessions } from './db/schema';
 
@@ -49,9 +49,9 @@ export function createSessionStore(db: DaemonDatabaseClient): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
-                // Writers mint runId; the fallback keeps the column non-null for a legacy record
-                // (wire-optional until the floor bump) without minting on read.
-                runId: run.runId ?? `run-${randomUUID()}`,
+                // runId is optional at the wire parse boundary only; every writer mints it, so a
+                // runId-less run here is a bug — minting one would drift the durable id per save.
+                runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
                 baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,

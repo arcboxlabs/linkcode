@@ -1,4 +1,5 @@
 import type { ConversationStore, ConversationTurnIntent } from '@linkcode/engine';
+import { ConversationSessionBusyError } from '@linkcode/engine';
 import type {
   ConversationOperation,
   ConversationTurn,
@@ -15,7 +16,7 @@ import {
   PromptRecordSchema,
   ProviderTurnBindingSchema,
 } from '@linkcode/schema';
-import { and, asc, eq, inArray, isNotNull, notInArray } from 'drizzle-orm';
+import { and, asc, count, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
 import type { DaemonDatabaseClient } from './db/database';
 import {
   conversationOperations,
@@ -42,14 +43,6 @@ export function createConversationStore(db: DaemonDatabaseClient): ConversationS
     tx.insert(conversationTurns)
       .values(row)
       .onConflictDoUpdate({ target: conversationTurns.turnId, set: row })
-      .run();
-  }
-
-  function upsertOperation(tx: DbOrTx, operation: ConversationOperation): void {
-    const row = toOperationRow(operation);
-    tx.insert(conversationOperations)
-      .values(row)
-      .onConflictDoUpdate({ target: conversationOperations.operationId, set: row })
       .run();
   }
 
@@ -114,14 +107,42 @@ export function createConversationStore(db: DaemonDatabaseClient): ConversationS
       return Promise.resolve(rows.map(toOperation));
     },
 
-    persistTurnIntent(intent: ConversationTurnIntent): Promise<void> {
-      db.transaction((tx) => {
+    persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn> {
+      const { parentTurnId, sessionId } = intent.turn;
+      const persisted = db.transaction((tx) => {
+        const open = tx
+          .select({ operationId: conversationOperations.operationId })
+          .from(conversationOperations)
+          .where(
+            and(
+              eq(conversationOperations.sessionId, sessionId),
+              eq(conversationOperations.state, 'open'),
+            ),
+          )
+          .get();
+        if (open) throw new ConversationSessionBusyError(sessionId);
+        const siblings = tx
+          .select({ value: count() })
+          .from(conversationTurns)
+          .where(
+            and(
+              eq(conversationTurns.sessionId, sessionId),
+              parentTurnId === null
+                ? isNull(conversationTurns.parentTurnId)
+                : eq(conversationTurns.parentTurnId, parentTurnId),
+            ),
+          )
+          .get();
+        const turn: ConversationTurn = {
+          ...intent.turn,
+          siblingOrdinal: (siblings?.value ?? 0) + 1,
+        };
         const prompt =
           intent.turn.input.type === 'prompt' && intent.turn.input.promptId !== null
             ? intent.prompt
             : undefined;
         if (prompt) {
-          // Prompts are immutable: a replayed intent re-inserts the identical record.
+          // Prompts are immutable and shared across forks; a re-referencing insert is a no-op.
           tx.insert(prompts).values(toPromptRow(prompt)).onConflictDoNothing().run();
           const referenced = attachmentIdsOf(prompt);
           if (referenced.length > 0) {
@@ -133,18 +154,32 @@ export function createConversationStore(db: DaemonDatabaseClient): ConversationS
               .run();
           }
         }
-        upsertTurn(tx, intent.turn);
-        upsertOperation(tx, intent.operation);
+        // Plain inserts: a replayed operationId must conflict here, never re-open a terminal row.
+        tx.insert(conversationTurns).values(toTurnRow(turn)).run();
+        tx.insert(conversationOperations).values(toOperationRow(intent.operation)).run();
+        return turn;
       });
-      return Promise.resolve();
+      return Promise.resolve(persisted);
     },
 
-    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<void> {
-      db.transaction((tx) => {
-        upsertOperation(tx, operation);
+    resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean> {
+      const transitioned = db.transaction((tx) => {
+        const result = tx
+          .update(conversationOperations)
+          .set(toOperationRow(operation))
+          .where(
+            and(
+              eq(conversationOperations.operationId, operation.operationId),
+              eq(conversationOperations.state, 'open'),
+            ),
+          )
+          .run();
+        // A concurrent resolver already stored a terminal result; the first writer stands.
+        if (result.changes === 0) return false;
         if (turn) upsertTurn(tx, turn);
+        return true;
       });
-      return Promise.resolve();
+      return Promise.resolve(transitioned);
     },
 
     deleteSession(sessionId: SessionId): Promise<void> {

@@ -349,8 +349,8 @@ describe('SQLite conversation store', () => {
   });
 
   it('refuses a second intent while the session has an open operation', async () => {
-    const database = await databaseWithSessions('s-1', 's-2');
-    const store = createConversationStore(database);
+    const { database } = await databaseWithSessions('s-1', 's-2');
+    const store = createConversationStore(database.client);
     await store.persistTurnIntent({
       turn: turn({ turnId: 't-1' }),
       operation: openOperation('op-1'),
@@ -376,8 +376,8 @@ describe('SQLite conversation store', () => {
   });
 
   it('assigns sibling ordinals in the transaction and the unique index rejects duplicates', async () => {
-    const database = await databaseWithSessions('s-1');
-    const store = createConversationStore(database);
+    const { database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
     const first = await store.persistTurnIntent({
       turn: turn({ turnId: 't-1' }),
       operation: openOperation('op-1'),
@@ -409,8 +409,8 @@ describe('SQLite conversation store', () => {
   });
 
   it('refuses a replayed operation id instead of re-opening the terminal row', async () => {
-    const database = await databaseWithSessions('s-1');
-    const store = createConversationStore(database);
+    const { database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
     const first = await store.persistTurnIntent({
       turn: turn({ turnId: 't-1' }),
       operation: openOperation('op-1'),
@@ -436,8 +436,8 @@ describe('SQLite conversation store', () => {
   });
 
   it('resolveOperation transitions open rows only — the first terminal result stands', async () => {
-    const database = await databaseWithSessions('s-1');
-    const store = createConversationStore(database);
+    const { path, database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
     const first = await store.persistTurnIntent({
       turn: turn({ turnId: 't-1' }),
       operation: openOperation('op-1'),
@@ -466,7 +466,8 @@ describe('SQLite conversation store', () => {
       ),
     ).toBe(false);
 
-    const reopened = createConversationStore(database);
+    closeDatabase(database);
+    const reopened = createConversationStore(openDatabase(path).client);
     expect(await reopened.getOperation(OperationIdSchema.parse('op-1'))).toEqual(failed);
     expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
       { ...first, state: 'failed' },
