@@ -18,8 +18,18 @@ export class InMemoryResourceStore implements ResourceStore {
 
   /** GC roots for the in-memory attachment store: every attachment a resource is backed by. */
   referencedAttachmentIds(): AttachmentId[] {
+    return this.collectReferencedIds();
+  }
+
+  /** Attachments this session's resources name — the in-memory `attachment.read` reachability. */
+  referencedAttachmentIdsForSession(sessionId: SessionId): AttachmentId[] {
+    return this.collectReferencedIds(sessionId);
+  }
+
+  private collectReferencedIds(sessionId?: SessionId): AttachmentId[] {
     const ids: AttachmentId[] = [];
     for (const resource of this.resources.values()) {
+      if (sessionId !== undefined && resource.sessionId !== sessionId) continue;
       if (resource.attachmentId !== undefined) ids.push(resource.attachmentId);
     }
     return ids;

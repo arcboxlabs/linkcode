@@ -94,6 +94,19 @@ describe('FsBlobStore', () => {
     expect(await store.list()).toEqual([]);
     await expect(store.delete(blobId)).resolves.toBeUndefined();
   });
+
+  it('reads a committed blob by offset and length', async () => {
+    const { store } = await storeInTempDir();
+    const bytes = Buffer.from('abcdefghij');
+    const stage = await store.stage('readable');
+    await stage.write(0, bytes);
+    const blobId = await stage.commit({ sha256: sha256(bytes), sizeBytes: bytes.byteLength });
+
+    expect(Buffer.from((await store.read(blobId, 0, 4)) ?? [])).toEqual(Buffer.from('abcd'));
+    expect(Buffer.from((await store.read(blobId, 6, 16)) ?? [])).toEqual(Buffer.from('ghij'));
+    expect(Buffer.from((await store.read(blobId, 10, 4)) ?? [])).toEqual(Buffer.from(''));
+    expect(await store.read(blobIdFromSha256('b'.repeat(64)), 0, 4)).toBeUndefined();
+  });
 });
 
 describe('mime sniff', () => {
