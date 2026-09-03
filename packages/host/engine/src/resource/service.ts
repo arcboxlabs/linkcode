@@ -127,7 +127,9 @@ export class ResourceService {
               });
             } catch (error) {
               await stage.abort().catch(noop);
-              await blobs.delete(blobId);
+              // Content addressing means another attachment may already own a row for this blob;
+              // unlinking then would strand its bytes.
+              if (!(await attachments.getBlob(blobId))) await blobs.delete(blobId);
               throw error;
             }
           });

@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import type { AttachmentId, BlobId, SessionId, UploadId, UploadLease } from '@linkcode/schema';
 import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
-  ATTACHMENT_UPLOAD_WINDOW_CHUNKS,
   AttachmentIdSchema,
   blobIdFromSha256,
   MAX_ATTACHMENT_BYTES,
@@ -59,6 +58,9 @@ export interface AttachmentReadResult {
 interface LiveUpload {
   readonly lease: UploadLease;
   readonly stage: BlobStage | undefined;
+  /** Chunk frames arrive in order but each is handled in its own fiber; the contiguity check and
+   * the write that advances `receivedBytes` must not interleave across the client's credit window. */
+  readonly gate: AttachmentIoMutex;
   receivedBytes: number;
   head: Uint8Array;
   readonly state: 'ready' | 'exists';
@@ -80,6 +82,7 @@ export class AttachmentUploadService {
   ): Effect.Effect<AttachmentBeginResult, RequestError | OperationError> {
     const store = this.store.bind(this);
     const files = this.files.bind(this);
+    const reapExpired = this.reapExpired.bind(this);
     return Effect.gen({ self: this }, function* () {
       if (input.operationId !== undefined) {
         const replayed = this.begunByOperation.get(input.operationId);
@@ -88,6 +91,9 @@ export class AttachmentUploadService {
       if (input.declaredSize > MAX_ATTACHMENT_BYTES) {
         return yield* invalid('limit_exceeded', 'Attachment exceeds the 8 MiB limit');
       }
+      // A staging handle lives in `live` until commit or abort; a client that vanishes mid-upload
+      // never sends either, so expired leases release their descriptors here.
+      yield* files('reap', reapExpired);
       const uploadId = UploadIdSchema.parse(`upl-${randomUUID()}`);
       const now = this.clock();
       const lease = yield* store('begin', () =>
@@ -121,6 +127,7 @@ export class AttachmentUploadService {
       this.live.set(uploadId, {
         lease,
         stage,
+        gate: new AttachmentIoMutex(),
         receivedBytes: state === 'exists' ? input.declaredSize : 0,
         head: new Uint8Array(0),
         state,
@@ -154,28 +161,27 @@ export class AttachmentUploadService {
         }
         return yield* invalid('conflict', 'Upload is not accepting chunks; retry from begin');
       }
-      if (offset !== live.receivedBytes) {
-        return yield* invalid(
-          'invalid_request',
-          `Expected offset ${live.receivedBytes}, got ${offset}`,
-        );
-      }
-      const windowEnd =
-        live.receivedBytes + ATTACHMENT_UPLOAD_WINDOW_CHUNKS * ATTACHMENT_UPLOAD_CHUNK_BYTES;
-      if (offset >= windowEnd && live.receivedBytes < live.lease.declaredSize) {
-        return yield* invalid('invalid_request', 'Chunk is outside the credit window');
-      }
-      const bytes = yield* Effect.try({
-        try: () => decodeChunk(data),
-        catch: (cause) => mapCause(cause, 'store', 'chunk'),
-      });
-      if (live.receivedBytes + bytes.byteLength > live.lease.declaredSize) {
-        return yield* invalid('invalid_request', 'Chunk exceeds the declared size');
-      }
-      yield* files('write', () => stage.write(offset, bytes));
-      if (offset === 0) live.head = bytes.subarray(0, Math.min(HEAD_BYTES, bytes.byteLength));
-      live.receivedBytes += bytes.byteLength;
-      return { uploadId, receivedBytes: live.receivedBytes };
+      return yield* files('write', () =>
+        live.gate.run(async () => {
+          if (offset !== live.receivedBytes) {
+            throw new RequestError({
+              code: 'invalid_request',
+              message: `Expected offset ${live.receivedBytes}, got ${offset}`,
+            });
+          }
+          const bytes = decodeChunk(data);
+          if (live.receivedBytes + bytes.byteLength > live.lease.declaredSize) {
+            throw new RequestError({
+              code: 'invalid_request',
+              message: 'Chunk exceeds the declared size',
+            });
+          }
+          await stage.write(offset, bytes);
+          if (offset === 0) live.head = bytes.subarray(0, Math.min(HEAD_BYTES, bytes.byteLength));
+          live.receivedBytes += bytes.byteLength;
+          return { uploadId, receivedBytes: live.receivedBytes };
+        }),
+      );
     });
   }
 
@@ -183,6 +189,7 @@ export class AttachmentUploadService {
     const store = this.store.bind(this);
     const files = this.files.bind(this);
     const forget = this.forget.bind(this);
+    const discard = this.discard.bind(this);
     const publishExists = this.publishExists.bind(this);
     const publishReady = this.publishReady.bind(this);
     return Effect.gen({ self: this }, function* () {
@@ -200,14 +207,16 @@ export class AttachmentUploadService {
         pinnedBlobId === undefined
           ? undefined
           : yield* files('stat', () => this.blobs.stat(pinnedBlobId));
-      const exists = live?.state === 'exists' || existsFile !== undefined;
+      // A dedupe hit only counts when the stored bytes are the size the client declared; otherwise
+      // the declared size is a lie and the exists path would skip every coverage check.
+      const exists = live?.state === 'exists' || existsFile?.sizeBytes === lease.declaredSize;
       if (exists) {
         const blobId = pinnedBlobId ?? blobIdFromSha256(lease.declaredSha256);
         const head =
           (yield* files('read', () => this.blobs.read(blobId, 0, HEAD_BYTES))) ?? new Uint8Array(0);
         yield* assertMime(lease.mimeType, head);
         const committed = yield* publishExists(lease, blobId);
-        forget(uploadId);
+        yield* files('discard', () => discard(uploadId));
         return committed;
       }
       if (!live?.stage) {
@@ -223,7 +232,11 @@ export class AttachmentUploadService {
       const committed = yield* publishReady(live);
       forget(uploadId);
       return committed;
-    });
+    }).pipe(
+      // v1 has no resume frame, so a rejected commit ends the upload: release its staging handle
+      // instead of leaving a dead entry a later chunk would fail on.
+      Effect.tapError(() => files('discard', () => discard(uploadId)).pipe(Effect.ignore)),
+    );
   }
 
   abort(uploadId: UploadId): Effect.Effect<void, RequestError | OperationError> {
@@ -269,6 +282,11 @@ export class AttachmentUploadService {
         (yield* files('read', () => this.blobs.read(attachment.blobId, offset, length))) ??
         undefined;
       if (bytes === undefined) return yield* invalid('not_found', 'Attachment bytes are missing');
+      // `length` is positive on the wire, so an empty read below the recorded size means the blob
+      // is shorter than its row. Saying `eof` there would stall the caller's walk forever.
+      if (bytes.byteLength === 0 && offset < attachment.sizeBytes) {
+        return yield* invalid('not_found', 'Attachment bytes are truncated');
+      }
       const end = offset + bytes.byteLength;
       return {
         sessionId,
@@ -324,7 +342,9 @@ export class AttachmentUploadService {
           });
         } catch (error) {
           await stage.abort().catch(noop);
-          if (blobId) await blobs.delete(blobId);
+          // Content addressing means a concurrent upload of the same bytes may already own a row
+          // for this blob; unlinking then would strand its attachment.
+          if (blobId && !(await attachments.getBlob(blobId))) await blobs.delete(blobId);
           throw error;
         }
       });
@@ -333,7 +353,24 @@ export class AttachmentUploadService {
     });
   }
 
-  private forget(uploadId: UploadId): void {
+  private async discard(uploadId: string): Promise<void> {
+    const live = this.live.get(uploadId);
+    this.forget(uploadId);
+    await live?.stage?.abort().catch(noop);
+  }
+
+  private async reapExpired(): Promise<void> {
+    const now = this.clock();
+    const dead: BlobStage[] = [];
+    for (const [uploadId, live] of this.live) {
+      if (live.lease.expiresAt > now) continue;
+      if (live.stage) dead.push(live.stage);
+      this.forget(uploadId);
+    }
+    await Promise.all(dead.map((stage) => stage.abort().catch(noop)));
+  }
+
+  private forget(uploadId: string): void {
     this.live.delete(uploadId);
     for (const [operationId, begun] of this.begunByOperation) {
       if (begun.uploadId === uploadId) this.begunByOperation.delete(operationId);

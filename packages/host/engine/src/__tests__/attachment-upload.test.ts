@@ -1,13 +1,19 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AttachmentId, UploadId } from '@linkcode/schema';
-import { AttachmentIdSchema, blobIdFromSha256, SessionIdSchema } from '@linkcode/schema';
+import {
+  ATTACHMENT_UPLOAD_CHUNK_BYTES,
+  AttachmentIdSchema,
+  blobIdFromSha256,
+  SessionIdSchema,
+} from '@linkcode/schema';
 import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { FsBlobStore } from '../attachment/blob-store';
+import { UPLOAD_LEASE_TTL_MS } from '../attachment/gc';
 import { AttachmentUploadService } from '../attachment/upload-service';
 
 const temporaryDirectories: string[] = [];
@@ -24,7 +30,7 @@ function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
 
-async function makeService(reachableIds: AttachmentId[] = []) {
+async function makeService(reachableIds: AttachmentId[] = [], clock?: () => number) {
   const root = await mkdtemp(join(tmpdir(), 'linkcode-upload-'));
   temporaryDirectories.push(root);
   const reachable = new Set(reachableIds);
@@ -33,8 +39,21 @@ async function makeService(reachableIds: AttachmentId[] = []) {
     () => reachable,
     (sid, id) => sid === sessionId && reachable.has(id),
   );
-  const uploads = new AttachmentUploadService(blobs, attachments);
-  return { attachments, blobs, reachable, uploads };
+  const uploads = new AttachmentUploadService(blobs, attachments, undefined, clock);
+  return { attachments, blobs, reachable, root, uploads };
+}
+
+function stagingEntries(root: string): Promise<string[]> {
+  return readdir(join(root, 'blobs', 'tmp'));
+}
+
+function chunksOf(bytes: Buffer): Array<{ offset: number; data: string }> {
+  const chunks: Array<{ offset: number; data: string }> = [];
+  for (let offset = 0; offset < bytes.byteLength; offset += ATTACHMENT_UPLOAD_CHUNK_BYTES) {
+    const end = Math.min(offset + ATTACHMENT_UPLOAD_CHUNK_BYTES, bytes.byteLength);
+    chunks.push({ offset, data: bytes.subarray(offset, end).toString('base64') });
+  }
+  return chunks;
 }
 
 async function run<A>(effect: Effect.Effect<A, unknown>): Promise<A> {
@@ -186,6 +205,154 @@ describe('AttachmentUploadService', () => {
     await expect(
       run(uploads.chunk(first.uploadId, 0, bytes.toString('base64'))),
     ).rejects.toMatchObject({ _tag: 'RequestError', code: 'not_found' });
+  });
+
+  it('accepts the whole credit window in flight, the way the client sends it', async () => {
+    const { uploads } = await makeService();
+    // Three chunks so the client's two-chunk window overlaps a write on both sides.
+    const bytes = Buffer.alloc(ATTACHMENT_UPLOAD_CHUNK_BYTES * 2 + 11, 7);
+    const begun = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'window.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    const acks = await Promise.all(
+      chunksOf(bytes).map((chunk) => run(uploads.chunk(begun.uploadId, chunk.offset, chunk.data))),
+    );
+    expect(acks.at(-1)?.receivedBytes).toBe(bytes.byteLength);
+    const committed = await run(uploads.commit(begun.uploadId));
+    expect(committed.blobId).toBe(blobIdFromSha256(sha256(bytes)));
+  });
+
+  it('refuses a dedupe hit whose stored bytes are not the declared size', async () => {
+    const { uploads } = await makeService();
+    const bytes = Buffer.from('eleven byte');
+    const stored = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'honest.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    await run(uploads.chunk(stored.uploadId, 0, bytes.toString('base64')));
+    await run(uploads.commit(stored.uploadId));
+
+    // Same hash, a size that never matched the bytes, and no chunks sent at all.
+    const lying = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: 4096,
+        name: 'liar.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    expect(lying.state).toBe('ready');
+    await expect(run(uploads.commit(lying.uploadId))).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'invalid_request',
+    });
+  });
+
+  it('keeps a rowed blob on disk when a same-hash upload fails to publish its record', async () => {
+    const { attachments, blobs, reachable, uploads } = await makeService();
+    const bytes = Buffer.from('the same screenshot twice');
+    const input = {
+      declaredSha256: sha256(bytes),
+      declaredSize: bytes.byteLength,
+      attachmentKind: 'file',
+    };
+    // Both begins land before either commit, so neither sees a blob row and both stage bytes.
+    const a = await run(uploads.begin({ ...input, name: 'a.png' }));
+    const b = await run(uploads.begin({ ...input, name: 'b.png' }));
+    await run(uploads.chunk(a.uploadId, 0, bytes.toString('base64')));
+    await run(uploads.chunk(b.uploadId, 0, bytes.toString('base64')));
+    const first = await run(uploads.commit(a.uploadId));
+    reachable.add(first.attachmentId);
+
+    const commitAttachment = attachments.commitAttachment.bind(attachments);
+    attachments.commitAttachment = () => Promise.reject(new Error('row insert failed'));
+    await expect(run(uploads.commit(b.uploadId))).rejects.toBeDefined();
+    attachments.commitAttachment = commitAttachment;
+
+    expect(await blobs.stat(first.blobId)).toEqual({ sizeBytes: bytes.byteLength });
+    const page = await run(uploads.read(sessionId, first.attachmentId, 0, bytes.byteLength));
+    expect(Buffer.from(page.data, 'base64').toString()).toBe('the same screenshot twice');
+  });
+
+  it('reads no further than the bytes on disk and says so typed', async () => {
+    const { blobs, reachable, uploads } = await makeService();
+    const bytes = Buffer.from('full length payload');
+    const begun = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'truncated.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    await run(uploads.chunk(begun.uploadId, 0, bytes.toString('base64')));
+    const committed = await run(uploads.commit(begun.uploadId));
+    reachable.add(committed.attachmentId);
+    // Bitrot or a half-finished GC unlink: the row outlives some of its bytes.
+    const path = blobs.pathOf(committed.blobId);
+    await rm(path, { force: true });
+    await writeFile(path, bytes.subarray(0, 4));
+
+    await expect(
+      run(uploads.read(sessionId, committed.attachmentId, 4, bytes.byteLength)),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'not_found' });
+  });
+
+  it('releases the staging handle of an expired lease and of a rejected commit', async () => {
+    let now = 1_000;
+    const { blobs, root, uploads } = await makeService([], () => now);
+    const bytes = Buffer.from('abandoned');
+    const abandoned = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'abandoned.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    expect(await stagingEntries(root)).toEqual([abandoned.uploadId]);
+
+    // A commit that cannot succeed ends the upload: no resume frame exists to continue it.
+    const doomed = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'doomed.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    await expect(run(uploads.commit(doomed.uploadId))).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'invalid_request',
+    });
+    await expect(
+      run(uploads.chunk(doomed.uploadId, 0, bytes.toString('base64'))),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'conflict' });
+
+    now += UPLOAD_LEASE_TTL_MS + 1;
+    const fresh = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'fresh.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    expect(await stagingEntries(root)).toEqual([fresh.uploadId]);
+    // The lease row outlives the handle until the GC's own sweep; the id is known but dead.
+    await expect(
+      run(uploads.chunk(abandoned.uploadId, 0, bytes.toString('base64'))),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'conflict' });
+    expect(await blobs.stat(blobIdFromSha256(sha256(bytes)))).toBeUndefined();
   });
 
   it('rejects a sniffed image whose bytes are not that type', async () => {
