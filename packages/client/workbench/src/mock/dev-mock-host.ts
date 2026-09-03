@@ -48,6 +48,7 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
   blobIdFromSha256,
+  declaredMimeTypeMatches,
   managedAgentAssetId,
   managedAssetIdEquals,
   managedAssetKey,
@@ -271,6 +272,8 @@ export class DevMockHost {
     { blobId: BlobId; sizeBytes: number; name: string }
   >();
   private readonly attachmentBegins = new Map<string, MockAttachmentBegin>();
+  /** The daemon's `isReachable` roots: sessions whose prompt or resource names the attachment. */
+  private readonly attachmentSessions = new Map<AttachmentId, Set<SessionId>>();
   private uploadSeq = 0;
   private attachmentSeq = 0;
 
@@ -969,7 +972,16 @@ export class DevMockHost {
     this.resources.set(resourceId, processing);
     this.send({ kind: 'resource.changed', resource: processing });
     await wait(CONTROL_LATENCY_MS);
-    const ready: SessionResource = { ...processing, status: 'ready', updatedAt: Date.now() };
+    // Resource bytes land in the attachment store on the daemon, which is what roots them for
+    // `attachment.read`; a resource with no attachment id would be unreadable through the wire.
+    const attachmentId = await this.publishResourceAttachment(payload);
+    this.rootAttachment(payload.sessionId, attachmentId);
+    const ready: SessionResource = {
+      ...processing,
+      status: 'ready',
+      attachmentId,
+      updatedAt: Date.now(),
+    };
     this.resources.set(resourceId, ready);
     this.send({ kind: 'resource.changed', resource: ready });
     this.send({ kind: 'resource.uploaded', replyTo: payload.clientReqId, resource: ready });
@@ -1405,6 +1417,13 @@ export class DevMockHost {
     if (p.parentTurnId !== undefined || p.expectedGraphRevision !== undefined) {
       this.sendFailure(p.clientReqId, 'Dev mock host does not support explicit-parent submits.');
       return;
+    }
+    if (p.input.type === 'prompt') {
+      const blocks = p.input.blocks;
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
+        if (block.type === 'attachment_ref') this.rootAttachment(p.sessionId, block.attachmentId);
+      }
     }
     const content = turnSubmitContent(p.input);
     const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
@@ -2019,6 +2038,15 @@ export class DevMockHost {
       );
       return;
     }
+    // Engine order: size, then declared MIME vs bytes, then SHA-256 — a rejected commit must
+    // leave no blob behind.
+    const declaredMime = upload.mimeType ?? 'application/octet-stream';
+    if (!declaredMimeTypeMatches(declaredMime, upload.bytes.subarray(0, 16))) {
+      this.sendFailure(payload.clientReqId, `File contents are not ${declaredMime}`, {
+        code: 'invalid_request',
+      });
+      return;
+    }
     if (upload.state === 'ready') {
       const digest = await mockSha256Hex(upload.bytes);
       if (digest !== upload.declaredSha256) {
@@ -2062,8 +2090,31 @@ export class DevMockHost {
     this.sendSuccess(payload.clientReqId);
   }
 
+  private async publishResourceAttachment(
+    payload: Extract<WirePayload, { kind: 'resource.source.upload' }>,
+  ): Promise<AttachmentId> {
+    const bytes = mockBase64ToBytes(payload.data);
+    const digest = await mockSha256Hex(bytes);
+    this.attachmentBlobs.set(digest, bytes);
+    this.attachmentSeq += 1;
+    const attachmentId = AttachmentIdSchema.parse(`att-mock-${this.attachmentSeq}`);
+    this.attachmentRecords.set(attachmentId, {
+      blobId: blobIdFromSha256(digest),
+      sizeBytes: bytes.byteLength,
+      name: payload.name,
+    });
+    return attachmentId;
+  }
+
+  /** Root an attachment in a session, the way persisting a prompt or a resource does on the daemon. */
+  private rootAttachment(sessionId: SessionId, attachmentId: AttachmentId): void {
+    const rooted = this.attachmentSessions.get(attachmentId) ?? new Set<SessionId>();
+    rooted.add(sessionId);
+    this.attachmentSessions.set(attachmentId, rooted);
+  }
+
   private readAttachment(payload: Extract<WirePayload, { kind: 'attachment.read' }>): void {
-    if (!this.sessions.has(payload.sessionId)) {
+    if (!this.attachmentSessions.get(payload.attachmentId)?.has(payload.sessionId)) {
       this.sendFailure(payload.clientReqId, 'Attachment not found', { code: 'not_found' });
       return;
     }
