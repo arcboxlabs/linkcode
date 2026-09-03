@@ -5,6 +5,8 @@ import type { ModelProbe } from './agent/model-probe';
 import type { ProviderConfigStore } from './agent/provider-config';
 import type { TranslatorService } from './agent/translator';
 import type { AssetService } from './asset/service';
+import type { AttachmentStore } from './attachment/attachment-store';
+import type { BlobStore } from './attachment/blob-store';
 import type { LoopStore, ScheduleStore } from './automation';
 import type { ConversationStore } from './conversation/conversation-store';
 import type { GitService } from './git/git-service';
@@ -28,6 +30,12 @@ export interface EngineDeps {
   /** Durable turn-tree/prompt storage. The daemon injects the single-connection SQLite store its
    * multi-table transactions require; the in-memory default keeps bare engines and tests free. */
   conversationStore?: ConversationStore;
+  /** Attachment metadata and upload leases. Inject it together with `conversationStore` and
+   * `resourceStore`: the reaper's roots live in those tables, and the in-memory default can only
+   * read roots from the in-memory stores. */
+  attachmentStore?: AttachmentStore;
+  /** Attachment bytes; defaults to a filesystem store under `stateDir`. */
+  blobStore?: BlobStore;
   resourceStore?: ResourceStore;
   /** Daemon profile state directory containing managed resource bytes. */
   stateDir?: string;

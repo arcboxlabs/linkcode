@@ -1,4 +1,4 @@
-import type { SessionId, SessionResource, SessionResourceId } from '@linkcode/schema';
+import type { AttachmentId, SessionId, SessionResource, SessionResourceId } from '@linkcode/schema';
 
 export interface ResourceStore {
   list(sessionId: SessionId): Promise<SessionResource[]>;
@@ -15,6 +15,15 @@ export interface ResourceStore {
 export class InMemoryResourceStore implements ResourceStore {
   private readonly resources = new Map<SessionResourceId, SessionResource>();
   private readonly locatorKeys = new Map<string, SessionResourceId>();
+
+  /** GC roots for the in-memory attachment store: every attachment a resource is backed by. */
+  referencedAttachmentIds(): AttachmentId[] {
+    const ids: AttachmentId[] = [];
+    for (const resource of this.resources.values()) {
+      if (resource.attachmentId !== undefined) ids.push(resource.attachmentId);
+    }
+    return ids;
+  }
 
   list(sessionId: SessionId): Promise<SessionResource[]> {
     const resources: SessionResource[] = [];

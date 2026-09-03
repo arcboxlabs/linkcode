@@ -1,3 +1,7 @@
+import { mkdtempSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { PluginDiscoveryOptions } from '@linkcode/agent-adapter';
 import { createAdapter, createPluginProviderAdapter } from '@linkcode/agent-adapter';
 import type { WorkspaceRecord } from '@linkcode/schema';
@@ -12,6 +16,9 @@ import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import { ManagedAssetService } from './asset/service';
+import { InMemoryAttachmentStore } from './attachment/attachment-store';
+import { FsBlobStore } from './attachment/blob-store';
+import { AttachmentGc } from './attachment/gc';
 import {
   InMemoryLoopStore,
   InMemoryScheduleStore,
@@ -100,13 +107,16 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const routes = deps.previewRoutes ?? new PreviewRouteRegistry();
   const fileHost = new FileHostService(routes);
-  const resources = new ResourceService(
-    transport,
-    deps.resourceStore ?? new InMemoryResourceStore(),
-    records,
-    deps.stateDir,
-    fileHost,
-  );
+  // A bare engine gets its own state dir: blob GC in a shared tmp path would reap another
+  // engine's bytes, since each in-memory store only knows its own roots.
+  const stateDir =
+    deps.stateDir ??
+    (yield* Effect.acquireRelease(
+      Effect.sync(() => mkdtempSync(join(tmpdir(), 'linkcode-engine-'))),
+      (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
+    ));
+  const resourceStore = deps.resourceStore ?? new InMemoryResourceStore();
+  const resources = new ResourceService(transport, resourceStore, records, stateDir, fileHost);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -150,6 +160,18 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const simulators = deps.simulators;
   const browserBroker = new BrowserBrokerService(transport);
   const conversationStore = deps.conversationStore ?? new InMemoryConversationStore();
+  const blobStore = deps.blobStore ?? new FsBlobStore(join(stateDir, 'blobs'));
+  const attachmentStore =
+    deps.attachmentStore ??
+    new InMemoryAttachmentStore(() => [
+      ...(conversationStore instanceof InMemoryConversationStore
+        ? conversationStore.referencedAttachmentIds()
+        : []),
+      ...(resourceStore instanceof InMemoryResourceStore
+        ? resourceStore.referencedAttachmentIds()
+        : []),
+    ]);
+  const attachmentGc = new AttachmentGc(attachmentStore, blobStore);
   const conversationTurns = new ConversationTurnService(
     conversationStore,
     records,
@@ -321,6 +343,15 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       // Before requests are accepted: open operations and non-terminal turns cannot outlive the
       // adapters that ran them, and a retried operation must replay a terminal result.
       yield* conversationTurns.recover(Array.from(records.values(), ({ sessionId }) => sessionId));
+      // Before the transport connects: the boot sweep deletes bytes without a row, which is only
+      // safe while no upload can be publishing. GC never takes the boot down.
+      yield* tryOperation(
+        'filesystem',
+        'attachments.boot-sweep',
+        'Failed to sweep the attachment store',
+        () => attachmentGc.bootSweep(),
+      ).pipe(Effect.catch((error) => Effect.logWarning('Attachment boot sweep failed', error)));
+      runTask(attachmentGc.cadence());
       yield* worktrees.start(new Set(Array.from(records.values(), ({ sessionId }) => sessionId)));
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>
         workspaces.start(),
