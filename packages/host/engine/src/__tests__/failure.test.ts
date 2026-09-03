@@ -16,6 +16,20 @@ describe('engine request failures', () => {
     expect(failure).toEqual({ code: 'not_found', message: 'Workspace not found' });
   });
 
+  it('keeps unsupported_attachment as a typed request code', () => {
+    const failure = toRequestFailure(
+      new RequestError({
+        code: 'unsupported_attachment',
+        message: 'This harness does not accept image attachments',
+      }),
+    );
+
+    expect(failure).toEqual({
+      code: 'unsupported_attachment',
+      message: 'This harness does not accept image attachments',
+    });
+  });
+
   it('exposes only the public message from an operation failure', () => {
     const failure = toRequestFailure(
       new OperationError({

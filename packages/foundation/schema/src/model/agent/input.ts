@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AttachmentCapabilitySchema } from '../attachment';
 import { ContentBlockSchema } from '../content';
 import { ImPlatformSchema } from '../im';
 import { PermissionOutcomeSchema } from '../permission';
@@ -149,6 +150,8 @@ export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 export const AgentCapabilitiesSchema = z.object({
   slashCommands: z.boolean(),
   shellCommand: z.boolean(),
+  /** Absent means the harness accepts no attachments. Required would break mixed-version peers. */
+  attachments: AttachmentCapabilitySchema.optional(),
 });
 export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
 
