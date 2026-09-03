@@ -136,12 +136,41 @@ describe('attachment upload/read frames', () => {
     ).toBe(false);
   });
 
+  it('keeps one chunk frame inside the tunnel budget', () => {
+    // 341 KiB of base64 for 256 KiB raw: one tunnel chunk frame, far under workerd's 1 MiB cap.
+    expect(ATTACHMENT_UPLOAD_CHUNK_BYTES).toBe(262_144);
+    expect(ATTACHMENT_UPLOAD_CHUNK_BASE64_MAX).toBe(349_528);
+    expect(ATTACHMENT_UPLOAD_CHUNK_BASE64_MAX).toBeLessThan(768 * 1024);
+  });
+
+  it('rejects a reply that drops a required field', () => {
+    expect(
+      parses({
+        kind: 'attachment.read.result',
+        replyTo: 'request-1',
+        sessionId: 'session-1',
+        attachmentId: 'att-1',
+        blobId,
+        offset: 0,
+        data: 'aGVsbG8=',
+        eof: true,
+      }),
+    ).toBe(false);
+    expect(
+      parses({
+        kind: 'attachment.upload.begun',
+        replyTo: 'request-1',
+        uploadId: 'upl-1',
+        state: 'ready',
+      }),
+    ).toBe(false);
+  });
+
   it('accepts a begin without operationId and an exists short-circuit', () => {
     expect(
       parses({
         kind: 'attachment.upload.begin',
         clientReqId: 'request-1',
-        operationId: 'op-1',
         declaredSha256: sha256,
         declaredSize: 0,
         name: 'empty.bin',
