@@ -43,8 +43,8 @@ export const MAX_ATTACHMENT_METADATA_BYTES = 4096;
 export const AttachmentRecordSchema = z.object({
   attachmentId: AttachmentIdSchema,
   kind: AttachmentKindSchema,
-  name: z.string().min(1).max(255),
-  mimeType: z.string().min(1).max(255),
+  name: z.string().min(1),
+  mimeType: z.string().min(1),
   sizeBytes: z.number().int().nonnegative(),
   metadata: z
     .record(z.string(), z.unknown())
@@ -72,8 +72,8 @@ export const UploadLeaseSchema = z.object({
   uploadId: UploadIdSchema,
   declaredSha256: Sha256HexSchema,
   declaredSize: z.number().int().nonnegative(),
-  name: z.string().min(1).max(255),
-  mimeType: z.string().min(1).max(255).optional(),
+  name: z.string().min(1),
+  mimeType: z.string().min(1).optional(),
   kind: AttachmentKindSchema,
   blobId: BlobIdSchema.optional(),
   attachmentId: AttachmentIdSchema.optional(),

@@ -116,7 +116,28 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       (dir) => Effect.promise(() => rm(dir, { recursive: true, force: true })),
     ));
   const resourceStore = deps.resourceStore ?? new InMemoryResourceStore();
-  const resources = new ResourceService(transport, resourceStore, records, stateDir, fileHost);
+  const conversationStore = deps.conversationStore ?? new InMemoryConversationStore();
+  const blobStore = deps.blobStore ?? new FsBlobStore(join(stateDir, 'blobs'));
+  const attachmentStore =
+    deps.attachmentStore ??
+    new InMemoryAttachmentStore(() => [
+      ...(conversationStore instanceof InMemoryConversationStore
+        ? conversationStore.referencedAttachmentIds()
+        : []),
+      ...(resourceStore instanceof InMemoryResourceStore
+        ? resourceStore.referencedAttachmentIds()
+        : []),
+    ]);
+  const attachmentGc = new AttachmentGc(attachmentStore, blobStore);
+  const resources = new ResourceService(
+    transport,
+    resourceStore,
+    records,
+    stateDir,
+    fileHost,
+    blobStore,
+    attachmentStore,
+  );
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -159,19 +180,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   // predicate that gates claims on a live session.
   const simulators = deps.simulators;
   const browserBroker = new BrowserBrokerService(transport);
-  const conversationStore = deps.conversationStore ?? new InMemoryConversationStore();
-  const blobStore = deps.blobStore ?? new FsBlobStore(join(stateDir, 'blobs'));
-  const attachmentStore =
-    deps.attachmentStore ??
-    new InMemoryAttachmentStore(() => [
-      ...(conversationStore instanceof InMemoryConversationStore
-        ? conversationStore.referencedAttachmentIds()
-        : []),
-      ...(resourceStore instanceof InMemoryResourceStore
-        ? resourceStore.referencedAttachmentIds()
-        : []),
-    ]);
-  const attachmentGc = new AttachmentGc(attachmentStore, blobStore);
   const conversationTurns = new ConversationTurnService(
     conversationStore,
     records,
