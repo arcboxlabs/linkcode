@@ -46,7 +46,6 @@ import type {
 import {
   AGENT_INPUT_CAPABILITIES,
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
-  ATTACHMENT_UPLOAD_WINDOW_CHUNKS,
   AttachmentIdSchema,
   blobIdFromSha256,
   managedAgentAssetId,
@@ -1978,14 +1977,6 @@ export class DevMockHost {
       );
       return;
     }
-    const windowEnd =
-      upload.received + ATTACHMENT_UPLOAD_WINDOW_CHUNKS * ATTACHMENT_UPLOAD_CHUNK_BYTES;
-    if (payload.offset >= windowEnd && upload.received < upload.declaredSize) {
-      this.sendFailure(payload.clientReqId, 'Chunk is outside the credit window', {
-        code: 'invalid_request',
-      });
-      return;
-    }
     const chunk = mockBase64ToBytes(payload.data);
     if (upload.received + chunk.byteLength > upload.declaredSize) {
       this.sendFailure(payload.clientReqId, 'Chunk exceeds the declared size', {
@@ -2064,6 +2055,10 @@ export class DevMockHost {
       return;
     }
     this.attachmentUploads.delete(payload.uploadId);
+    // The replay must die with the upload it names, or a retried operationId resolves to a dead id.
+    for (const [operationId, begun] of this.attachmentBegins) {
+      if (begun.uploadId === payload.uploadId) this.attachmentBegins.delete(operationId);
+    }
     this.sendSuccess(payload.clientReqId);
   }
 
