@@ -72,7 +72,7 @@ describe('enabledAccountModels', () => {
       credential: { type: 'auth-token', token: 'lc-test' },
       models: [
         { id: 'openai/gpt-5.6', protocols: ['openai-chat', 'openai-responses'] },
-        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat'] },
+        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat', 'anthropic'] },
         // Probed before `protocols` existed, or never probed — absence must still offer it.
         { id: 'openai/gpt-4.1' },
       ],
@@ -83,9 +83,9 @@ describe('enabledAccountModels', () => {
       'openai/gpt-5.6',
       'openai/gpt-4.1',
     ]);
-    // opencode/pi accept any wire this account offers, so nothing here is narrowed.
+    // opencode falls through to the account's own native anthropic wire (no knownProvider pins it
+    // elsewhere), so only the model actually tagged for it, plus the untagged one, survive.
     expect(enabledAccountModels([gateway], {}, 'opencode').map(({ model }) => model.id)).toEqual([
-      'openai/gpt-5.6',
       'anthropic/claude-sonnet-5',
       'openai/gpt-4.1',
     ]);

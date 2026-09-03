@@ -197,23 +197,26 @@ describe('resolveBinding: variant chosen per agent', () => {
     ).toEqual({ tier: 'unavailable', reason: 'protocol-unsupported' });
   });
 
-  it('serves LinkCode Gateway over both OpenAI wires', () => {
+  it('serves LinkCode Gateway natively over Anthropic Messages and OpenAI Responses', () => {
     const gateway = account({
       service: 'linkcode-gateway',
       credential: { type: 'auth-token', token: 'lc-gateway-key' },
     });
     expect(resolveBinding(gateway, 'claude-code')).toEqual({
-      tier: 'translate',
-      protocol: 'openai-chat',
-      baseUrl: 'https://gateway.linkcode.ai/v1',
+      tier: 'native',
+      protocol: 'anthropic',
+      baseUrl: 'https://gateway.linkcode.ai',
     });
+    // Neither wire carries a knownProvider for these two (LinkCode Gateway names no vendor
+    // either agent's own catalog knows), so they fall through to protocol order like StepFun's
+    // Pi binding does — now landing on the same native anthropic wire as claude-code.
     const providerRoutedKinds = ['opencode', 'pi'] as const;
     for (let i = 0, len = providerRoutedKinds.length; i < len; i++) {
       const kind = providerRoutedKinds[i];
       expect(resolveBinding(gateway, kind)).toEqual({
         tier: 'native',
-        protocol: 'openai-chat',
-        baseUrl: 'https://gateway.linkcode.ai/v1',
+        protocol: 'anthropic',
+        baseUrl: 'https://gateway.linkcode.ai',
       });
     }
     expect(resolveBinding(gateway, 'codex')).toEqual({

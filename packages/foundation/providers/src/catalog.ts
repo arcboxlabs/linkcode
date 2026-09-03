@@ -180,6 +180,15 @@ export const SERVICE_CATALOG: ServiceDescriptor[] = [
           wire: 'openai',
         },
       },
+      // Bare origin, not `/v1` — claude-code's own SDK appends `/v1/messages`, matching every
+      // other `anthropic` variant in this file. Lists only the Claude models served natively.
+      anthropic: {
+        baseUrl: 'https://gateway.linkcode.ai',
+        models: {
+          url: 'https://gateway.linkcode.ai/v1/models?protocol=anthropic',
+          wire: 'anthropic',
+        },
+      },
     },
     models: { url: 'https://gateway.linkcode.ai/v1/models', wire: 'openai' },
   },
