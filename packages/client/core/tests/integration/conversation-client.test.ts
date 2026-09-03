@@ -66,7 +66,7 @@ describe('LinkCodeClient conversation graph API', () => {
       { seq: 1, position: { epoch: 4, seq: 7 }, runId: 'run-1', turnId: 'turn-1' },
       { seq: 2 },
     ]);
-    // An unstamped frame (≤v79 host, the dev mock) carries no position at all.
+    // An unstamped frame (≤v79 host) carries no position at all.
     expect(client.eventsSnapshot(sessionId)[1]).not.toHaveProperty('position');
     expect(seen.map((entry) => entry.position)).toEqual([{ epoch: 4, seq: 7 }, undefined]);
 

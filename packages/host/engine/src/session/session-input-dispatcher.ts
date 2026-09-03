@@ -138,9 +138,11 @@ export class SessionInputDispatcher {
               input.type === 'command'
                 ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
                 : `$ ${input.command}`;
-            events.broadcast(sessionId, session, [
-              { type: 'user-message', messageId: echoMessageId, content: [{ type: 'text', text }] },
-            ]);
+            events.broadcast(
+              sessionId,
+              session,
+              session.trackPrompt(echoMessageId, [{ type: 'text', text }], persistedTurnId),
+            );
           }
         }
         const responseInput =
