@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { AgentCapabilitiesSchema } from '../agent/input';
+import type { AgentCapabilities } from '../agent/input';
+import {
+  AGENT_INPUT_CAPABILITIES,
+  AgentCapabilitiesSchema,
+  effectiveAttachmentCapability,
+} from '../agent/input';
 import {
   AttachmentCapabilitySchema,
   HOST_ATTACHMENT_LIMITS,
@@ -82,6 +87,19 @@ describe('intersectAttachmentCapability', () => {
         representations: ['inline_image'],
       }),
     ).toBeUndefined();
+  });
+
+  it('keeps grok-build dark and the other harnesses on inline images', () => {
+    expect(effectiveAttachmentCapability('grok-build')).toBeUndefined();
+    const grok: AgentCapabilities = AGENT_INPUT_CAPABILITIES['grok-build'];
+    expect(grok.attachments).toBeUndefined();
+    const imageKinds = ['claude-code', 'codex', 'opencode', 'pi'] as const;
+    for (let i = 0, len = imageKinds.length; i < len; i++) {
+      const effective = effectiveAttachmentCapability(imageKinds[i]);
+      expect(effective?.representations).toEqual(['inline_image']);
+      expect(effective?.kinds.image?.mimeTypes).toEqual([...SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES]);
+      expect(effective?.kinds.file).toBeUndefined();
+    }
   });
 
   it('does not advertise file when the host has no file kind', () => {

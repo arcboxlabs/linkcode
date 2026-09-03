@@ -7,6 +7,7 @@ import type {
   TerminalReplayEvent,
   ToolCall,
 } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
@@ -81,7 +82,7 @@ describe('dev mock transport', () => {
     expect(seededEvents[0]).toEqual({ type: 'status', status: 'idle' });
     expect(seededEvents[3]).toEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: false },
+      capabilities: AGENT_INPUT_CAPABILITIES['claude-code'],
     });
     expect(seededEvents[4]).toMatchObject({
       type: 'available-commands-update',
@@ -212,7 +213,7 @@ describe('dev mock transport', () => {
 
     expect(events).toContainEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: true },
+      capabilities: AGENT_INPUT_CAPABILITIES.codex,
     });
     expect(events.find((event) => event.type === 'available-commands-update')).toEqual({
       type: 'available-commands-update',
@@ -316,7 +317,7 @@ describe('dev mock transport', () => {
       { type: 'effort-update', effort: 'medium' },
       {
         type: 'capabilities-update',
-        capabilities: { slashCommands: true, shellCommand: true },
+        capabilities: AGENT_INPUT_CAPABILITIES.codex,
       },
       expect.objectContaining({ type: 'available-commands-update' }),
     ]);
@@ -516,7 +517,7 @@ describe('dev mock transport', () => {
     await eventually(() => events.some((event) => event.type === 'capabilities-update'));
     expect(events).toContainEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: true },
+      capabilities: AGENT_INPUT_CAPABILITIES.codex,
     });
     expect(events.some((event) => event.type === 'available-commands-update')).toBe(true);
     const terminalId = await eventually(() => {
@@ -797,7 +798,7 @@ describe('dev mock transport', () => {
       { type: 'effort-update', effort: 'xhigh' },
       {
         type: 'capabilities-update',
-        capabilities: { slashCommands: true, shellCommand: true },
+        capabilities: AGENT_INPUT_CAPABILITIES.codex,
       },
       expect.objectContaining({ type: 'available-commands-update' }),
     ]);

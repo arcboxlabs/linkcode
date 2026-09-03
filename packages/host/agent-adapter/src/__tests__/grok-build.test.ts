@@ -141,6 +141,10 @@ describe('GrokBuildAdapter', () => {
     });
   });
 
+  it('declares no attachment support', () => {
+    expect(new GrokBuildAdapter().capabilities.attachments).toBeUndefined();
+  });
+
   it('fails start when no CLI is resolved', async () => {
     vi.spyOn(agentRuntimeProber, 'resolveBinary').mockReturnValue(undefined);
     const adapter = new GrokBuildAdapter();

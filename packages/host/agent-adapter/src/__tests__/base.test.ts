@@ -6,8 +6,9 @@ import type {
   ToolCallContent,
   ToolCallUpdate,
 } from '@linkcode/schema';
+import { AGENT_INPUT_CAPABILITIES } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { BaseAgentAdapter } from '../base';
+import { BaseAgentAdapter, UnsupportedAttachmentError } from '../base';
 import type { HistoryCheckpoint } from '../history-branch';
 import { encodeHistoryBranchCursor } from '../history-branch';
 import { asHistoryId } from '../history-util';
@@ -297,8 +298,37 @@ describe('BaseAgentAdapter command/shell defaults', () => {
     await a.start({ kind: 'pi', cwd: '/repo' });
     expect(a.seen).toContainEqual({
       type: 'capabilities-update',
-      capabilities: { slashCommands: true, shellCommand: false },
+      capabilities: AGENT_INPUT_CAPABILITIES.pi,
     });
+  });
+
+  it('throws when a prompt carries an image the harness did not declare', async () => {
+    class GrokAdapter extends BaseAgentAdapter {
+      readonly kind = 'grok-build' as const;
+      protected onStart(): Promise<void> {
+        return Promise.resolve();
+      }
+      protected onPrompt(_content: ContentBlock[]): Promise<void> {
+        return Promise.resolve();
+      }
+    }
+    const adapter = new GrokAdapter();
+    await expect(
+      adapter.send({
+        type: 'prompt',
+        content: [{ type: 'image', mimeType: 'image/png', data: 'AA==' }],
+      }),
+    ).rejects.toBeInstanceOf(UnsupportedAttachmentError);
+  });
+
+  it('accepts an image prompt when the harness declared inline_image', async () => {
+    const adapter = new TestAdapter();
+    await expect(
+      adapter.send({
+        type: 'prompt',
+        content: [{ type: 'image', mimeType: 'image/png', data: 'AA==' }],
+      }),
+    ).resolves.toBeUndefined();
   });
 
   it('rejects a command input unless the adapter overrides onCommand', async () => {

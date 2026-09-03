@@ -42,6 +42,14 @@ import { linkCodeGatewayError } from './gateway-error';
 import type { HistoryCheckpoint } from './history-branch';
 import { encodeHistoryBranchCursor } from './history-branch';
 
+/** An undeclared representation reached the adapter — silent drops are a contract violation. */
+export class UnsupportedAttachmentError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'UnsupportedAttachmentError';
+  }
+}
+
 type PermissionResolver = (outcome: PermissionOutcome) => void;
 type QuestionResolver = (outcome: QuestionOutcome) => void;
 interface PendingQuestion {
@@ -130,6 +138,7 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
   async send(input: AgentInput): Promise<void> {
     switch (input.type) {
       case 'prompt':
+        assertDeclaredAttachmentRepresentations(this.kind, this.capabilities, input.content);
         await this.onPrompt(input.content);
         return;
       case 'command':
@@ -518,6 +527,28 @@ export abstract class BaseAgentAdapter implements AgentAdapter {
       const message = `${this.kind}: SDK '${name}' is unavailable (${detail})`;
       this.emitError(message, 'sdk-unavailable', false);
       throw new Error(message, { cause: err });
+    }
+  }
+}
+
+function assertDeclaredAttachmentRepresentations(
+  kind: AgentKind,
+  capabilities: AgentCapabilities,
+  content: ContentBlock[],
+): void {
+  const representations = capabilities.attachments?.representations;
+  const allowsInlineImage = representations?.includes('inline_image') === true;
+  const allowsReadonlyFile = representations?.includes('readonly_file') === true;
+  for (let i = 0, len = content.length; i < len; i++) {
+    const block = content[i];
+    if (!allowsInlineImage && block.type === 'image') {
+      throw new UnsupportedAttachmentError(`${kind}: image attachments are not supported`);
+    }
+    if (
+      !allowsReadonlyFile &&
+      (block.type === 'audio' || block.type === 'resource' || block.type === 'resource_link')
+    ) {
+      throw new UnsupportedAttachmentError(`${kind}: file attachments are not supported`);
     }
   }
 }
