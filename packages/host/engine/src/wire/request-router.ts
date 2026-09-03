@@ -4,6 +4,7 @@ import { createWireMessage, pong } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRequestHandler } from '../agent/request-handler';
 import type { ManagedAssetService } from '../asset/service';
+import type { AttachmentRequestHandler } from '../attachment/request-handler';
 import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { BrowserRequestHandler } from '../browser/request-handler';
 import type { ConversationRequestHandler } from '../conversation/request-handler';
@@ -33,6 +34,7 @@ interface RequestHandlers {
   readonly script: ScriptRequestHandler;
   readonly artifact: ArtifactRequestHandler;
   readonly resource: ResourceRequestHandler;
+  readonly attachment: AttachmentRequestHandler;
   readonly automation: AutomationRequestHandler;
   readonly terminal: TerminalRequestHandler;
   readonly simulator: SimulatorRequestHandler;
@@ -135,6 +137,13 @@ export class WireRequestRouter {
       case 'resource.remove':
       case 'resource.host': {
         return this.handlers.resource.handle(p);
+      }
+      case 'attachment.upload.begin':
+      case 'attachment.upload.chunk':
+      case 'attachment.upload.commit':
+      case 'attachment.upload.abort':
+      case 'attachment.read': {
+        return this.handlers.attachment.handle(p);
       }
       case 'schedule.create':
       case 'schedule.update':
