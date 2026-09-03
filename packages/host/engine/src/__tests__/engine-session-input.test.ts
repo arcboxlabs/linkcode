@@ -50,13 +50,13 @@ function eventsAfter(sent: WirePayload[], mark: number): AgentEvent[] {
   return sent.slice(mark).flatMap((p) => (p.kind === 'agent.event' ? [p.event] : []));
 }
 
-async function startedHarness() {
+async function startedHarness(kind: 'claude-code' | 'grok-build' = 'claude-code') {
   const h = harness();
   await h.engine.start();
   await h.inject({
     kind: 'session.start',
     clientReqId: 'r1',
-    opts: { kind: 'claude-code', cwd: '/repo' },
+    opts: { kind, cwd: '/repo' },
   });
   return { ...h, sessionId: startedId(h.sent, 'r1'), adapter: nullthrow(h.adapters[0]) };
 }
@@ -144,6 +144,27 @@ describe('engine session input', () => {
       replyTo: 'input',
       code: 'limit_exceeded',
       message: 'Attachments exceed the maximum allowed total size',
+    });
+  });
+
+  it('refuses an image prompt on a text-only harness', async () => {
+    const h = await startedHarness('grok-build');
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [{ type: 'image', mimeType: 'image/png', data: 'AA==' }],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'unsupported_attachment',
+      message: 'Prompt attachments are not supported by this harness',
     });
   });
 

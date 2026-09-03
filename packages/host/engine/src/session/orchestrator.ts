@@ -48,6 +48,7 @@ export class SessionOrchestrator {
     private readonly turns: ConversationTurnService,
     private readonly journals: ConversationLiveJournals,
     private readonly browserTools?: BrowserToolsetFactory,
+    private readonly onRunEnded?: (sessionId: SessionId, runId: RunId) => void,
   ) {
     this.events = new SessionEventProcessor(
       transport,
@@ -130,11 +131,12 @@ export class SessionOrchestrator {
     sessionId: SessionId,
     input: AgentInput,
     prepared?: PersistedTurnIntent,
+    adapterInput?: AgentInput,
   ): Effect.Effect<void, unknown> {
     return Effect.suspend<void, unknown, never>(() => {
       const session = this.requireSession(sessionId);
       return session.run(
-        Effect.suspend(() => this.inputs.send(sessionId, session, input, prepared)),
+        Effect.suspend(() => this.inputs.send(sessionId, session, input, prepared, adapterInput)),
       );
     });
   }
@@ -460,6 +462,7 @@ export class SessionOrchestrator {
           Effect.ensuring(
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
+              this.onRunEnded?.(sessionId, session.runId);
               if (releaseSession) this.onStopped(sessionId);
               // Teardown mid-turn kills the turn without a stop frame; settle it here.
               this.turns.settleStatus(sessionId, session.runId, 'stopped');
@@ -498,6 +501,7 @@ export class SessionOrchestrator {
         Effect.ensuring(
           Effect.suspend(() => {
             if (!this.remove(sessionId, session)) return Effect.void;
+            this.onRunEnded?.(sessionId, session.runId);
             // Release what a partial start may have reserved — notably the simulator MCP endpoint
             // token minted while resolving start options. Normal teardown does this via `onStopped`;
             // a discarded failed start must too, or that token leaks until daemon shutdown.

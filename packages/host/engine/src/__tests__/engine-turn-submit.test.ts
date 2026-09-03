@@ -1217,7 +1217,7 @@ describe('turn.submit saga', () => {
         blocks: [{ type: 'attachment_ref', attachmentId: AttachmentIdSchema.parse('att-1') }],
       },
     });
-    expect(failure(h.sent, 's-attachment').code).toBe('unsupported');
+    expect(failure(h.sent, 's-attachment').code).toBe('unsupported_attachment');
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
   });
 
