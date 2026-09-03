@@ -7,6 +7,7 @@
 export type { ProviderConfigStore } from './agent/provider-config';
 export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
+export { type BlobStage, type BlobStore, FsBlobStore } from './attachment/blob-store';
 export type { LoopStore, ScheduleStore } from './automation';
 export {
   ConversationSessionBusyError,
