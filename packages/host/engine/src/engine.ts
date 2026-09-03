@@ -21,6 +21,8 @@ import { InMemoryAttachmentStore } from './attachment/attachment-store';
 import { FsBlobStore } from './attachment/blob-store';
 import { AttachmentGc } from './attachment/gc';
 import { AttachmentIoMutex } from './attachment/io-mutex';
+import { AttachmentRequestHandler } from './attachment/request-handler';
+import { AttachmentUploadService } from './attachment/upload-service';
 import {
   InMemoryLoopStore,
   InMemoryScheduleStore,
@@ -145,6 +147,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     attachmentStore,
     attachmentIo,
   );
+  const uploads = new AttachmentUploadService(blobStore, attachmentStore, attachmentIo);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -249,6 +252,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const resourceRequests = new ResourceRequestHandler(transport, resources, responder);
+  const attachmentRequests = new AttachmentRequestHandler(transport, uploads, responder);
   const conversationCheckpoints = new ConversationCheckpointService(
     conversationTurns,
     records,
@@ -338,6 +342,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     script: scriptRequests,
     artifact: artifactRequests,
     resource: resourceRequests,
+    attachment: attachmentRequests,
     automation: automationRequests,
     terminal: terminalRequests,
     simulator: simulatorRequests,
