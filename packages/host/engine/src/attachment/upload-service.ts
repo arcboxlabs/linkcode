@@ -4,6 +4,7 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
   blobIdFromSha256,
+  declaredMimeTypeMatches,
   MAX_ATTACHMENT_BYTES,
   UploadIdSchema,
 } from '@linkcode/schema';
@@ -15,7 +16,6 @@ import type { BlobStage, BlobStore } from './blob-store';
 import { BlobIntegrityError } from './blob-store';
 import { UPLOAD_LEASE_TTL_MS } from './gc';
 import { AttachmentIoMutex } from './io-mutex';
-import { declaredMimeTypeMatches } from './mime-sniff';
 
 const HEAD_BYTES = 16;
 const rUploadId = /^[\w-]{1,128}$/;
