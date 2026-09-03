@@ -149,7 +149,16 @@ export class FsBlobStore implements BlobStore {
       await rename(stagingPath, dest);
     } catch (error) {
       if ((await this.stat(blobId)) === undefined) throw error;
+      // Dest existing is not proof of identical bytes: Windows rename does not replace a
+      // read-only dest, so a truncated or bitrot file would otherwise count as success.
+      const existing = await sha256OfFile(dest);
+      const expected = blobId.slice(BLOB_ID_PREFIX.length);
       await rm(stagingPath, { force: true });
+      if (existing !== expected) {
+        throw new BlobIntegrityError('Existing blob bytes do not match the declared SHA-256', {
+          cause: error,
+        });
+      }
     }
   }
 }

@@ -142,6 +142,36 @@ describe('engine session resources', () => {
 
     await h.inject({
       kind: 'resource.source.upload',
+      clientReqId: 'upload-svg',
+      sessionId,
+      name: 'icon.svg',
+      mimeType: 'image/svg+xml',
+      data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64'),
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'resource.uploaded', replyTo: 'upload-svg' }),
+      );
+    });
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-svg', sessionId });
+    expect(listedResources(h.sent, 'list-svg')).toEqual([
+      expect.objectContaining({
+        name: 'icon.svg',
+        status: 'ready',
+        mimeType: 'image/svg+xml',
+      }),
+    ]);
+    await h.inject({
+      kind: 'resource.remove',
+      clientReqId: 'remove-svg',
+      resourceId: listedResources(h.sent, 'list-svg')[0].resourceId,
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'remove-svg' });
+    });
+
+    await h.inject({
+      kind: 'resource.source.upload',
       clientReqId: 'upload-for-delete',
       sessionId,
       name: 'delete-me.txt',

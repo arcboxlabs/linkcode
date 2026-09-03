@@ -23,9 +23,19 @@ export function sniffImageMimeType(head: Uint8Array): SupportedAttachmentImageMi
   return undefined;
 }
 
-/** A declared `image/*` type must match its bytes — model APIs refuse the mismatch later and
- * less legibly. Other declarations have no reliable sniff and are trusted. */
+const SNIFFABLE_IMAGE_TYPES = new Set<string>([
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]);
+
+/** A declared sniffable `image/*` type must match its bytes — model APIs refuse the mismatch
+ * later and less legibly. Other declarations (svg, heic, pdf, …) have no reliable sniff here
+ * and are trusted. */
 export function declaredMimeTypeMatches(declared: string, head: Uint8Array): boolean {
   if (!declared.startsWith('image/')) return true;
-  return sniffImageMimeType(head) === declared;
+  const sniffed = sniffImageMimeType(head);
+  if (sniffed !== undefined) return sniffed === declared;
+  return !SNIFFABLE_IMAGE_TYPES.has(declared);
 }

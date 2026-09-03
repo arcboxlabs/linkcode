@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { AttachmentId, BlobId, UploadLease } from '@linkcode/schema';
+import type { BlobId, UploadLease } from '@linkcode/schema';
 import {
   AttachmentIdSchema,
   ConversationOperationSchema,
@@ -183,6 +183,27 @@ describe('AttachmentGc', () => {
     await expect(stat(join(f.blobs.pathOf(kept), '..', '..', '..', 'tmp'))).rejects.toMatchObject({
       code: 'ENOENT',
     });
-    expect(f.store.getAttachment('att-kept' as AttachmentId)).resolves.toBeDefined();
+    await expect(
+      f.store.getAttachment(AttachmentIdSchema.parse('att-kept')),
+    ).resolves.toBeDefined();
+  });
+
+  it('does not unlink a blob that is re-committed after the reaper transaction', async () => {
+    const f = await fixture();
+    const blobId = await f.commit('att-old', 'shared bytes');
+    f.clock.now += ATTACHMENT_GC_GRACE_MS + 1;
+
+    const originalSweep = f.store.sweep.bind(f.store);
+    f.store.sweep = async (window) => {
+      const doomed = await originalSweep(window);
+      await f.commit('att-new', 'shared bytes');
+      return doomed;
+    };
+
+    expect(await f.gc.sweep()).toEqual({ removedBlobs: [] });
+    expect(await f.blobs.stat(blobId)).toBeDefined();
+    expect(await f.store.getAttachment(AttachmentIdSchema.parse('att-new'))).toMatchObject({
+      blobId,
+    });
   });
 });
