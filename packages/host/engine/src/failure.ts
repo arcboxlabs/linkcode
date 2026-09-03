@@ -14,6 +14,8 @@ export type RequestErrorCode =
   /** The request was understood and refused — the user withheld consent, not a broken call. */
   | 'forbidden'
   | 'unsupported'
+  /** A prompt attachment the harness did not declare, or that is missing/not ready. */
+  | 'unsupported_attachment'
   | 'worktree_missing'
   | 'limit_exceeded'
   | 'cancelled';
