@@ -166,6 +166,32 @@ describe('engine session input', () => {
       code: 'unsupported_attachment',
       message: 'Prompt attachments are not supported by this harness',
     });
+    expect(h.adapter.sentInputs).toEqual([]);
+  });
+
+  it('refuses a resource_link prompt before persist', async () => {
+    const h = await startedHarness();
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [
+          { type: 'text', text: 'look' },
+          { type: 'resource_link', uri: 'attachment:att-1', name: 'shot.png' },
+        ],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'unsupported_attachment',
+      message: 'This harness does not accept file attachments',
+    });
+    expect(h.adapter.sentInputs).toEqual([]);
   });
 
   it('echoes command and shell inputs as the text the user typed', async () => {

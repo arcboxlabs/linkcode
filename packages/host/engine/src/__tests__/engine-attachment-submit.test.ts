@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { asHistoryId } from '@linkcode/agent-adapter';
 import type { WirePayload } from '@linkcode/schema';
 import {
   AttachmentIdSchema,
@@ -221,5 +222,68 @@ describe('turn.submit attachment admit and materialize', () => {
       },
     ]);
     expect(JSON.stringify(row.event.content)).not.toContain(PNG_1X1.toString('base64'));
+  });
+
+  it('refuses a rewrite that round-trips the projected resource_link before persist', async () => {
+    const h = await started();
+    const attachmentId = await readyPng(h);
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's-ok',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-ok'),
+      input: {
+        type: 'prompt',
+        blocks: [
+          { type: 'text', text: 'look' },
+          { type: 'attachment_ref', attachmentId },
+        ],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'turn.submitted', replyTo: 's-ok' }),
+      );
+    });
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId: h.sessionId });
+    const read = h.sent.find(
+      (payload) => payload.kind === 'conversation.read.result' && payload.replyTo === 'rr',
+    );
+    if (read?.kind !== 'conversation.read.result') throw new Error('no conversation.read.result');
+    const row = read.events.find((item) => 'event' in item && item.event.type === 'user-message');
+    if (
+      row === undefined ||
+      !('event' in row) ||
+      row.event.type !== 'user-message' ||
+      row.event.branchCursor === undefined
+    ) {
+      throw new Error('no user row with a branch cursor');
+    }
+    const turnsBefore = await h.conversationStore.listTurns(h.sessionId);
+
+    await h.inject({
+      kind: 'history.branch',
+      clientReqId: 'rewrite',
+      sourceSessionId: h.sessionId,
+      sourceMessageId: row.event.messageId,
+      branchCursor: row.event.branchCursor,
+      content: [
+        { type: 'text', text: 'look again' },
+        {
+          type: 'resource_link',
+          uri: attachmentUri(attachmentId),
+          name: 'shot.png',
+        },
+      ],
+    });
+
+    expect(failure(h.sent, 'rewrite')).toMatchObject({
+      code: 'unsupported_attachment',
+      message: 'This harness does not accept file attachments',
+    });
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(turnsBefore.length);
+    expect(h.adapter.sentInputs).toHaveLength(1);
   });
 });

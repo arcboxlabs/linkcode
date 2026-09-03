@@ -132,7 +132,14 @@ export function assertInlineAttachmentsSupported(
 ): void {
   for (let i = 0, len = content.length; i < len; i++) {
     const block = content[i];
-    if (block.type !== 'image' && block.type !== 'audio' && block.type !== 'resource') continue;
+    if (
+      block.type !== 'image' &&
+      block.type !== 'audio' &&
+      block.type !== 'resource' &&
+      block.type !== 'resource_link'
+    ) {
+      continue;
+    }
     if (!capability) {
       throw new RequestError({
         code: 'unsupported_attachment',

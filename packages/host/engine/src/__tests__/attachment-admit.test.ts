@@ -136,4 +136,20 @@ describe('assertInlineAttachmentsSupported', () => {
     }
     expect.fail('expected a typed refusal');
   });
+
+  it('refuses a resource_link when the harness did not declare readonly_file', () => {
+    try {
+      assertInlineAttachmentsSupported(
+        [{ type: 'resource_link', uri: 'attachment:att-1', name: 'shot.png' }],
+        effectiveAttachmentCapability('claude-code'),
+      );
+    } catch (error) {
+      expect(error).toMatchObject({
+        code: 'unsupported_attachment',
+        message: 'This harness does not accept file attachments',
+      });
+      return;
+    }
+    expect.fail('expected a typed refusal');
+  });
 });
