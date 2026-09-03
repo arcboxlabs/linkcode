@@ -24,6 +24,7 @@ import {
   promptAttachmentRefs,
   prompts,
   providerTurnBindings,
+  uploadLeases,
 } from './db/schema';
 
 type TurnRow = typeof conversationTurns.$inferSelect;
@@ -154,6 +155,8 @@ export function createConversationStore(db: DaemonDatabaseClient): ConversationS
               )
               .onConflictDoNothing()
               .run();
+            // The prompt is the root now; release the draft leases that pinned these attachments.
+            tx.delete(uploadLeases).where(inArray(uploadLeases.attachmentId, referenced)).run();
           }
         }
         // Plain inserts: a replayed operationId must conflict here, never re-open a terminal row.
