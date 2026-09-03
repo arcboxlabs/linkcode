@@ -2,6 +2,7 @@ import type { AttachmentId, OperationId, SessionId, UploadId } from '@linkcode/s
 import { ATTACHMENT_UPLOAD_CHUNK_BYTES, ATTACHMENT_UPLOAD_WINDOW_CHUNKS } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
+import type { Sha256Hex } from './blob-cache';
 import { AttachmentBlobCache, base64ToBytes, bytesToBase64, sha256Hex } from './blob-cache';
 import type {
   AttachmentChunkAck,
@@ -39,6 +40,7 @@ export class AttachmentChannel {
   constructor(
     private readonly transport: Transport,
     private readonly pending: PendingRegistry,
+    private readonly digest: Sha256Hex = sha256Hex,
   ) {}
 
   beginUpload(input: AttachmentBeginInput): Promise<AttachmentUploadBegun> {
@@ -98,7 +100,7 @@ export class AttachmentChannel {
 
   /** Hash, begin, windowed chunks, commit. Identical bytes short-circuit to `exists`. */
   async put(input: AttachmentPutInput): Promise<AttachmentCommitResult> {
-    const declaredSha256 = await sha256Hex(input.bytes);
+    const declaredSha256 = await this.digest(input.bytes);
     const begun = await this.beginUpload({
       declaredSha256,
       declaredSize: input.bytes.byteLength,
@@ -107,10 +109,17 @@ export class AttachmentChannel {
       attachmentKind: input.attachmentKind,
       operationId: input.operationId,
     });
-    if (begun.state === 'ready') {
-      await this.sendWindowed(begun.uploadId, begun.chunkBytes, input.bytes);
+    let committed: AttachmentCommitResult;
+    try {
+      if (begun.state === 'ready') {
+        await this.sendWindowed(begun.uploadId, begun.chunkBytes, input.bytes);
+      }
+      committed = await this.commit(begun.uploadId);
+    } catch (error) {
+      // Release the lease and the daemon's staging file now; the TTL reaper is a 24h backstop.
+      await this.abort(begun.uploadId).catch(noop);
+      throw error;
     }
-    const committed = await this.commit(begun.uploadId);
     this.cache.set(committed.blobId, input.bytes);
     return committed;
   }
@@ -123,16 +132,26 @@ export class AttachmentChannel {
       return { blobId: first.blobId, bytes: cached, sizeBytes: first.sizeBytes };
     }
     const bytes = new Uint8Array(first.sizeBytes);
-    const firstSlice = base64ToBytes(first.data);
-    bytes.set(firstSlice, first.offset);
-    let offset = first.offset + firstSlice.byteLength;
+    let page = first;
+    let offset = 0;
     while (offset < first.sizeBytes) {
-      // eslint-disable-next-line no-await-in-loop -- sequential pages of one attachment
-      const page = await this.read(sessionId, attachmentId, offset, ATTACHMENT_UPLOAD_CHUNK_BYTES);
       const slice = base64ToBytes(page.data);
-      bytes.set(slice, page.offset);
-      offset = page.offset + slice.byteLength;
-      if (page.eof) break;
+      // A page that repeats an offset, returns nothing, or overruns the recorded size cannot be
+      // assembled — without this the walk never advances and zero-fills what it could not read.
+      if (
+        page.offset !== offset ||
+        slice.byteLength === 0 ||
+        offset + slice.byteLength > bytes.byteLength
+      ) {
+        throw new Error(
+          `Attachment ${attachmentId} returned ${slice.byteLength} bytes at ${page.offset}, expected more at ${offset} of ${first.sizeBytes}`,
+        );
+      }
+      bytes.set(slice, offset);
+      offset += slice.byteLength;
+      if (offset >= first.sizeBytes) break;
+      // eslint-disable-next-line no-await-in-loop -- sequential pages of one attachment
+      page = await this.read(sessionId, attachmentId, offset, ATTACHMENT_UPLOAD_CHUNK_BYTES);
     }
     this.cache.set(first.blobId, bytes);
     return { blobId: first.blobId, bytes, sizeBytes: first.sizeBytes };
@@ -155,7 +174,10 @@ export class AttachmentChannel {
       const at = offset;
       const data = bytesToBase64(bytes.subarray(at, end));
       offset = end;
-      acks.push(this.sendChunk(uploadId, at, data).then(noop));
+      const ack = this.sendChunk(uploadId, at, data).then(noop);
+      // The awaits below surface the first failure; the rest must not become unhandled rejections.
+      ack.catch(noop);
+      acks.push(ack);
     }
     for (let i = 0, len = acks.length; i < len; i++) {
       // eslint-disable-next-line no-await-in-loop -- drain remaining acks
