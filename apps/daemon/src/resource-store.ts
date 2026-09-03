@@ -94,6 +94,7 @@ function toResource(row: Row): SessionResource {
       row.locatorType === 'url'
         ? { type: 'url', url: row.locator }
         : { type: row.locatorType, path: row.locator },
+    attachmentId: row.attachmentId ?? undefined,
     mimeType: row.mimeType ?? undefined,
     sizeBytes: row.sizeBytes ?? undefined,
     error: row.error ?? undefined,
@@ -112,6 +113,7 @@ function toRow(resource: SessionResource, key?: string): typeof sessionResources
     locatorType: resource.locator.type,
     locator: resource.locator.type === 'url' ? resource.locator.url : resource.locator.path,
     normalizedLocatorKey: key ?? null,
+    attachmentId: resource.attachmentId ?? null,
     mimeType: resource.mimeType ?? null,
     sizeBytes: resource.sizeBytes ?? null,
     error: resource.error ?? null,
