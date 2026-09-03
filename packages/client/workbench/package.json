@@ -14,7 +14,7 @@
     "lint": "eslint --format=sukka ."
   },
   "dependencies": {
-    "@hookform/resolvers": "^5.5.7",
+    "@hookform/resolvers": "^5.9.1",
     "@linkcode/client-core": "workspace:*",
     "@linkcode/common": "workspace:*",
     "@linkcode/i18n": "workspace:*",
@@ -28,8 +28,8 @@
     "foxts": "^5.9.1",
     "lucide-react": "catalog:",
     "pathe": "^2.0.3",
-    "posthog-js": "^1.406.2",
-    "react-hook-form": "^7.82.0",
+    "posthog-js": "^1.421.0",
+    "react-hook-form": "^7.86.0",
     "swr": "catalog:",
     "tayori": "^0.3.8",
     "use-intl": "catalog:",
