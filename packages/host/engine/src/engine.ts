@@ -21,6 +21,7 @@ import { InMemoryAttachmentStore } from './attachment/attachment-store';
 import { FsBlobStore } from './attachment/blob-store';
 import { AttachmentGc } from './attachment/gc';
 import { AttachmentIoMutex } from './attachment/io-mutex';
+import { PromptMaterializer } from './attachment/materializer';
 import { AttachmentRequestHandler } from './attachment/request-handler';
 import { AttachmentUploadService } from './attachment/upload-service';
 import {
@@ -137,6 +138,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     );
   const attachmentIo = new AttachmentIoMutex();
   const attachmentGc = new AttachmentGc(attachmentStore, blobStore, Date.now, attachmentIo);
+  const materializer = new PromptMaterializer(attachmentStore, blobStore, stateDir, attachmentIo);
   const resources = new ResourceService(
     transport,
     resourceStore,
@@ -195,6 +197,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     records,
     transport,
     runTask,
+    attachmentStore,
   );
   const conversationJournals = new ConversationLiveJournals();
   const sessions = new SessionOrchestrator(
@@ -215,6 +218,9 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
+    (sessionId, runId) => {
+      void materializer.cleanupRun(sessionId, runId);
+    },
   );
   simulators?.setSessionValidator((id) => sessions.has(id));
   terminals = deps.ptyBackend
@@ -267,6 +273,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     worktrees,
     conversationTurns,
     conversationCheckpoints,
+    attachmentStore,
+    materializer,
   );
   const sessionRequests = new SessionRequestHandler(
     transport,
@@ -371,6 +379,14 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
         'Failed to sweep the attachment store',
         () => attachmentGc.bootSweep(),
       ).pipe(Effect.catch((error) => Effect.logWarning('Attachment boot sweep failed', error)));
+      yield* tryOperation(
+        'filesystem',
+        'attachments.materialized-sweep',
+        'Failed to sweep materialized attachments',
+        () => materializer.bootSweep(),
+      ).pipe(
+        Effect.catch((error) => Effect.logWarning('Materialized attachment sweep failed', error)),
+      );
       runTask(attachmentGc.cadence());
       yield* worktrees.start(new Set(Array.from(records.values(), ({ sessionId }) => sessionId)));
       yield* tryOperation('store', 'workspaces.load', 'Failed to load workspaces', () =>

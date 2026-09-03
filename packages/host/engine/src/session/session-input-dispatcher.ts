@@ -1,7 +1,13 @@
+import { UnsupportedAttachmentError } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
-import { agentCommandMatches, userRowMessageId } from '@linkcode/schema';
+import {
+  agentCommandMatches,
+  effectiveAttachmentCapability,
+  userRowMessageId,
+} from '@linkcode/schema';
 import { Cause, Effect, Exit } from 'effect';
 import { nullthrow } from 'foxts/guard';
+import { assertInlineAttachmentsSupported } from '../attachment/admit';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import { causeToRequestFailure, OperationError, RequestError } from '../failure';
@@ -28,6 +34,7 @@ export class SessionInputDispatcher {
     session: LiveSession,
     input: AgentInput,
     prepared?: PersistedTurnIntent,
+    adapterOverride?: AgentInput,
   ): Effect.Effect<void, unknown> {
     const startsTurn =
       input.type === 'prompt' || input.type === 'command' || input.type === 'shell-command';
@@ -77,20 +84,29 @@ export class SessionInputDispatcher {
         events.rejectInput(sessionId, session, error.message);
         return yield* Effect.fail(error);
       }
-      let adapterInput: AgentInput = input;
+      let adapterInput: AgentInput = adapterOverride ?? input;
       if (input.type === 'prompt') {
         yield* Effect.try({
-          try: () => assertAttachmentContentAllowed(input.content),
-          catch: (e) => e,
+          try() {
+            assertAttachmentContentAllowed(input.content);
+            assertInlineAttachmentsSupported(
+              input.content,
+              effectiveAttachmentCapability(records.get(sessionId)?.kind ?? session.adapter.kind),
+            );
+          },
+          catch(error) {
+            return error;
+          },
         });
+        const promptForAdapter = adapterInput.type === 'prompt' ? adapterInput : input;
         adapterInput = yield* resources.readySourceLocators(sessionId).pipe(
           Effect.map((locators) =>
             locators.length === 0
-              ? input
+              ? promptForAdapter
               : {
-                  ...input,
+                  ...promptForAdapter,
                   content: [
-                    ...input.content,
+                    ...promptForAdapter.content,
                     {
                       type: 'text' as const,
                       text: `${RESOURCE_CONTEXT_SENTINEL}\n${locators.join('\n')}`,
@@ -164,13 +180,19 @@ export class SessionInputDispatcher {
         yield* Effect.tryPromise({
           try: () => session.adapter.send(adapterInput),
           catch: (cause) =>
-            new OperationError({
-              subsystem: 'agent',
-              operation: 'session.input',
-              publicMessage: 'Agent input was rejected',
-              cause,
-              ...(startsTurn && { reportedInConversation: true }),
-            }),
+            cause instanceof UnsupportedAttachmentError
+              ? new RequestError({
+                  code: 'unsupported_attachment',
+                  message: cause.message,
+                  reportedInConversation: true,
+                })
+              : new OperationError({
+                  subsystem: 'agent',
+                  operation: 'session.input',
+                  publicMessage: 'Agent input was rejected',
+                  cause,
+                  ...(startsTurn && { reportedInConversation: true }),
+                }),
         }).pipe(
           Effect.tapError((error) =>
             Effect.sync(() => {
@@ -182,7 +204,13 @@ export class SessionInputDispatcher {
                 );
               }
               if (echoMessageId !== undefined) session.untrackPrompt(echoMessageId);
-              if (startsTurn) events.rejectInput(sessionId, session, error.publicMessage);
+              if (startsTurn) {
+                events.rejectInput(
+                  sessionId,
+                  session,
+                  error instanceof RequestError ? error.message : error.publicMessage,
+                );
+              }
             }),
           ),
         );
