@@ -9,6 +9,7 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type { Scope } from 'effect';
 import { Cause, Effect, FiberSet } from 'effect';
+import { noop } from 'foxts/noop';
 import { CustomMcpServerService } from './agent/custom-mcp-service';
 import { adoptDetectedLogins } from './agent/detected-logins';
 import { AgentLoginService } from './agent/login-service';
@@ -219,7 +220,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
     (sessionId, runId) => {
-      void materializer.cleanupRun(sessionId, runId);
+      void materializer.cleanupRun(sessionId, runId).catch(noop);
     },
   );
   simulators?.setSessionValidator((id) => sessions.has(id));

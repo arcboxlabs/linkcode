@@ -57,7 +57,21 @@ export class PromptMaterializer {
     return Effect.gen(function* () {
       const ids = uniqueAttachmentIds(attachmentIdsFromBlocks(prompt.blocks));
       const stored = yield* load(ids);
-      admitPromptAttachments(prompt.blocks, stored, capability);
+      yield* Effect.try({
+        try() {
+          admitPromptAttachments(prompt.blocks, stored, capability);
+        },
+        catch(error) {
+          return error instanceof RequestError
+            ? error
+            : new OperationError({
+                subsystem: 'store',
+                operation: 'attachments.admit',
+                publicMessage: 'Attachment validation failed',
+                cause: error,
+              });
+        },
+      });
       const byId = new Map(stored.map((attachment) => [attachment.attachmentId, attachment]));
       const blocks: PreparedPrompt['blocks'] = [];
       for (let i = 0, len = prompt.blocks.length; i < len; i++) {
@@ -104,17 +118,21 @@ export class PromptMaterializer {
   cleanupRun(sessionId: SessionId, runId: RunId): Promise<void> {
     const dir = this.runDir(sessionId, runId);
     if (dir === undefined) return Promise.resolve();
-    return rm(dir, { recursive: true, force: true });
+    return this.io.run(() => rm(dir, { recursive: true, force: true }));
   }
 
   cleanupSession(sessionId: SessionId): Promise<void> {
     const session = pathSegment(sessionId);
     if (session === undefined) return Promise.resolve();
-    return rm(join(this.stateDir, 'materialized', session), { recursive: true, force: true });
+    return this.io.run(() =>
+      rm(join(this.stateDir, 'materialized', session), { recursive: true, force: true }),
+    );
   }
 
   bootSweep(): Promise<void> {
-    return rm(join(this.stateDir, 'materialized'), { recursive: true, force: true });
+    return this.io.run(() =>
+      rm(join(this.stateDir, 'materialized'), { recursive: true, force: true }),
+    );
   }
 
   private runDir(sessionId: SessionId, runId: RunId): string | undefined {
