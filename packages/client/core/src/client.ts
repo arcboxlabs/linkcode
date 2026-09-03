@@ -10,6 +10,7 @@ import type {
   AgentKind,
   AgentRuntimes,
   AgentStartCatalog,
+  AttachmentId,
   ContentBlock,
   CustomMcpServerPatchOp,
   CustomMcpServerPublic,
@@ -67,6 +68,7 @@ import type {
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
+  UploadId,
   WireMessage,
   WorkspaceFile,
   WorkspaceId,
@@ -75,6 +77,7 @@ import type {
   WorkspaceScript,
 } from '@linkcode/schema';
 import {
+  ATTACHMENT_STORE_WIRE_VERSION,
   CONVERSATION_GRAPH_WIRE_VERSION,
   MIN_COMPATIBLE_WIRE_VERSION,
   WIRE_PROTOCOL_VERSION,
@@ -85,6 +88,12 @@ import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-mess
 import { noop } from 'foxts/noop';
 import type { AgentLoginHandlers } from './client/agent-login-channel';
 import { AgentLoginChannel } from './client/agent-login-channel';
+import type {
+  AttachmentBeginInput,
+  AttachmentPutInput,
+  AttachmentReadBytes,
+} from './client/attachment-channel';
+import { AttachmentChannel } from './client/attachment-channel';
 import type { BrowserCommandExecutor } from './client/browser-host-channel';
 import { BrowserHostChannel } from './client/browser-host-channel';
 import type {
@@ -111,6 +120,11 @@ import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
+export type {
+  AttachmentBeginInput,
+  AttachmentPutInput,
+  AttachmentReadBytes,
+} from './client/attachment-channel';
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type {
   ConversationReadClientOptions,
@@ -240,6 +254,7 @@ export function isRequestFailureReportedInConversation(error: unknown): boolean 
 export class LinkCodeClient {
   private readonly pending: PendingRegistry;
   private readonly control: ControlChannel;
+  private readonly attachments: AttachmentChannel;
   private readonly events = new EventBuffer();
   private readonly graphChanges = new ConversationGraphChanges();
   private readonly terminals: TerminalChannel;
@@ -277,6 +292,7 @@ export class LinkCodeClient {
     const randomUUID = resolveRandomUUID(options.randomUUID);
     this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
+    this.attachments = new AttachmentChannel(transport, this.pending);
     this.terminals = new TerminalChannel(transport, this.pending, randomUUID);
     this.browserHost = new BrowserHostChannel(transport, this.pending, randomUUID);
     this.agentLogin = new AgentLoginChannel(transport, this.pending);
@@ -324,6 +340,11 @@ export class LinkCodeClient {
    * `agent.event` with `(epoch, seq)` — the gate for the projection merge path. */
   get supportsConversationGraph(): boolean {
     return this.peerWire !== null && this.peerWire.version >= CONVERSATION_GRAPH_WIRE_VERSION;
+  }
+
+  /** Whether the host serves chunked `attachment.upload.*` / `attachment.read`. */
+  get supportsAttachmentStore(): boolean {
+    return this.peerWire !== null && this.peerWire.version >= ATTACHMENT_STORE_WIRE_VERSION;
   }
 
   private async handshake(): Promise<void> {
@@ -606,6 +627,36 @@ export class LinkCodeClient {
         break;
       case 'resource.hosted':
         this.pending.resolve('resourceHost', p.replyTo, p.hosted);
+        break;
+      case 'attachment.upload.begun':
+        this.pending.resolve('attachmentBegin', p.replyTo, {
+          uploadId: p.uploadId,
+          chunkBytes: p.chunkBytes,
+          state: p.state,
+        });
+        break;
+      case 'attachment.upload.chunk.acked':
+        this.pending.resolve('attachmentChunk', p.replyTo, {
+          uploadId: p.uploadId,
+          receivedBytes: p.receivedBytes,
+        });
+        break;
+      case 'attachment.upload.committed':
+        this.pending.resolve('attachmentCommit', p.replyTo, {
+          attachmentId: p.attachmentId,
+          blobId: p.blobId,
+        });
+        break;
+      case 'attachment.read.result':
+        this.pending.resolve('attachmentRead', p.replyTo, {
+          sessionId: p.sessionId,
+          attachmentId: p.attachmentId,
+          blobId: p.blobId,
+          offset: p.offset,
+          data: p.data,
+          sizeBytes: p.sizeBytes,
+          eof: p.eof,
+        });
         break;
       case 'resource.changed':
         for (const cb of this.resourceEventSubs) cb({ type: 'changed', resource: p.resource });
@@ -1322,6 +1373,39 @@ export class LinkCodeClient {
   }
   hostResource(resourceId: SessionResourceId): Promise<HostedSessionResource> {
     return this.control.hostResource(resourceId);
+  }
+
+  beginAttachmentUpload(input: AttachmentBeginInput) {
+    return this.attachments.beginUpload(input);
+  }
+
+  sendAttachmentChunk(uploadId: UploadId, offset: number, data: string) {
+    return this.attachments.sendChunk(uploadId, offset, data);
+  }
+
+  commitAttachmentUpload(uploadId: UploadId) {
+    return this.attachments.commit(uploadId);
+  }
+
+  abortAttachmentUpload(uploadId: UploadId) {
+    return this.attachments.abort(uploadId);
+  }
+
+  readAttachment(sessionId: SessionId, attachmentId: AttachmentId, offset: number, length: number) {
+    return this.attachments.read(sessionId, attachmentId, offset, length);
+  }
+
+  /** Hash + windowed chunked upload. Identical bytes commit with no transfer. */
+  putAttachment(input: AttachmentPutInput) {
+    return this.attachments.put(input);
+  }
+
+  /** Read every byte of an attachment, cached by `blobId`. */
+  getAttachmentBytes(
+    sessionId: SessionId,
+    attachmentId: AttachmentId,
+  ): Promise<AttachmentReadBytes> {
+    return this.attachments.get(sessionId, attachmentId);
   }
   subscribeResources(cb: ResourceEventCb): Unsubscribe {
     this.resourceEventSubs.add(cb);

@@ -88,6 +88,26 @@ export type ConversationReadPage = Omit<
   'kind' | 'replyTo'
 >;
 
+export type AttachmentUploadBegun = Omit<
+  Extract<WirePayload, { kind: 'attachment.upload.begun' }>,
+  'kind' | 'replyTo'
+>;
+
+export type AttachmentChunkAck = Omit<
+  Extract<WirePayload, { kind: 'attachment.upload.chunk.acked' }>,
+  'kind' | 'replyTo'
+>;
+
+export type AttachmentCommitResult = Omit<
+  Extract<WirePayload, { kind: 'attachment.upload.committed' }>,
+  'kind' | 'replyTo'
+>;
+
+export type AttachmentReadResult = Omit<
+  Extract<WirePayload, { kind: 'attachment.read.result' }>,
+  'kind' | 'replyTo'
+>;
+
 export type RandomUUID = () => string;
 
 export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
@@ -138,6 +158,10 @@ export interface PendingValueMap {
   resourceList: SessionResource[];
   resourceUpload: SessionResource;
   resourceHost: HostedSessionResource;
+  attachmentBegin: AttachmentUploadBegun;
+  attachmentChunk: AttachmentChunkAck;
+  attachmentCommit: AttachmentCommitResult;
+  attachmentRead: AttachmentReadResult;
   workspaceList: WorkspaceRecord[];
   workspaceRegister: WorkspaceRecord;
   scheduleCreate: Schedule;
@@ -202,6 +226,10 @@ export class PendingRegistry {
     resourceList: new Map(),
     resourceUpload: new Map(),
     resourceHost: new Map(),
+    attachmentBegin: new Map(),
+    attachmentChunk: new Map(),
+    attachmentCommit: new Map(),
+    attachmentRead: new Map(),
     workspaceList: new Map(),
     workspaceRegister: new Map(),
     scheduleCreate: new Map(),
