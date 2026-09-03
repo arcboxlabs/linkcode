@@ -2,15 +2,19 @@ import { useCommandPaletteStore, Workbench } from '@linkcode/workbench';
 import { usePageTitle } from '@webview/hooks/use-page-title';
 import { WebWorkbenchShell } from '@webview/shell/web-workbench-shell';
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
 /** Index route: the workbench surface (session / conversation / composer). */
 export function WorkbenchRoute(): React.ReactNode {
   const navigate = useNavigate();
+  const location = useLocation();
   const t = useTranslations('workbench.palette');
   const tWorkbench = useTranslations('workbench');
-  usePageTitle(tWorkbench('pageTitle'));
+  const tAutomations = useTranslations('workbench.automations');
+  usePageTitle(
+    location.pathname === '/automations' ? tAutomations('pageTitle') : tWorkbench('pageTitle'),
+  );
   useEffect(() => {
     const { registerCommands, unregisterCommands } = useCommandPaletteStore.getState();
     registerCommands('webview', [

@@ -11,7 +11,11 @@ export const zhCN = {
     automations: {
       title: '自动化',
       pageTitle: '自动化',
+      description: '安排 Agent 定时工作，或让任务循环执行直到验证通过。',
       back: '返回',
+      closeDetails: '关闭详情',
+      searchPlaceholder: '搜索自动化',
+      noMatches: '没有匹配的自动化。',
       notFound: '未找到该自动化',
       nameLabel: '名称',
       namePlaceholder: '可选',

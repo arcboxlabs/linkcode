@@ -42,8 +42,10 @@ export function AutomationMasterButton({
   return (
     <button
       type="button"
-      className={`flex w-full items-start gap-2 rounded-lg border p-2.5 text-left transition-colors ${
-        active ? 'border-border bg-muted' : 'border-transparent hover:bg-muted/50'
+      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+        active
+          ? 'border-border bg-muted'
+          : 'border-transparent hover:bg-muted/50 active:bg-muted/50'
       }`}
       onClick={onClick}
     >
@@ -61,16 +63,10 @@ export function AutomationMasterButton({
 
 export function AutomationPaneSkeleton(): React.ReactNode {
   return (
-    <div className="flex min-h-0 flex-1 gap-6 py-4">
-      <div className="flex w-64 shrink-0 flex-col gap-1">
-        {createFixedArray(3).map((index) => (
-          <Skeleton key={index} className="h-14 w-full rounded-lg" />
-        ))}
-      </div>
-      <div className="flex min-w-0 flex-1 flex-col gap-3">
-        <Skeleton className="h-6 w-56 rounded-md" />
-        <Skeleton className="h-4 w-80 rounded-md" />
-      </div>
+    <div className="flex min-h-0 flex-1 flex-col gap-1 py-2">
+      {createFixedArray(3).map((index) => (
+        <Skeleton key={index} className="h-16 w-full rounded-xl" />
+      ))}
     </div>
   );
 }

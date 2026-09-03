@@ -1,4 +1,4 @@
-import type { ScheduleStatus, SessionId } from '@linkcode/schema';
+import type { ScheduleStatus } from '@linkcode/schema';
 import { useRelativeTimeLabel } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
@@ -11,14 +11,8 @@ import {
 } from 'coss-ui/components/empty';
 import { ClockIcon, PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import {
-  AutomationCreatePane,
-  AutomationMasterButton,
-  AutomationPaneSkeleton,
-} from '../pane-layout';
+import { AutomationMasterButton, AutomationPaneSkeleton } from '../pane-layout';
 import { useAutomationsViewStore } from '../store';
-import { ScheduleDetail } from './detail';
-import { ScheduleForm } from './form';
 import { useSchedules } from './hooks';
 import type { AutomationListItem } from './items';
 import { buildScheduleItems } from './items';
@@ -30,30 +24,25 @@ const STATUS_BADGE: Record<ScheduleStatus, 'success' | 'warning' | 'secondary'> 
   completed: 'secondary',
 };
 
-export function SchedulePane({
-  onOpenSession,
-}: {
-  onOpenSession: (sessionId: SessionId) => void;
-}): React.ReactNode {
+export function SchedulePane({ query }: { query: string }): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const { data: schedules, isLoading } = useSchedules();
-  const view = useAutomationsViewStore((state) => state.view);
   const selectedScheduleId = useAutomationsViewStore((state) => state.selectedScheduleId);
   const select = useAutomationsViewStore((state) => state.select);
   const startCreate = useAutomationsViewStore((state) => state.startCreate);
-
-  if (view.kind === 'create-schedule') {
-    return (
-      <AutomationCreatePane title={t('schedule.new')} description={t('schedule.createDescription')}>
-        <ScheduleForm />
-      </AutomationCreatePane>
-    );
-  }
-
-  const items = buildScheduleItems(schedules);
+  const normalizedQuery = query.trim().toLowerCase();
+  const allItems = buildScheduleItems(schedules);
+  const items = normalizedQuery
+    ? allItems.filter((item) => item.name.toLowerCase().includes(normalizedQuery))
+    : allItems;
 
   if (items.length === 0) {
     if (isLoading) return <AutomationPaneSkeleton />;
+    if (normalizedQuery) {
+      return (
+        <p className="px-3 py-8 text-center text-muted-foreground text-sm">{t('noMatches')}</p>
+      );
+    }
     return (
       <Empty className="flex-1">
         <EmptyHeader>
@@ -71,24 +60,18 @@ export function SchedulePane({
     );
   }
 
-  const activeId = selectedScheduleId ?? items[0].scheduleId;
   return (
-    <div className="flex min-h-0 flex-1 gap-6 py-4">
-      <ul className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
-        {items.map((item) => (
-          <li key={item.scheduleId}>
-            <ScheduleRow
-              item={item}
-              active={item.scheduleId === activeId}
-              onSelect={() => select(item.scheduleId)}
-            />
-          </li>
-        ))}
-      </ul>
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto pb-2">
-        <ScheduleDetail scheduleId={activeId} onOpenSession={onOpenSession} />
-      </div>
-    </div>
+    <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-2">
+      {items.map((item) => (
+        <li key={item.scheduleId}>
+          <ScheduleRow
+            item={item}
+            active={item.scheduleId === selectedScheduleId}
+            onSelect={() => select(item.scheduleId)}
+          />
+        </li>
+      ))}
+    </ul>
   );
 }
 

@@ -1,6 +1,7 @@
 import { ErrorBadge, ShellFrame, ShellIconButton, ThreadTitle, TitleStrip } from '@linkcode/ui';
 import type { WorkbenchShellProps } from '@linkcode/workbench';
 import {
+  AutomationsView,
   getResourcesPanelPresentation,
   RESOURCES_FLOATING_COLUMN_WIDTH,
   RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
@@ -13,7 +14,7 @@ import { Card } from 'coss-ui/components/card';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { ChevronLeftIcon, ChevronRightIcon, Settings2Icon, SettingsIcon } from 'lucide-react';
-import { Link, useNavigate } from 'react-router';
+import { Link, useLocation, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
 const WEB_SIDEBAR_WIDTH = 288;
@@ -27,6 +28,8 @@ export function WebWorkbenchShell({
   const t = useTranslations('workbench.palette');
   const tPanel = useTranslations('workbench.panel.window');
   const navigate = useNavigate();
+  const location = useLocation();
+  const automationsOpen = location.pathname === '/automations';
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
   const floatingSpaceAvailable = useMediaQuery({
@@ -58,6 +61,17 @@ export function WebWorkbenchShell({
       <div className="h-full min-h-0 min-w-0">
         <ShellFrame
           {...props}
+          automationsActive={automationsOpen}
+          mainContent={
+            automationsOpen ? (
+              <AutomationsView
+                onOpenSession={(sessionId) => {
+                  props.onSelectSession(sessionId);
+                  void navigate('/');
+                }}
+              />
+            ) : undefined
+          }
           showPlanInPromptDock={!resourcesSurfaceOpen}
           onOpenProviderSettings={() => {
             useProvidersSettingsStore.getState().startAdd();
@@ -66,76 +80,86 @@ export function WebWorkbenchShell({
           onOpenAutomations={() => {
             void navigate('/automations');
           }}
+          onSelectSession={(sessionId) => {
+            props.onSelectSession(sessionId);
+            if (automationsOpen) void navigate('/');
+          }}
+          onStartDraft={(workspaceId) => {
+            props.onStartDraft(workspaceId);
+            if (automationsOpen) void navigate('/');
+          }}
           header={
-            <TitleStrip className="border-border border-b">
-              <ShellIconButton
-                label={t('goBack')}
-                disabled={!navigation.canGoBack}
-                onClick={navigation.onBack}
-              >
-                <ChevronLeftIcon className="size-4" />
-              </ShellIconButton>
-              <ShellIconButton
-                label={t('goForward')}
-                disabled={!navigation.canGoForward}
-                onClick={navigation.onForward}
-              >
-                <ChevronRightIcon className="size-4" />
-              </ShellIconButton>
-              <div className="min-w-0">
-                {/* data-conversation-title is the browser-smoke E2E's header selector. */}
-                <ThreadTitle
-                  className="font-medium text-sm"
-                  data-conversation-title=""
-                  sessionId={header.sessionId}
+            automationsOpen ? null : (
+              <TitleStrip className="border-border border-b">
+                <ShellIconButton
+                  label={t('goBack')}
+                  disabled={!navigation.canGoBack}
+                  onClick={navigation.onBack}
                 >
-                  {header.title}
-                </ThreadTitle>
-                {header.subtitle && (
-                  <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
-                )}
-              </div>
-              {/* The draft page reports errors through its own banner. */}
-              <ErrorBadge
-                errorMessage={props.draft ? null : props.errorMessage}
-                onDismissError={props.onDismissError}
-              />
-              <div className="ml-auto flex items-center gap-2">
-                {/* No in-app browser in the web client: preview links always open a new tab. */}
-                <WorkspaceServicesMenu cwd={props.activeSession?.cwd} />
-                {hasUsage && (
-                  <span className="font-mono text-muted-foreground text-xs">
-                    {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out
-                  </span>
-                )}
-                {resourcesAvailable &&
-                  (resourcesPresentation === 'popover' ? (
-                    <Popover open={resourcesOpen} onOpenChange={setResourcesOpen}>
-                      <PopoverTrigger render={resourcesButton} />
-                      <PopoverPopup
-                        align="end"
-                        side="bottom"
-                        sideOffset={8}
-                        className="w-72 [&_[data-slot=popover-viewport]]:p-0"
-                      >
-                        <div className="max-h-[min(32rem,var(--available-height))] min-h-0 overflow-y-auto">
-                          {resourcesPanel}
-                        </div>
-                      </PopoverPopup>
-                    </Popover>
-                  ) : (
-                    resourcesButton
-                  ))}
-                <Button
-                  render={<Link to="/settings" />}
-                  size="icon-sm"
-                  variant="ghost"
-                  aria-label={t('openSettings')}
+                  <ChevronLeftIcon className="size-4" />
+                </ShellIconButton>
+                <ShellIconButton
+                  label={t('goForward')}
+                  disabled={!navigation.canGoForward}
+                  onClick={navigation.onForward}
                 >
-                  <SettingsIcon />
-                </Button>
-              </div>
-            </TitleStrip>
+                  <ChevronRightIcon className="size-4" />
+                </ShellIconButton>
+                <div className="min-w-0">
+                  {/* data-conversation-title is the browser-smoke E2E's header selector. */}
+                  <ThreadTitle
+                    className="font-medium text-sm"
+                    data-conversation-title=""
+                    sessionId={header.sessionId}
+                  >
+                    {header.title}
+                  </ThreadTitle>
+                  {header.subtitle && (
+                    <div className="truncate text-muted-foreground text-xs">{header.subtitle}</div>
+                  )}
+                </div>
+                {/* The draft page reports errors through its own banner. */}
+                <ErrorBadge
+                  errorMessage={props.draft ? null : props.errorMessage}
+                  onDismissError={props.onDismissError}
+                />
+                <div className="ml-auto flex items-center gap-2">
+                  {/* No in-app browser in the web client: preview links always open a new tab. */}
+                  <WorkspaceServicesMenu cwd={props.activeSession?.cwd} />
+                  {hasUsage && (
+                    <span className="font-mono text-muted-foreground text-xs">
+                      {header.usage?.inputTokens ?? 0} in / {header.usage?.outputTokens ?? 0} out
+                    </span>
+                  )}
+                  {resourcesAvailable &&
+                    (resourcesPresentation === 'popover' ? (
+                      <Popover open={resourcesOpen} onOpenChange={setResourcesOpen}>
+                        <PopoverTrigger render={resourcesButton} />
+                        <PopoverPopup
+                          align="end"
+                          side="bottom"
+                          sideOffset={8}
+                          className="w-72 [&_[data-slot=popover-viewport]]:p-0"
+                        >
+                          <div className="max-h-[min(32rem,var(--available-height))] min-h-0 overflow-y-auto">
+                            {resourcesPanel}
+                          </div>
+                        </PopoverPopup>
+                      </Popover>
+                    ) : (
+                      resourcesButton
+                    ))}
+                  <Button
+                    render={<Link to="/settings" />}
+                    size="icon-sm"
+                    variant="ghost"
+                    aria-label={t('openSettings')}
+                  >
+                    <SettingsIcon />
+                  </Button>
+                </div>
+              </TitleStrip>
+            )
           }
         />
       </div>
