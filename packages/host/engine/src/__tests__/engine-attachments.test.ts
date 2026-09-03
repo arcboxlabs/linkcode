@@ -165,4 +165,76 @@ describe('engine attachment upload/read', () => {
       );
     });
   });
+
+  it('accepts two chunk frames delivered before the first write lands', async () => {
+    const stateDir = await tempDirectory();
+    const h = createSessionHarness(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      {
+        stateDir,
+      },
+    );
+    await h.engine.start();
+    const bytes = Buffer.alloc(ATTACHMENT_UPLOAD_CHUNK_BYTES + 11, 9);
+    await h.inject({
+      kind: 'attachment.upload.begin',
+      clientReqId: 'begin',
+      declaredSha256: sha256(bytes),
+      declaredSize: bytes.byteLength,
+      name: 'window.bin',
+      attachmentKind: 'file',
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'attachment.upload.begun', replyTo: 'begin' }),
+      );
+    });
+    const begun = replyOf(h.sent, 'attachment.upload.begun', 'begin');
+
+    // Each frame is handled in its own fiber, so both are in flight before either write resolves.
+    await Promise.all([
+      h.inject({
+        kind: 'attachment.upload.chunk',
+        clientReqId: 'chunk-0',
+        uploadId: begun.uploadId,
+        offset: 0,
+        data: bytes.subarray(0, ATTACHMENT_UPLOAD_CHUNK_BYTES).toString('base64'),
+      }),
+      h.inject({
+        kind: 'attachment.upload.chunk',
+        clientReqId: 'chunk-1',
+        uploadId: begun.uploadId,
+        offset: ATTACHMENT_UPLOAD_CHUNK_BYTES,
+        data: bytes.subarray(ATTACHMENT_UPLOAD_CHUNK_BYTES).toString('base64'),
+      }),
+    ]);
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({
+          kind: 'attachment.upload.chunk.acked',
+          replyTo: 'chunk-1',
+          receivedBytes: bytes.byteLength,
+        }),
+      );
+    });
+
+    await h.inject({
+      kind: 'attachment.upload.commit',
+      clientReqId: 'commit',
+      uploadId: begun.uploadId,
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'attachment.upload.committed', replyTo: 'commit' }),
+      );
+    });
+    expect(replyOf(h.sent, 'attachment.upload.committed', 'commit').blobId).toBe(
+      `sha256:${sha256(bytes)}`,
+    );
+  });
 });
