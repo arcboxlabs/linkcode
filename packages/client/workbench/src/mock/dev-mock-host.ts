@@ -1274,11 +1274,6 @@ export class DevMockHost {
       case 'shell-command': {
         const content = [textBlock(`$ ${input.command}`)];
         const turn = this.beginTurn(session, content, input);
-        this.emit(sessionId, {
-          type: 'user-message',
-          messageId: userRowMessageId(turn.graph.turnId),
-          content,
-        });
         settleTurn(session, turn, 'completed');
         this.sendSuccess(replyTo);
         break;
@@ -1316,11 +1311,6 @@ export class DevMockHost {
       type: 'command',
       name,
       ...(args !== undefined && { arguments: args }),
-    });
-    this.emit(session.sessionId, {
-      type: 'user-message',
-      messageId: userRowMessageId(turn.graph.turnId),
-      content,
     });
     session.status = 'running';
     this.emit(session.sessionId, { type: 'status', status: 'running' });
@@ -1365,16 +1355,11 @@ export class DevMockHost {
     const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
     this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
-      const result = await this.streamMockReply(session, turn, content);
+      const result = await this.streamMockReply(session, content);
       settleTurn(session, turn, result.ok ? 'completed' : 'failed');
       return;
     }
     // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
-    this.emit(p.sessionId, {
-      type: 'user-message',
-      messageId: userRowMessageId(turn.graph.turnId),
-      content,
-    });
     settleTurn(session, turn, 'completed');
   }
 
@@ -1405,6 +1390,13 @@ export class DevMockHost {
     };
     session.graphTurns.push(turn);
     session.runningTurnId = turnId;
+    // Echo before graph.changed so a subscribed projection store sees the new leaf row and
+    // treats a plain send as continuation, matching the engine dispatcher.
+    this.emit(session.sessionId, {
+      type: 'user-message',
+      messageId: userRowMessageId(turnId),
+      content,
+    });
     this.send({
       kind: 'conversation.graph.changed',
       sessionId: session.sessionId,
@@ -1420,7 +1412,7 @@ export class DevMockHost {
     content: ContentBlock[],
   ): Promise<void> {
     const turn = this.beginTurn(session, content);
-    const result = await this.streamMockReply(session, turn, content);
+    const result = await this.streamMockReply(session, content);
     settleTurn(session, turn, result.ok ? 'completed' : 'failed');
     if (result.ok) this.sendSuccess(replyTo);
     else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
@@ -1428,17 +1420,11 @@ export class DevMockHost {
 
   private async streamMockReply(
     session: MockSession,
-    turn: MockTurn,
     content: ContentBlock[],
   ): Promise<{ ok: true } | { ok: false; message: string }> {
     const text = promptText(content);
     if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
-    this.emit(session.sessionId, {
-      type: 'user-message',
-      messageId: userRowMessageId(turn.graph.turnId),
-      content,
-    });
     this.emit(session.sessionId, { type: 'status', status: 'running' });
 
     // Cancel/stop bump the session epoch; a stale epoch means this turn was cancelled and the

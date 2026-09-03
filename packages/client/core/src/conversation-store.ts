@@ -60,7 +60,7 @@ export function createConversationStore(
   if (seed !== undefined && 'items' in seed) {
     return createProjectionStore(client, sessionId, seed, options.onResync ?? noop);
   }
-  return createHistoryStore(client, sessionId, seed);
+  return createHistoryStore(client, sessionId, seed, options.onResync ?? noop);
 }
 
 /** Kinds the projection merge never drops on the watermark: their authoritative state lives in
@@ -290,6 +290,7 @@ function createHistoryStore(
   client: LinkCodeClient,
   sessionId: SessionId,
   seed: ConversationSeed | undefined,
+  onResync: (reason: ConversationResyncReason) => void,
 ): ConversationStore {
   const builder = createConversationBuilder();
   const uptoSeq = seed?.uptoSeq ?? 0;
@@ -328,6 +329,19 @@ function createHistoryStore(
   let seeded = false;
   /** Highest receive seq already examined (not necessarily folded — covered ones may be cut). */
   let consumedSeq = 0;
+  let resyncRequested = false;
+
+  const requestResync = (): void => {
+    if (resyncRequested) return;
+    resyncRequested = true;
+    queueMicrotask(() => onResync('graph'));
+  };
+
+  const noteGraph = (change: ConversationGraphChange | undefined): void => {
+    // A leaf appearing after an empty-graph / live-only read is the cutover: the owner must
+    // re-read so the next store is a projection. History-path sessions never see this.
+    if (change?.activeLeafTurnId !== undefined) requestResync();
+  };
 
   const sync = (): void => {
     if (!seeded) {
@@ -355,7 +369,17 @@ function createHistoryStore(
   };
 
   return {
-    subscribe: (onStoreChange) => client.subscribe(sessionId, onStoreChange),
+    subscribe(onStoreChange) {
+      noteGraph(client.latestGraphChange(sessionId));
+      const unsubscribeEvents = client.subscribe(sessionId, onStoreChange);
+      const unsubscribeGraph = client.subscribeGraphChanges(sessionId, (change) => {
+        noteGraph(change);
+      });
+      return () => {
+        unsubscribeEvents();
+        unsubscribeGraph();
+      };
+    },
     getSnapshot() {
       sync();
       return builder.snapshot();

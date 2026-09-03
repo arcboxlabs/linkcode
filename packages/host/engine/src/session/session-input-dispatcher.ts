@@ -143,7 +143,7 @@ export class SessionInputDispatcher {
             events.broadcast(
               sessionId,
               session,
-              [{ type: 'user-message', messageId: echoMessageId, content: [{ type: 'text', text }] }],
+              session.trackPrompt(echoMessageId, [{ type: 'text', text }], persistedTurnId),
               persistedTurnId,
             );
           }

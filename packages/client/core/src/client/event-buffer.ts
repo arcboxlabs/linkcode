@@ -24,8 +24,7 @@ export interface SequencedAgentEvent {
   /** Client receive time (ms epoch), stamped when the event is ingested from the live stream.
    * Drives relative timestamps in the UI; absent for events replayed from a history read. */
   receivedAt?: number;
-  /** Daemon-minted `(epoch, seq)` position — the projection merge cut; absent from unstamped
-   * hosts (≤v79 daemons, the dev mock). */
+  /** Daemon-minted `(epoch, seq)` position — the projection merge cut; absent from ≤v79 hosts. */
   position?: ConversationWatermark;
   runId?: RunId;
   /** The turn the daemon attributed the event to. A live user echo carries none: it is broadcast

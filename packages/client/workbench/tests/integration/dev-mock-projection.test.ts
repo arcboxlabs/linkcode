@@ -5,6 +5,7 @@ import {
   readConversationSeed,
 } from '@linkcode/client-core';
 import { userRowMessageId } from '@linkcode/schema';
+import { noop } from 'foxact/noop';
 import { nullthrow } from 'foxts/guard';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
@@ -23,7 +24,15 @@ describe('dev mock projection seeding', () => {
     // No turn rows and no transcript: nothing to seed, the store runs live-only.
     await expect(readConversationSeed(client, source)).resolves.toBeUndefined();
 
+    const liveResyncs: ConversationResyncReason[] = [];
+    createConversationStore(client, sessionId, undefined, {
+      onResync: (reason) => liveResyncs.push(reason),
+    }).subscribe(noop);
+
     await client.promptText(sessionId, 'Hello mocked daemon');
+    await wait(10);
+    expect(liveResyncs).toEqual(['graph']);
+
     const change = nullthrow(client.latestGraphChange(sessionId));
     const leaf = nullthrow(change.activeLeafTurnId);
 
@@ -38,6 +47,7 @@ describe('dev mock projection seeding', () => {
     const store = createConversationStore(client, sessionId, seed, {
       onResync: (reason) => resyncs.push(reason),
     });
+    store.subscribe(noop);
     const items = store.getSnapshot().items;
     // One user row under the turn identity — the live echo folded once, never twice.
     expect(items.filter((item) => item.kind === 'message' && item.role === 'user')).toEqual([
@@ -48,6 +58,8 @@ describe('dev mock projection seeding', () => {
 
     // A turn without output renders the prompt-only placeholder under its row.
     await client.runShellCommand(sessionId, 'ls');
+    await wait(10);
+    expect(resyncs).toEqual([]);
     const reseed = await readConversationSeed(client, source);
     if (reseed === undefined || !('items' in reseed)) throw new Error('expected a projection seed');
     const shellLeaf = nullthrow(client.latestGraphChange(sessionId)?.activeLeafTurnId);

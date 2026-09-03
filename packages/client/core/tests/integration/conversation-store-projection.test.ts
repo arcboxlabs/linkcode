@@ -197,6 +197,18 @@ describe('projection conversation store', () => {
     h.close();
   });
 
+  it('asks a live-only store to re-read when a leaf appears', async () => {
+    const h = await harness();
+    const store = createConversationStore(h.client, sessionId, undefined, {
+      onResync: (reason) => h.resyncs.push(reason),
+    });
+    store.subscribe(noop);
+    h.graphChanged(1, turn(1));
+    await tick();
+    expect(h.resyncs).toEqual(['graph']);
+    h.close();
+  });
+
   it('treats a graph move onto a leaf whose row arrived live as a plain continuation', async () => {
     const h = await harness();
     const store = h.store(seedOf([userRow(1, 'first')], { epoch: 1, seq: 1 }, 3));
