@@ -94,6 +94,7 @@ import type {
   AttachmentReadBytes,
 } from './client/attachment-channel';
 import { AttachmentChannel } from './client/attachment-channel';
+import type { Sha256Hex } from './client/blob-cache';
 import type { BrowserCommandExecutor } from './client/browser-host-channel';
 import { BrowserHostChannel } from './client/browser-host-channel';
 import type {
@@ -125,6 +126,7 @@ export type {
   AttachmentPutInput,
   AttachmentReadBytes,
 } from './client/attachment-channel';
+export type { Sha256Hex } from './client/blob-cache';
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type {
   ConversationReadClientOptions,
@@ -160,6 +162,8 @@ type TerminalReplayTruncatedCb = (truncated: boolean) => void;
 
 export interface LinkCodeClientOptions {
   randomUUID?: RandomUUID;
+  /** Attachment upload hashes its bytes; hosts without `crypto.subtle` must supply the digest. */
+  sha256Hex?: Sha256Hex;
 }
 
 export interface TerminalAttachResult {
@@ -292,7 +296,7 @@ export class LinkCodeClient {
     const randomUUID = resolveRandomUUID(options.randomUUID);
     this.pending = new PendingRegistry(randomUUID);
     this.control = new ControlChannel(transport, this.pending);
-    this.attachments = new AttachmentChannel(transport, this.pending);
+    this.attachments = new AttachmentChannel(transport, this.pending, options.sha256Hex);
     this.terminals = new TerminalChannel(transport, this.pending, randomUUID);
     this.browserHost = new BrowserHostChannel(transport, this.pending, randomUUID);
     this.agentLogin = new AgentLoginChannel(transport, this.pending);
