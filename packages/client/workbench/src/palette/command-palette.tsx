@@ -7,7 +7,6 @@ import {
   repositoryLabel,
   useKeyboardShortcutLabels,
 } from '@linkcode/ui';
-import { AnimatePresence } from 'motion/react';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { recentThreadJumpActionId } from '../surface/use-workbench-keyboard-shortcuts';
@@ -21,20 +20,12 @@ export interface WorkbenchCommandPaletteProps {
   sessions: WorkbenchSessions;
 }
 
-/**
- * The palette container: mounted permanently, but everything below exists only while open — the
- * closed palette costs nothing and the query resets on close for free. `AnimatePresence` defers
- * the unmount until the dialog's exit transition finishes.
- */
+/** The palette subtree exists only while open, so closing also resets the query. */
 export function WorkbenchCommandPalette({
   sessions,
 }: WorkbenchCommandPaletteProps): React.ReactNode {
   const open = useCommandPaletteStore((state) => state.open);
-  return (
-    <AnimatePresence>
-      {open && <OpenCommandPalette key="palette" sessions={sessions} />}
-    </AnimatePresence>
-  );
+  return open ? <OpenCommandPalette sessions={sessions} /> : null;
 }
 
 function OpenCommandPalette({ sessions }: WorkbenchCommandPaletteProps): React.ReactNode {

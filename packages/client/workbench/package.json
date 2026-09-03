@@ -27,7 +27,6 @@
     "foxact": "^0.3.10",
     "foxts": "^5.9.1",
     "lucide-react": "catalog:",
-    "motion": "^12.42.2",
     "pathe": "^2.0.3",
     "posthog-js": "^1.406.2",
     "react-hook-form": "^7.82.0",
