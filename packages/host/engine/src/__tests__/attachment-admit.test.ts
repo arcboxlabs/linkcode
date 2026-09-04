@@ -5,6 +5,8 @@ import {
   MAX_ATTACHMENT_BYTES,
   MAX_ATTACHMENT_TOTAL_BYTES,
 } from '@linkcode/schema';
+import { createFixedArray } from 'foxts/create-fixed-array';
+import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { admitPromptAttachments, assertInlineAttachmentsSupported } from '../attachment/admit';
 import type { StoredAttachment } from '../attachment/attachment-store';
@@ -120,6 +122,39 @@ describe('admitPromptAttachments', () => {
     }
     expect.fail('expected a typed refusal');
   });
+
+  it('charges a repeated ref its bytes again so the aggregate cap bounds materialization', () => {
+    const oversized = Math.ceil(MAX_ATTACHMENT_TOTAL_BYTES / 3);
+    const blocks = [
+      { type: 'attachment_ref' as const, attachmentId: ATT_1 },
+      { type: 'attachment_ref' as const, attachmentId: ATT_1 },
+      { type: 'attachment_ref' as const, attachmentId: ATT_1 },
+      { type: 'attachment_ref' as const, attachmentId: ATT_1 },
+    ];
+    try {
+      admitPromptAttachments(blocks, [stored({ sizeBytes: oversized })], capability);
+    } catch (error) {
+      expect(error).toBeInstanceOf(RequestError);
+      expect(error).toMatchObject({ code: 'limit_exceeded' });
+      return;
+    }
+    expect.fail('expected the repeated ref to exhaust the prompt aggregate cap');
+  });
+
+  it('counts every occurrence against maxCount, not the unique id set', () => {
+    const capped = nullthrow(capability?.kinds.image?.maxCount, 'image maxCount');
+    const blocks = createFixedArray(capped + 1).map(() => ({
+      type: 'attachment_ref' as const,
+      attachmentId: ATT_1,
+    }));
+    try {
+      admitPromptAttachments(blocks, [stored({ sizeBytes: 1 })], capability);
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'limit_exceeded', message: 'Too many attachments' });
+      return;
+    }
+    expect.fail('expected the repeated ref to exhaust maxCount');
+  });
 });
 
 describe('assertInlineAttachmentsSupported', () => {
@@ -146,7 +181,7 @@ describe('assertInlineAttachmentsSupported', () => {
     } catch (error) {
       expect(error).toMatchObject({
         code: 'unsupported_attachment',
-        message: 'This harness does not accept file attachments',
+        message: 'Editing a prompt attachment is not supported yet',
       });
       return;
     }
