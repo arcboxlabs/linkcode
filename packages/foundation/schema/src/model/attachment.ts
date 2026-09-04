@@ -95,8 +95,13 @@ export const AttachmentKindLimitsSchema = z.object({
 export type AttachmentKindLimits = z.infer<typeof AttachmentKindLimitsSchema>;
 
 /** How the engine hands bytes to a harness. `extracted_text` is later. */
-export const AttachmentRepresentationSchema = z.enum(['inline_image', 'readonly_file']);
-export type AttachmentRepresentation = z.infer<typeof AttachmentRepresentationSchema>;
+export const KNOWN_ATTACHMENT_REPRESENTATIONS = ['inline_image', 'readonly_file'] as const;
+export type AttachmentRepresentation = (typeof KNOWN_ATTACHMENT_REPRESENTATIONS)[number];
+
+/** Open on the wire like {@link AttachmentKindSchema}: this rides `capabilities-update`, so a newer
+ * peer's representation must not fail the whole frame. The host intersection drops what it cannot
+ * materialize. */
+export const AttachmentRepresentationSchema = z.string().min(1).max(32);
 
 export const AttachmentCapabilitySchema = z.object({
   kinds: z.object({
@@ -119,7 +124,7 @@ export const HOST_ATTACHMENT_LIMITS: AttachmentCapability = {
       maxCount: DEFAULT_ATTACHMENT_IMAGE_MAX_COUNT,
     },
   },
-  representations: ['inline_image', 'readonly_file'],
+  representations: [...KNOWN_ATTACHMENT_REPRESENTATIONS],
 };
 
 function intersectKindLimits(
@@ -146,7 +151,7 @@ export function intersectAttachmentCapability(
   host: AttachmentCapability = HOST_ATTACHMENT_LIMITS,
 ): AttachmentCapability | undefined {
   if (declared === undefined) return undefined;
-  const representations: AttachmentRepresentation[] = [];
+  const representations: string[] = [];
   for (let i = 0, len = declared.representations.length; i < len; i++) {
     const representation = declared.representations[i];
     if (host.representations.includes(representation)) representations.push(representation);
