@@ -4,7 +4,7 @@ import type {
   ContentBlock,
   PromptBlock,
 } from '@linkcode/schema';
-import { MAX_ATTACHMENT_TOTAL_BYTES } from '@linkcode/schema';
+import { attachmentIdFromUri, MAX_ATTACHMENT_TOTAL_BYTES } from '@linkcode/schema';
 import { RequestError } from '../failure';
 import type { StoredAttachment } from './attachment-store';
 
@@ -54,7 +54,9 @@ export function admitPromptAttachments(
   stored: readonly StoredAttachment[],
   capability: AttachmentCapability | undefined,
 ): void {
-  const ids = uniqueAttachmentIds(attachmentIdsFromBlocks(blocks));
+  // Accounting walks every occurrence, not the unique set: the materializer converts one block per
+  // ref, so a repeated id costs its bytes again and the caps must bound what actually leaves the store.
+  const ids = attachmentIdsFromBlocks(blocks);
   if (ids.length === 0) return;
   if (!capability) {
     throw new RequestError({
@@ -161,6 +163,14 @@ export function assertInlineAttachmentsSupported(
         });
       }
       continue;
+    }
+    // A projected `attachment:` link is a stored attachment coming back in, not a file the harness
+    // was asked to read: refusing it as a "file attachment" would misname an image the harness takes.
+    if (block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined) {
+      throw new RequestError({
+        code: 'unsupported_attachment',
+        message: 'Editing a prompt attachment is not supported yet',
+      });
     }
     if (!capability.representations.includes('readonly_file')) {
       throw new RequestError({
