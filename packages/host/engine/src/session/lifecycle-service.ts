@@ -20,7 +20,6 @@ import type {
 import { effectiveAttachmentCapability } from '@linkcode/schema';
 import { Effect, Exit, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
-import { noop } from 'foxts/noop';
 import {
   admitPromptAttachments,
   assertInlineAttachmentsSupported,
@@ -160,7 +159,9 @@ export class SessionLifecycleService {
       yield* sessions.delete(sessionId);
       // Best-effort: a missed directory is removed at the next boot sweep. Do not await the
       // unlink on the delete reply — `session.delete` of `..` must not block or traverse.
-      void materializer.cleanupSession(sessionId).catch(noop);
+      void materializer.cleanupSession(sessionId).catch((error: unknown) => {
+        Effect.runFork(Effect.logWarning('Failed to clean up materialized attachments', error));
+      });
       yield* worktrees.cleanupDeletedSession(sessionId);
       if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
         const workspace = workspaces.findByCwd(worktree.worktreePath);
