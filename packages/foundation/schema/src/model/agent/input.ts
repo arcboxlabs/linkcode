@@ -166,7 +166,7 @@ export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
 
 /** What `onPrompt` consumes today: image ContentBlocks inlined to the SDK. grok-build declares
  * nothing — its prompt is a CLI argument. */
-const INLINE_IMAGE_ATTACHMENT_CAPABILITY = {
+const INLINE_IMAGE_ATTACHMENT_CAPABILITY: AttachmentCapability = {
   kinds: {
     image: {
       mimeTypes: [...SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES],
@@ -175,7 +175,7 @@ const INLINE_IMAGE_ATTACHMENT_CAPABILITY = {
     },
   },
   representations: ['inline_image'],
-} as const satisfies AttachmentCapability;
+};
 
 /** Stable pre-session input capabilities. Live clients still trust each session's
  * `capabilities-update`; this complete matrix lets drafts and adapters share one source of truth

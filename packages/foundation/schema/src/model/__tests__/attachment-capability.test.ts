@@ -50,6 +50,33 @@ describe('AgentCapabilities.attachments', () => {
   });
 });
 
+describe('AttachmentCapability forward compatibility', () => {
+  it('parses a representation this build does not know so the frame still validates', () => {
+    const parsed = AttachmentCapabilitySchema.safeParse({
+      kinds: imageCapability.kinds,
+      representations: ['inline_image', 'extracted_text'],
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('drops the unknown representation at the host intersection', () => {
+    const effective = intersectAttachmentCapability({
+      kinds: imageCapability.kinds,
+      representations: ['inline_image', 'extracted_text'],
+    });
+    expect(effective?.representations).toEqual(['inline_image']);
+  });
+
+  it('treats a capability of only unknown representations as no support', () => {
+    expect(
+      intersectAttachmentCapability({
+        kinds: imageCapability.kinds,
+        representations: ['extracted_text'],
+      }),
+    ).toBeUndefined();
+  });
+});
+
 describe('intersectAttachmentCapability', () => {
   it('returns undefined when the adapter declared nothing', () => {
     expect(intersectAttachmentCapability(undefined)).toBeUndefined();
