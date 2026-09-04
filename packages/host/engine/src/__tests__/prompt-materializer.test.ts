@@ -159,6 +159,43 @@ describe('PromptMaterializer', () => {
     await expect(stat(againFile.path)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
+  it('materializes a repeated readonly_file ref twice in one run', async () => {
+    const { materializer, prompt, store } = await fixture();
+    const stored = await store.getAttachment(AttachmentIdSchema.parse('att-1'));
+    if (!stored) throw new Error('fixture attachment missing');
+    const fileCapability: AttachmentCapability = {
+      kinds: {
+        file: { mimeTypes: ['image/png'], maxBytes: MAX_ATTACHMENT_BYTES, maxCount: 4 },
+      },
+      representations: ['readonly_file'],
+    };
+    await store.commitAttachment({
+      blob: { blobId: stored.blobId, sizeBytes: stored.sizeBytes, createdAt: 1 },
+      attachment: { ...stored, kind: 'file' },
+    });
+    const repeated: PromptRecord = {
+      ...prompt,
+      blocks: [
+        { type: 'attachment_ref', attachmentId: stored.attachmentId },
+        { type: 'attachment_ref', attachmentId: stored.attachmentId },
+      ],
+    };
+    const prepared = await Effect.runPromise(
+      materializer.prepare(
+        SessionIdSchema.parse('sess-dup'),
+        RunIdSchema.parse('run-dup'),
+        repeated,
+        fileCapability,
+      ),
+    );
+    const [first, second] = prepared.blocks;
+    if (first.type !== 'readonly_file' || second.type !== 'readonly_file') {
+      throw new Error('expected both refs to materialize');
+    }
+    expect(second.path).toBe(first.path);
+    expect((await stat(first.path)).mode & 0o222).toBe(0);
+  });
+
   it('does not traverse out of the materialized directory on cleanup', async () => {
     const { materializer, root } = await fixture();
     const retained = join(root, 'retained.txt');
