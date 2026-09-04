@@ -189,6 +189,28 @@ describe('engine session input', () => {
       kind: 'request.failed',
       replyTo: 'input',
       code: 'unsupported_attachment',
+      message: 'Editing a prompt attachment is not supported yet',
+    });
+    expect(h.adapter.sentInputs).toEqual([]);
+  });
+
+  it('still names a non-attachment resource_link a file refusal', async () => {
+    const h = await startedHarness();
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'input',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [{ type: 'resource_link', uri: 'file:///etc/hosts', name: 'hosts' }],
+      },
+    });
+
+    expect(h.sent).toContainEqual({
+      kind: 'request.failed',
+      replyTo: 'input',
+      code: 'unsupported_attachment',
       message: 'This harness does not accept file attachments',
     });
     expect(h.adapter.sentInputs).toEqual([]);

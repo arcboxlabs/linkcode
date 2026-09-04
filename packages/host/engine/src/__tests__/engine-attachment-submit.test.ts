@@ -194,8 +194,11 @@ describe('turn.submit attachment admit and materialize', () => {
     expect(turns).toHaveLength(1);
     const turnInput = nullthrow(turns[0], 'expected a persisted turn').input;
     expect(turnInput.type).toBe('prompt');
-    if (turnInput.type !== 'prompt' || turnInput.promptId === null) return;
-    const prompt = await h.conversationStore.getPrompt(turnInput.promptId);
+    const promptId = nullthrow(
+      turnInput.type === 'prompt' ? turnInput.promptId : null,
+      'a prompt turn must persist a promptId',
+    );
+    const prompt = await h.conversationStore.getPrompt(promptId);
     expect(prompt?.blocks).toEqual([
       { type: 'text', text: 'look' },
       { type: 'attachment_ref', attachmentId },
@@ -218,7 +221,7 @@ describe('turn.submit attachment admit and materialize', () => {
         name: 'shot.png',
         mimeType: 'image/png',
         size: PNG_1X1.byteLength,
-        title: 'image',
+        description: 'image',
       },
     ]);
     expect(JSON.stringify(row.event.content)).not.toContain(PNG_1X1.toString('base64'));
@@ -281,7 +284,7 @@ describe('turn.submit attachment admit and materialize', () => {
 
     expect(failure(h.sent, 'rewrite')).toMatchObject({
       code: 'unsupported_attachment',
-      message: 'This harness does not accept file attachments',
+      message: 'Editing a prompt attachment is not supported yet',
     });
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(turnsBefore.length);
     expect(h.adapter.sentInputs).toHaveLength(1);

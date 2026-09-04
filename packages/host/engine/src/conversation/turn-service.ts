@@ -190,10 +190,12 @@ export class ConversationTurnService {
                 type: 'resource_link',
                 uri: attachmentUri(block.attachmentId),
                 name: attachment?.name ?? block.attachmentId,
+                // `kind` rides `description`, never `title`: renderers prefer `title` over `name`,
+                // so putting it there labels every attachment chip "image" instead of its filename.
                 ...(attachment !== undefined && {
                   mimeType: attachment.mimeType,
                   size: attachment.sizeBytes,
-                  title: attachment.kind,
+                  description: attachment.kind,
                 }),
               });
             }
