@@ -36,6 +36,7 @@ import type {
   SimulatorStreamCodec,
   StandaloneSkill,
   TerminalMetadata,
+  TurnId,
   WirePayload,
   WorkspaceFile,
   WorkspaceRecord,
@@ -88,6 +89,11 @@ export type ConversationReadPage = Omit<
   'kind' | 'replyTo'
 >;
 
+/** `turn.submitted` without its correlation fields. Plain-send only — parent/revision is later. */
+export interface TurnSubmitResult {
+  readonly turnId: TurnId;
+}
+
 export type AttachmentUploadBegun = Omit<
   Extract<WirePayload, { kind: 'attachment.upload.begun' }>,
   'kind' | 'replyTo'
@@ -133,6 +139,7 @@ export interface PendingValueMap {
   historyRead: AgentHistoryReadResult;
   conversationGraph: ConversationGraphSnapshot;
   conversationRead: ConversationReadPage;
+  turnSubmit: TurnSubmitResult;
   configGet: ProvidersConfig;
   accountsGet: Accounts;
   accountModels: AccountModel[];
@@ -201,6 +208,7 @@ export class PendingRegistry {
     historyRead: new Map(),
     conversationGraph: new Map(),
     conversationRead: new Map(),
+    turnSubmit: new Map(),
     configGet: new Map(),
     accountsGet: new Map(),
     accountModels: new Map(),

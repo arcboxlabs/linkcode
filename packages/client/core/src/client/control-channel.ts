@@ -63,6 +63,7 @@ import type {
   StandaloneSkillScope,
   StartOptions,
   TurnId,
+  TurnSubmitInput,
   WirePayload,
   WorkspaceFile,
   WorkspaceId,
@@ -70,6 +71,7 @@ import type {
   WorkspaceRecord,
   WorkspaceScript,
 } from '@linkcode/schema';
+import { OperationIdSchema } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type {
@@ -81,6 +83,7 @@ import type {
   PluginMutation,
   RequestAck,
   SessionStartResult,
+  TurnSubmitResult,
 } from './pending-registry';
 import { sendCorrelated } from './pending-registry';
 
@@ -179,6 +182,20 @@ export class ControlChannel {
       kind: 'conversation.graph.get',
       clientReqId,
       sessionId,
+    }));
+  }
+
+  /**
+   * Plain send onto the active leaf. `parentTurnId` is omitted on purpose — explicit-parent
+   * submit is a later client. Idempotency is a fresh `operationId` per call.
+   */
+  submitTurn(sessionId: SessionId, input: TurnSubmitInput): Promise<TurnSubmitResult> {
+    return this.sendCorrelated('turnSubmit', (clientReqId) => ({
+      kind: 'turn.submit',
+      clientReqId,
+      sessionId,
+      operationId: OperationIdSchema.parse(`op-${clientReqId}`),
+      input,
     }));
   }
 

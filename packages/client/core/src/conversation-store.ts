@@ -1,4 +1,4 @@
-import type { AgentEvent, ContentBlock, ConversationWatermark, SessionId } from '@linkcode/schema';
+import type { AgentEvent, ConversationWatermark, SessionId } from '@linkcode/schema';
 import { compareConversationWatermarks, userRowMessageId } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import { noop } from 'foxact/noop';
@@ -110,20 +110,13 @@ function createProjectionStore(
   };
 
   const foldSeed = (): void => {
-    const echoes = attachmentBearingEchoes(client.eventsSnapshot(sessionId));
     for (let i = 0, len = seed.items.length; i < len; i++) {
       const item = seed.items[i];
       if (!('event' in item)) {
         builder.unavailable();
         continue;
       }
-      const { event } = item;
-      if (event.type !== 'user-message') {
-        fold(event, item.ts);
-        continue;
-      }
-      const content = echoes.get(event.messageId);
-      fold(content === undefined ? event : { ...event, content }, item.ts);
+      fold(item.event, item.ts);
     }
   };
 
@@ -193,21 +186,6 @@ function createProjectionStore(
       return builder.snapshot();
     },
   };
-}
-
-/** Live user echoes carry the prompt's attachment blocks while durable rows are text-only until
- * attachment refs land: for the row sharing an echo's identity, the echo's content wins. */
-function attachmentBearingEchoes(
-  events: readonly SequencedAgentEvent[],
-): Map<string, ContentBlock[]> {
-  const byId = new Map<string, ContentBlock[]>();
-  for (let i = 0, len = events.length; i < len; i++) {
-    const { event } = events[i];
-    if (event.type === 'user-message' && event.content.some((block) => block.type !== 'text')) {
-      byId.set(event.messageId, event.content);
-    }
-  }
-  return byId;
 }
 
 type UserMessageEvent = Extract<AgentEvent, { type: 'user-message' }>;

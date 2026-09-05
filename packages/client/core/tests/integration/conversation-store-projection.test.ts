@@ -246,7 +246,7 @@ describe('projection conversation store', () => {
     h.close();
   });
 
-  it('takes the attachment blocks of the live echo that shares a row’s identity', async () => {
+  it('keeps the durable row’s blocks even when a live echo carries attachments', async () => {
     const h = await harness();
     h.send(
       echo(1, 'describe this', { content: [{ type: 'text', text: 'describe this' }, IMAGE] }),
@@ -257,11 +257,61 @@ describe('projection conversation store', () => {
     );
     await tick();
 
-    const store = h.store(seedOf([userRow(1, 'describe this')], { epoch: 1, seq: 1 }));
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-1',
+      name: 'shot.png',
+    };
+    const store = h.store(
+      seedOf(
+        [
+          {
+            turnId: turn(1),
+            ts: 1_700_000_000_001,
+            event: echo(1, 'describe this', {
+              content: [{ type: 'text', text: 'describe this' }, link],
+            }),
+          },
+        ],
+        { epoch: 1, seq: 1 },
+      ),
+    );
     const [row] = store.getSnapshot().items;
     expect(row.kind === 'message' && row.blocks).toEqual([
       { type: 'text', text: 'describe this' },
-      IMAGE,
+      link,
+    ]);
+    h.close();
+  });
+
+  it('does not let a live echo above the watermark replace durable attachment refs', async () => {
+    const h = await harness();
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-1',
+      name: 'shot.png',
+    };
+    h.send(echo(1, 'describe this'), { epoch: 1, seq: 2 });
+    await tick();
+
+    const store = h.store(
+      seedOf(
+        [
+          {
+            turnId: turn(1),
+            ts: 1_700_000_000_001,
+            event: echo(1, 'describe this', {
+              content: [{ type: 'text', text: 'describe this' }, link],
+            }),
+          },
+        ],
+        { epoch: 1, seq: 1 },
+      ),
+    );
+    const [row] = store.getSnapshot().items;
+    expect(row.kind === 'message' && row.blocks).toEqual([
+      { type: 'text', text: 'describe this' },
+      link,
     ]);
     h.close();
   });

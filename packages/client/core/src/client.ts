@@ -68,6 +68,7 @@ import type {
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
+  TurnSubmitInput,
   UploadId,
   WireMessage,
   WorkspaceFile,
@@ -116,6 +117,7 @@ import type {
   RandomUUID,
   RequestAck,
   SessionStartResult,
+  TurnSubmitResult,
 } from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
@@ -127,6 +129,7 @@ export type {
   AttachmentReadBytes,
 } from './client/attachment-channel';
 export type { Sha256Hex } from './client/blob-cache';
+export { base64ToBytes } from './client/blob-cache';
 export type { BrowserCommandExecutor } from './client/browser-host-channel';
 export type {
   ConversationReadClientOptions,
@@ -141,6 +144,7 @@ export type {
   PluginList,
   PluginMutation,
   SessionStartResult,
+  TurnSubmitResult,
 } from './client/pending-registry';
 
 type EventCb = (entry: SequencedAgentEvent) => void;
@@ -473,6 +477,9 @@ export class LinkCodeClient {
           events: p.events,
           ...(p.cursor !== undefined && { cursor: p.cursor }),
         });
+        break;
+      case 'turn.submitted':
+        this.pending.resolve('turnSubmit', p.replyTo, { turnId: p.turnId });
         break;
       case 'conversation.graph.changed':
         this.graphChanges.note(p.sessionId, {
@@ -834,6 +841,11 @@ export class LinkCodeClient {
     opts?: ConversationReadClientOptions,
   ): Promise<ConversationReadPage> {
     return this.control.readConversation(sessionId, opts);
+  }
+
+  /** See {@link ControlChannel.submitTurn}. */
+  submitTurn(sessionId: SessionId, input: TurnSubmitInput): Promise<TurnSubmitResult> {
+    return this.control.submitTurn(sessionId, input);
   }
 
   /** The newest `conversation.graph.changed` seen for the session on this connection. */
