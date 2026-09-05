@@ -1,0 +1,107 @@
+import type { Conversation } from '@linkcode/client-core';
+import type { ContentBlock, SessionId, TurnId } from '@linkcode/schema';
+import { AttachmentIdSchema, userRowMessageId } from '@linkcode/schema';
+import { describe, expect, it } from 'vitest';
+import {
+  isStoredAttachmentBlock,
+  notePendingUserAttachments,
+  overlayPendingUserAttachments,
+  promptBlocksFromComposer,
+} from '../prompt-attachments';
+
+const sessionId = 'sess-1' as SessionId;
+const messageId = userRowMessageId('turn-1' as TurnId);
+
+const EMPTY: Conversation = {
+  items: [],
+  status: null,
+  usage: null,
+  usageReport: null,
+  currentModeId: null,
+  approvalPolicy: null,
+  currentModel: null,
+  currentEffort: null,
+  availableCommands: null,
+  availableModels: null,
+  capabilities: null,
+  stopReason: null,
+  pendingPermissionIds: [],
+  pendingQuestionIds: [],
+};
+
+describe('promptBlocksFromComposer', () => {
+  it('keeps text and converts stored attachment links to refs', () => {
+    const attachmentId = AttachmentIdSchema.parse('att-1');
+    expect(
+      promptBlocksFromComposer([
+        { type: 'text', text: 'look' },
+        { type: 'resource_link', uri: `attachment:${attachmentId}`, name: 'shot.png' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+      ]),
+    ).toEqual([
+      { type: 'text', text: 'look' },
+      { type: 'attachment_ref', attachmentId },
+    ]);
+  });
+});
+
+describe('overlayPendingUserAttachments', () => {
+  it('fills a text-only echo from pending store refs and yields to a durable row', () => {
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-1',
+      name: 'shot.png',
+    };
+    notePendingUserAttachments(sessionId, messageId, [link]);
+    const echo: Conversation = {
+      ...EMPTY,
+      items: [
+        {
+          kind: 'message',
+          id: messageId,
+          turnId: 'turn-1',
+          role: 'user',
+          blocks: [{ type: 'text', text: 'look' }],
+          isStreaming: false,
+        },
+      ],
+    };
+    expect(overlayPendingUserAttachments(echo, sessionId).items[0]).toMatchObject({
+      blocks: [{ type: 'text', text: 'look' }, link],
+    });
+
+    const durable: Conversation = {
+      ...EMPTY,
+      items: [
+        {
+          kind: 'message',
+          id: messageId,
+          turnId: 'turn-1',
+          role: 'user',
+          blocks: [{ type: 'text', text: 'look' }, link],
+          isStreaming: false,
+        },
+      ],
+    };
+    expect(overlayPendingUserAttachments(durable, sessionId).items[0]).toMatchObject({
+      blocks: [{ type: 'text', text: 'look' }, link],
+    });
+  });
+
+  it('detects stored attachment links', () => {
+    expect(
+      isStoredAttachmentBlock({
+        type: 'resource_link',
+        uri: 'attachment:att-1',
+        name: 'shot.png',
+      }),
+    ).toBe(true);
+    expect(
+      isStoredAttachmentBlock({
+        type: 'resource_link',
+        uri: 'file:///tmp/a.ts',
+        name: 'a.ts',
+      }),
+    ).toBe(false);
+  });
+});

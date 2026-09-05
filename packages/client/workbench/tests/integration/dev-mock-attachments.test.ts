@@ -1,12 +1,5 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import type { AttachmentId, SessionId } from '@linkcode/schema';
-import {
-  ATTACHMENT_UPLOAD_CHUNK_BYTES,
-  AttachmentIdSchema,
-  OperationIdSchema,
-} from '@linkcode/schema';
-import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
+import { ATTACHMENT_UPLOAD_CHUNK_BYTES, AttachmentIdSchema } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
@@ -15,39 +8,6 @@ async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
   await client.connect();
   return client;
-}
-
-/** `turn.submit` has no client-core method yet (CODE-638), so the prompt-ref root is driven raw. */
-function submitPromptRef(
-  transport: Transport,
-  sessionId: SessionId,
-  attachmentId: AttachmentId,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const clientReqId = 'creq-attachment-ref';
-    const unsubscribe = transport.onMessage((message) => {
-      const p = message.payload;
-      if (!('replyTo' in p) || p.replyTo !== clientReqId) return;
-      unsubscribe();
-      if (p.kind === 'turn.submitted') resolve();
-      else reject(new Error(p.kind === 'request.failed' ? p.message : `unexpected ${p.kind}`));
-    });
-    transport.send(
-      createWireMessage({
-        kind: 'turn.submit',
-        clientReqId,
-        sessionId,
-        operationId: OperationIdSchema.parse('op-attachment-ref'),
-        input: {
-          type: 'prompt',
-          blocks: [
-            { type: 'text', text: 'look at this' },
-            { type: 'attachment_ref', attachmentId },
-          ],
-        },
-      }),
-    );
-  });
 }
 
 describe('dev mock attachment store', () => {
@@ -105,9 +65,35 @@ describe('dev mock attachment store', () => {
     await expect(client.getAttachmentBytes(sessionId, draft.attachmentId)).rejects.toThrow(
       'Attachment not found',
     );
-    await submitPromptRef(transport, sessionId, draft.attachmentId);
+    await client.submitTurn(sessionId, {
+      type: 'prompt',
+      blocks: [
+        { type: 'text', text: 'look at this' },
+        { type: 'attachment_ref', attachmentId: draft.attachmentId },
+      ],
+    });
     const read = await client.getAttachmentBytes(sessionId, draft.attachmentId);
     expect(read.bytes).toEqual(bytes);
+
+    const page = await client.readConversation(sessionId);
+    const userRow = page.events.find(
+      (item) => 'event' in item && item.event.type === 'user-message',
+    );
+    expect(
+      userRow &&
+        'event' in userRow &&
+        userRow.event.type === 'user-message' &&
+        userRow.event.content,
+    ).toEqual([
+      { type: 'text', text: 'look at this' },
+      {
+        type: 'resource_link',
+        uri: `attachment:${draft.attachmentId}`,
+        name: 'note.txt',
+        size: bytes.byteLength,
+        description: 'file',
+      },
+    ]);
     client.dispose();
   });
 

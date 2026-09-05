@@ -53,7 +53,7 @@ describe('UserMessage', () => {
     );
   });
 
-  it('edits a cursor-backed prompt and preserves its non-text blocks', async () => {
+  it('edits a cursor-backed prompt and preserves its inline image blocks', async () => {
     const onEditPrompt = vi.fn(asyncNoop);
     const item: Extract<ConversationItem, { kind: 'message' }> = {
       id: 'user-editable',
@@ -83,6 +83,55 @@ describe('UserMessage', () => {
         { type: 'image', data: 'cG5n', mimeType: 'image/png' },
       ]);
     });
+  });
+
+  it('edits a cursor-backed text prompt', async () => {
+    const onEditPrompt = vi.fn(asyncNoop);
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-editable',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [{ type: 'text', text: 'original prompt' }],
+      isStreaming: false,
+      branchCursor: 'opaque-cursor',
+    };
+
+    render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={onEditPrompt} />);
+    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    const editor = screen.getByRole('textbox', { name: 'editPromptLabel' });
+    expect(editor.closest('[data-role="user"]')).not.toBeNull();
+    expect((editor as HTMLTextAreaElement).value).toBe('original prompt');
+    fireEvent.change(editor, { target: { value: 'replacement prompt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'editSend' }));
+
+    await waitFor(() => {
+      expect(onEditPrompt).toHaveBeenCalledWith('user-editable', 'opaque-cursor', [
+        { type: 'text', text: 'replacement prompt' },
+      ]);
+    });
+  });
+
+  it('disables editing when the row carries a stored attachment', () => {
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'user-attached',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-1',
+      blocks: [
+        { type: 'text', text: 'describe this' },
+        { type: 'resource_link', uri: 'attachment:att-1', name: 'shot.png' },
+      ],
+      isStreaming: false,
+      branchCursor: 'opaque-cursor',
+    };
+
+    render(<UserMessage item={item} promptEditState="enabled" onEditPrompt={vi.fn()} />);
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'editAttachmentsUnsupported' })
+        .disabled,
+    ).toBe(true);
   });
 
   it('cancels inline editing without changing the prompt', () => {

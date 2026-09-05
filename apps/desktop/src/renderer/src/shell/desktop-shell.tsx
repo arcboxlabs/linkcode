@@ -80,7 +80,6 @@ export function DesktopShell({
   newSessionWorkspaceId,
   onNewSessionWorkspaceChange,
   runtimeCues,
-  attachmentSupport,
   agentCatalogs,
   selectableHarnesses,
   accountModels,
@@ -115,6 +114,7 @@ export function DesktopShell({
   mentionItems,
   onMentionQueryChange,
   conversationComposer,
+  onPrepareAttachment,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
@@ -421,7 +421,6 @@ export function DesktopShell({
           workspaceId={newSessionWorkspaceId}
           onWorkspaceChange={onNewSessionWorkspaceChange}
           runtimeCues={runtimeCues}
-          attachmentSupport={attachmentSupport}
           agentCatalogs={agentCatalogs}
           selectableHarnesses={selectableHarnesses}
           accountModels={accountModels}
@@ -438,6 +437,7 @@ export function DesktopShell({
           onPickDirectory={pickDirectory}
           onRegisterWorkspace={onRegisterWorkspace}
           onPickAttachmentFiles={pickAttachmentFiles}
+          onPrepareAttachment={onPrepareAttachment}
         />
       ) : (
         // Keyed per session: switching resets the composer draft and scroll without touching the shell.
@@ -450,7 +450,6 @@ export function DesktopShell({
           agentLabel={agentLabel}
           accountModels={active ? accountModels?.[active.kind] : undefined}
           accountId={active?.accountId}
-          attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
           cwd={active?.cwd}
           runtimeCues={runtimeCues}
           onOpenProviderSettings={onOpenProviderSettings}

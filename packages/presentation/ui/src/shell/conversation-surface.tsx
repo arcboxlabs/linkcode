@@ -11,6 +11,10 @@ import { cn } from '../lib/cn';
 import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
+import {
+  composerAttachmentCapability,
+  composerAttachmentsSupported,
+} from './attachment-capability';
 import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
@@ -28,6 +32,7 @@ export interface ConversationComposerController {
   onApprovalPolicyChange?: (policyId: string) => Promise<void>;
   onModelChange?: (model: ModelOption) => Promise<void>;
   onEffortChange?: (effort: EffortLevel) => Promise<void>;
+  onPrepareAttachment?: (file: File, pending: ComposerAttachment) => Promise<ComposerAttachment>;
 }
 
 export interface ConversationSurfaceProps {
@@ -40,8 +45,6 @@ export interface ConversationSurfaceProps {
   accountModels?: ModelOption[];
   /** The session's account, so a reflected model id resolves against the right entry. */
   accountId?: string;
-  /** Frontend capability stub used until attachment support is advertised by the session. */
-  attachmentsSupported?: boolean;
   cwd?: string;
   /** Overrides the session's reported model (`conversation.currentModel`) in the per-turn meta. */
   modelName?: string;
@@ -98,7 +101,6 @@ export function ConversationSurface({
   accountModels,
   accountId,
   agentLabel,
-  attachmentsSupported = false,
   cwd,
   modelName,
   respondingRequestIds,
@@ -132,6 +134,8 @@ export function ConversationSurface({
   const cue = agentKind === undefined ? undefined : runtimeCues?.[agentKind];
   const loginCue = cue?.state === 'needs-login' ? cue : undefined;
   const hasPromptCard = selectPendingPromptItems(conversation).length > 0;
+  const attachmentCapability = composerAttachmentCapability(agentKind, conversation.capabilities);
+  const imageAttachmentLimits = attachmentCapability?.kinds.image;
   // Artifact interactions (click-to-reference) land in this surface's own composer;
   // the loop stays inside the presentation layer.
   const artifactActions = {
@@ -196,7 +200,7 @@ export function ConversationSurface({
           handleRef={composerRef}
           agentLabel={agentLabel}
           agentKind={agentKind}
-          attachmentsSupported={attachmentsSupported}
+          attachmentsSupported={composerAttachmentsSupported(agentKind, conversation.capabilities)}
           disabled={disabled}
           isRunning={isRunning}
           mentionItems={mentionItems}
@@ -223,6 +227,8 @@ export function ConversationSurface({
           }}
           onStop={composer.onStop}
           onPickAttachmentFiles={onPickAttachmentFiles}
+          onPrepareAttachment={composer.onPrepareAttachment}
+          maxAttachmentCount={imageAttachmentLimits?.maxCount}
           onModeChange={composer.onModeChange}
           onApprovalPolicyChange={composer.onApprovalPolicyChange}
           onModelChange={composer.onModelChange}

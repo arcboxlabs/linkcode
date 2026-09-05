@@ -454,7 +454,6 @@ describe('NewSessionSurface', () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(
       <NewSessionSurface
-        attachmentSupport={{ codex: true }}
         chatWorkspace={CHAT_WORKSPACE}
         draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}
@@ -501,7 +500,6 @@ describe('NewSessionSurface', () => {
       const onSubmit = vi.fn().mockReturnValue(pendingSubmission);
       render(
         <NewSessionSurface
-          attachmentSupport={{ codex: true }}
           chatWorkspace={CHAT_WORKSPACE}
           draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
           mentionItems={[]}
@@ -565,7 +563,6 @@ describe('NewSessionSurface', () => {
     const onSubmit = vi.fn().mockReturnValue(pendingSubmission);
     render(
       <NewSessionSurface
-        attachmentSupport={{ codex: true }}
         chatWorkspace={CHAT_WORKSPACE}
         draft={{ initialHarness: 'codex', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
         mentionItems={[]}

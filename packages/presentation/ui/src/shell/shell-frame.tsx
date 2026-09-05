@@ -14,13 +14,13 @@ import type { PermissionDecision } from '../chat/conversation-prompts';
 import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import type { MentionItem } from './composer';
+import type { ComposerAttachment } from './composer-attachments';
 import type { ConversationComposerController } from './conversation-surface';
 import { ConversationSurface } from './conversation-surface';
 import { ErrorBanner } from './error-banner';
 import type { NewSessionBranchPickerComponent } from './new-session-branch-picker';
 import type {
   AgentStartCatalogs,
-  AttachmentSupportByAgent,
   NewSessionDraft,
   NewSessionSubmission,
 } from './new-session-surface';
@@ -53,8 +53,6 @@ export interface ShellFrameProps
   /** Agent runtime availability cues: the new-session page's onboarding flow (CODE-112) and the
    * active session's needs-login recovery card (CODE-172). */
   runtimeCues?: AgentRuntimeCues;
-  /** Frontend capability stub used until attachment support is advertised by sessions. */
-  attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
   /** Harnesses enabled for new threads; null while provider configuration is loading. */
   selectableHarnesses: AgentKind[] | null;
@@ -107,6 +105,7 @@ export interface ShellFrameProps
   showPlanInPromptDock?: boolean;
   /** Complete active-session composer behavior, forwarded atomically by every shell. */
   conversationComposer: ConversationComposerController;
+  onPrepareAttachment?: (file: File, pending: ComposerAttachment) => Promise<ComposerAttachment>;
   onRespondPermission: (requestId: string, decision: PermissionDecision) => void;
   onRespondQuestion: (requestId: string, outcome: QuestionOutcome) => void;
   /** Hosts inline artifact content on the daemon (sandboxed html previews, CODE-62). */
@@ -132,7 +131,6 @@ export function ShellFrame({
   newSessionWorkspaceId,
   onNewSessionWorkspaceChange,
   runtimeCues,
-  attachmentSupport,
   agentCatalogs,
   selectableHarnesses,
   accountModels,
@@ -168,6 +166,7 @@ export function ShellFrame({
   onMentionQueryChange,
   showPlanInPromptDock,
   conversationComposer,
+  onPrepareAttachment,
   onRespondPermission,
   onRespondQuestion,
   onHostArtifact,
@@ -224,7 +223,6 @@ export function ShellFrame({
             workspaceId={newSessionWorkspaceId}
             onWorkspaceChange={onNewSessionWorkspaceChange}
             runtimeCues={runtimeCues}
-            attachmentSupport={attachmentSupport}
             agentCatalogs={agentCatalogs}
             selectableHarnesses={selectableHarnesses}
             accountModels={accountModels}
@@ -238,6 +236,7 @@ export function ShellFrame({
             onMentionQueryChange={onMentionQueryChange}
             onSubmit={onSubmitDraft}
             onRegisterWorkspace={onRegisterWorkspace}
+            onPrepareAttachment={onPrepareAttachment}
           />
         ) : (
           // Keyed per session: switching resets the composer draft and scroll without touching the shell.
@@ -250,7 +249,6 @@ export function ShellFrame({
             agentLabel={active ? active.kind : undefined}
             accountModels={active ? accountModels?.[active.kind] : undefined}
             accountId={active?.accountId}
-            attachmentsSupported={Boolean(active && attachmentSupport?.[active.kind])}
             disabled={!active || active.status === 'stopped'}
             isRunning={isRunning}
             cwd={active?.cwd}

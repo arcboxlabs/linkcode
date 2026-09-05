@@ -107,6 +107,12 @@ export function pendingComposerAttachment(file: File): ComposerAttachment {
   };
 }
 
+/** Tray blob URLs are created at stage time; revoke when the chip leaves the tray. */
+export function releaseComposerAttachmentUrl(attachment: { url?: string }): void {
+  const { url } = attachment;
+  if (url?.startsWith('blob:') === true) URL.revokeObjectURL(url);
+}
+
 /** Failure form of `pending`, keeping its id so the tray swaps it in place. */
 export function failedComposerAttachment(
   pending: ComposerAttachment,

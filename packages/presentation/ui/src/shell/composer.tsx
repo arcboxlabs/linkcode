@@ -41,6 +41,7 @@ import {
   isSupportedImageFile,
   pendingComposerAttachment,
   readImageFileAsComposerAttachment,
+  releaseComposerAttachmentUrl,
 } from './composer-attachments';
 import type {
   AgentCommandEntry,
@@ -198,6 +199,10 @@ export interface ComposerProps {
   /** Opens a native file picker and returns the picked images, ready to stage. Absent (webview):
    * the "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
+  /** Uploads a dropped/pasted file into the attachment store. Absent: decode to an inline image. */
+  onPrepareAttachment?: (file: File, pending: ComposerAttachment) => Promise<ComposerAttachment>;
+  /** Per-occurrence cap from the effective image capability; omitted uses no count gate. */
+  maxAttachmentCount?: number;
 }
 
 const EMPTY_MENTION_ITEMS: MentionItem[] = [];
@@ -244,6 +249,8 @@ export function Composer({
   onHarnessChange,
   contextBar,
   onPickAttachmentFiles,
+  onPrepareAttachment,
+  maxAttachmentCount,
 }: ComposerProps): React.ReactNode {
   const t = useTranslations('workbench.composer');
   const reducedMotion = useReducedMotion() ?? false;
@@ -413,9 +420,18 @@ export function Composer({
       resetDraftBookkeeping();
     }
     if (attachmentIds.size > 0) {
-      setAttachments((current) =>
-        current.filter((attachment) => !attachmentIds.has(attachment.id)),
-      );
+      setAttachments((current) => {
+        const kept: ComposerAttachment[] = [];
+        for (let i = 0, len = current.length; i < len; i++) {
+          const attachment = current[i];
+          if (attachmentIds.has(attachment.id)) {
+            releaseComposerAttachmentUrl(attachment);
+            continue;
+          }
+          kept.push(attachment);
+        }
+        return kept;
+      });
     }
   }
 
@@ -541,6 +557,10 @@ export function Composer({
       }
       return;
     }
+    let charged = attachments.reduce(
+      (count, attachment) => (attachment.status === 'failed' ? count : count + 1),
+      0,
+    );
     let total = attachmentPayloadBytes(attachments);
     for (let i = 0, len = files.length; i < len; i++) {
       const file = files[i];
@@ -555,14 +575,26 @@ export function Composer({
         toastManager.add({ title: validationError, type: 'error' });
         continue;
       }
+      if (maxAttachmentCount !== undefined && charged >= maxAttachmentCount) {
+        toastManager.add({
+          title: t('attachmentLimit', { count: maxAttachmentCount }),
+          type: 'error',
+        });
+        continue;
+      }
       if (total + file.size > MAX_ATTACHMENT_TOTAL_BYTES) {
         toastManager.add({ title: t('attachmentsTotalTooLarge'), type: 'error' });
         continue;
       }
+      charged += 1;
       total += file.size;
       const pending = pendingComposerAttachment(file);
       setAttachments((prev) => [...prev, pending]);
-      void readImageFileAsComposerAttachment(file, pending, t('attachmentReadFailed'))
+      const ready =
+        onPrepareAttachment === undefined
+          ? readImageFileAsComposerAttachment(file, pending, t('attachmentReadFailed'))
+          : onPrepareAttachment(file, pending);
+      void ready
         .then((ready) => {
           setAttachments((prev) =>
             prev.map((attachment) => (attachment.id === pending.id ? ready : attachment)),
@@ -583,6 +615,7 @@ export function Composer({
   }
 
   function handleRemoveAttachment(attachment: ChatAttachment): void {
+    releaseComposerAttachmentUrl(attachment);
     setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
   }
 
@@ -616,6 +649,10 @@ export function Composer({
    * enforces; per-file checks already ran in `attachmentFromReadFile`, so only the total recheck. */
   function mergeAttachments(picked: ComposerAttachment[]): void {
     if (picked.length === 0) return;
+    let charged = attachments.reduce(
+      (count, attachment) => (attachment.status === 'failed' ? count : count + 1),
+      0,
+    );
     let total = attachmentPayloadBytes(attachments);
     const merged = picked.map((attachment) => {
       if (attachment.status !== 'ready') {
@@ -623,6 +660,17 @@ export function Composer({
           toastManager.add({ title: attachment.errorMessage, type: 'error' });
         }
         return attachment;
+      }
+      if (maxAttachmentCount !== undefined && charged >= maxAttachmentCount) {
+        toastManager.add({
+          title: t('attachmentLimit', { count: maxAttachmentCount }),
+          type: 'error',
+        });
+        return {
+          ...attachment,
+          status: 'failed' as const,
+          errorMessage: t('attachmentLimit', { count: maxAttachmentCount }),
+        };
       }
       if (total + (attachment.sizeBytes ?? 0) > MAX_ATTACHMENT_TOTAL_BYTES) {
         toastManager.add({ title: t('attachmentsTotalTooLarge'), type: 'error' });
@@ -632,6 +680,7 @@ export function Composer({
           errorMessage: t('attachmentsTotalTooLarge'),
         };
       }
+      charged += 1;
       total += attachment.sizeBytes ?? 0;
       return attachment;
     });
