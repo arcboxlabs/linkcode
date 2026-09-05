@@ -39,6 +39,10 @@ import type { ModelOption } from './agent-models';
 import { resolveModel } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
 import { AgentOnboardingCard } from './agent-onboarding-card';
+import {
+  composerAttachmentCapability,
+  composerAttachmentsSupported,
+} from './attachment-capability';
 import type { ComposerDirectiveControls, MentionItem } from './composer';
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
@@ -68,7 +72,6 @@ export interface NewSessionSubmission {
   input: Extract<AgentInput, { type: 'command' | 'prompt' | 'shell-command' }>;
 }
 
-export type AttachmentSupportByAgent = Readonly<Partial<Record<AgentKind, true>>>;
 export type AgentStartCatalogs = Readonly<Partial<Record<AgentKind, AgentStartCatalog>>>;
 
 export interface NewSessionSurfaceProps {
@@ -86,8 +89,6 @@ export interface NewSessionSurfaceProps {
   /** Runtime availability per agent (CODE-112): a cue renders the onboarding card for the picked
    * harness and blocks sending until the runtime is ready; badges ride the harness submenu. */
   runtimeCues?: AgentRuntimeCues;
-  /** Frontend capability stub used until attachment support is advertised by sessions. */
-  attachmentSupport?: AttachmentSupportByAgent;
   agentCatalogs?: AgentStartCatalogs;
   /** Harnesses enabled for new threads; null while configuration is loading. */
   selectableHarnesses?: AgentKind[] | null;
@@ -118,6 +119,7 @@ export interface NewSessionSurfaceProps {
   /** Opens a native file picker and returns the picked images, ready to stage. Desktop-only —
    * absent on webview, where the composer's "Attach" action falls back to the Coss file input. */
   onPickAttachmentFiles?: () => Promise<ComposerAttachment[]>;
+  onPrepareAttachment?: (file: File, pending: ComposerAttachment) => Promise<ComposerAttachment>;
 }
 
 const SELECTABLE_HARNESSES = Object.keys(AGENT_LABELS) as AgentKind[];
@@ -145,7 +147,6 @@ export function NewSessionSurface({
   className,
   topContent,
   runtimeCues,
-  attachmentSupport,
   agentCatalogs,
   selectableHarnesses,
   accountModels,
@@ -161,6 +162,7 @@ export function NewSessionSurface({
   onPickDirectory,
   onRegisterWorkspace,
   onPickAttachmentFiles,
+  onPrepareAttachment,
 }: NewSessionSurfaceProps): React.ReactNode {
   const t = useTranslations('workbench.newSession');
   const availableHarnesses =
@@ -384,7 +386,7 @@ export function NewSessionSurface({
           <Composer
             agentLabel={harness === undefined ? undefined : AGENT_LABELS[harness]}
             agentKind={harness}
-            attachmentsSupported={Boolean(harness && attachmentSupport?.[harness])}
+            attachmentsSupported={composerAttachmentsSupported(harness)}
             blockDirectivesWithAttachments
             disabled={pending || !selected}
             directiveControls={directiveControls}
@@ -405,6 +407,8 @@ export function NewSessionSurface({
             onSend={handleSend}
             onStop={noop}
             onPickAttachmentFiles={onPickAttachmentFiles}
+            onPrepareAttachment={onPrepareAttachment}
+            maxAttachmentCount={composerAttachmentCapability(harness)?.kinds.image?.maxCount}
             onEffortChange={handleEffortChange}
             onApprovalPolicyChange={handleApprovalPolicyChange}
             onModeChange={handleModeChange}

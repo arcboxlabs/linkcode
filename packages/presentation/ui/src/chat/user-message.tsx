@@ -1,4 +1,5 @@
 import type { ContentBlock } from '@linkcode/schema';
+import { attachmentIdFromUri } from '@linkcode/schema';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Textarea } from 'coss-ui/components/textarea';
@@ -62,10 +63,17 @@ export function UserMessage({
   const text = contentBlocksText(item.blocks);
   const { copied, copyValue } = useCopyButton(text, COPY_FEEDBACK_MS);
   const collapsible = text.split('\n').length > COLLAPSE_LINE_COUNT;
+  const hasPromptAttachment = item.blocks.some(
+    (block) => block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined,
+  );
   const canEdit =
-    promptEditState === 'enabled' && item.branchCursor !== undefined && onEditPrompt !== undefined;
-  const editTooltip =
-    item.branchCursor === undefined
+    promptEditState === 'enabled' &&
+    item.branchCursor !== undefined &&
+    onEditPrompt !== undefined &&
+    !hasPromptAttachment;
+  const editTooltip = hasPromptAttachment
+    ? t('editAttachmentsUnsupported')
+    : item.branchCursor === undefined
       ? t('editUnavailable')
       : promptEditState === 'busy'
         ? t('editBusy')
@@ -93,7 +101,11 @@ export function UserMessage({
     if (!canEdit || draft.trim().length === 0 || item.branchCursor === undefined) return;
     setPending(true);
     setError(null);
-    const retainedBlocks = item.blocks.filter((block) => block.type !== 'text');
+    const retainedBlocks = item.blocks.filter(
+      (block) =>
+        block.type !== 'text' &&
+        (block.type !== 'resource_link' || attachmentIdFromUri(block.uri) === undefined),
+    );
     try {
       await onEditPrompt(item.id, item.branchCursor, [
         { type: 'text', text: draft },

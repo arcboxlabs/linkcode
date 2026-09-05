@@ -47,6 +47,7 @@ import {
   AGENT_INPUT_CAPABILITIES,
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
+  attachmentUri,
   blobIdFromSha256,
   declaredMimeTypeMatches,
   managedAgentAssetId,
@@ -160,6 +161,8 @@ interface MockSession extends SessionInfo {
 interface MockTurn {
   graph: ConversationGraphTurn;
   content: ContentBlock[];
+  /** `conversation.read` user-row content; the live echo stays text-only. */
+  readContent?: ContentBlock[];
 }
 
 interface MockJournalEntry {
@@ -269,7 +272,7 @@ export class DevMockHost {
   private readonly attachmentBlobs = new Map<string, Uint8Array>();
   private readonly attachmentRecords = new Map<
     string,
-    { blobId: BlobId; sizeBytes: number; name: string }
+    { blobId: BlobId; sizeBytes: number; name: string; mimeType?: string; kind: string }
   >();
   private readonly attachmentBegins = new Map<string, MockAttachmentBegin>();
   /** The daemon's `isReachable` roots: sessions whose prompt or resource names the attachment. */
@@ -1427,6 +1430,7 @@ export class DevMockHost {
     }
     const content = turnSubmitContent(p.input);
     const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
+    turn.readContent = this.projectTurnSubmit(p.input);
     this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
       const result = await this.streamMockReply(session, content);
@@ -2066,6 +2070,8 @@ export class DevMockHost {
       blobId,
       sizeBytes: upload.declaredSize,
       name: upload.name,
+      mimeType: upload.mimeType,
+      kind: upload.attachmentKind,
     });
     this.send({
       kind: 'attachment.upload.committed',
@@ -2102,8 +2108,35 @@ export class DevMockHost {
       blobId: blobIdFromSha256(digest),
       sizeBytes: bytes.byteLength,
       name: payload.name,
+      mimeType: payload.mimeType,
+      kind: payload.mimeType?.startsWith('image/') ? 'image' : 'file',
     });
     return attachmentId;
+  }
+
+  /** Durable `conversation.read` row: refs become `attachment:` links, never bytes. */
+  private projectTurnSubmit(input: TurnSubmitInput): ContentBlock[] {
+    if (input.type !== 'prompt') return turnSubmitContent(input);
+    const content: ContentBlock[] = [];
+    for (let i = 0, len = input.blocks.length; i < len; i++) {
+      const block = input.blocks[i];
+      if (block.type === 'text') {
+        content.push(textBlock(block.text));
+        continue;
+      }
+      const record = this.attachmentRecords.get(block.attachmentId);
+      content.push({
+        type: 'resource_link',
+        uri: attachmentUri(block.attachmentId),
+        name: record?.name ?? block.attachmentId,
+        ...(record?.mimeType !== undefined && { mimeType: record.mimeType }),
+        ...(record !== undefined && {
+          size: record.sizeBytes,
+          description: record.kind,
+        }),
+      });
+    }
+    return content;
   }
 
   /** Root an attachment in a session, the way persisting a prompt or a resource does on the daemon. */
@@ -2188,6 +2221,17 @@ export class DevMockHost {
   }
 }
 
+function projectMockReadEvent(session: MockSession, entry: MockJournalEntry): AgentEvent {
+  const { event } = entry;
+  if (event.type !== 'user-message' || entry.turnId === undefined) return event;
+  for (let i = 0, len = session.graphTurns.length; i < len; i++) {
+    const turn = session.graphTurns[i];
+    if (turn.graph.turnId !== entry.turnId || turn.readContent === undefined) continue;
+    return { ...event, content: turn.readContent };
+  }
+  return event;
+}
+
 function turnSubmitContent(input: TurnSubmitInput): ContentBlock[] {
   switch (input.type) {
     case 'prompt':
@@ -2235,7 +2279,7 @@ function readMockProjection(session: MockSession): ConversationReadItem[] {
       epoch: entry.epoch,
       seq: entry.seq,
       ts: entry.ts,
-      event: entry.event,
+      event: projectMockReadEvent(session, entry),
     });
     if (
       entry.turnId !== undefined &&

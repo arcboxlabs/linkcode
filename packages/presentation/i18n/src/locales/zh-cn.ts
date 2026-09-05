@@ -219,6 +219,7 @@ export const zhCN = {
       editUnavailable: '该消息暂时无法重写',
       editUnsupported: '当前智能体不支持编辑历史提示词',
       editBusy: '请等待当前智能体完成后再编辑',
+      editAttachmentsUnsupported: '带附件的提示词暂不支持编辑',
       editPromptLabel: '提示词',
       editCancel: '取消',
       editSend: '发送',
@@ -357,6 +358,7 @@ export const zhCN = {
       removeAttachment: '移除附件',
       attachmentTooLarge: '图片超过 8MB 上限',
       attachmentsTotalTooLarge: '附件总大小超过 12MB 上限',
+      attachmentLimit: '最多添加 {count} 个图片附件',
       attachmentUnsupportedType: '仅支持 JPEG / PNG / GIF / WEBP 图片',
       attachmentUnsupportedAgent: '当前 agent 暂不支持图片附件',
       attachmentReadFailed: '读取文件失败',
@@ -704,6 +706,8 @@ export const zhCN = {
     content: {
       audio: '[音频]',
       resource: '[资源]',
+      attachment: '附件',
+      attachmentUnavailable: '附件不可用',
     },
     artifact: {
       streaming: '生成中…',
