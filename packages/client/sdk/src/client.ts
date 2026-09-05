@@ -3,7 +3,11 @@ import type {
   AssetSettledEvent,
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  LinkCodePluginConfigUpdate,
+  LinkCodePluginConfigView,
+  PluginConfigValue,
   PluginList,
+  PluginMarketRefresh,
   PluginMutation,
   SessionStartResult,
 } from '@linkcode/client-core';
@@ -34,6 +38,9 @@ import type {
   HostedArtifact,
   HostedFile,
   HostedSessionResource,
+  LinkCodeMarketplaceConfig,
+  LinkCodeMarketplaceReleaseIdentity,
+  LinkCodePluginId,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -347,6 +354,42 @@ export class LinkCodeSdkClient {
     cwd?: string;
   }): RequestResult<StandaloneSkill> {
     return toResult(this.raw.setSkillEnabled(params));
+  }
+
+  /** The configured LinkCode marketplaces (HTTPS indexes the daemon refreshes). */
+  listPluginMarketplaces(): RequestResult<LinkCodeMarketplaceConfig[]> {
+    return toResult(this.raw.listPluginMarketplaces());
+  }
+
+  /** Refresh one marketplace index; `notModified` replies carry the cached catalog. */
+  refreshPluginMarketplace(marketplaceId: string): RequestResult<PluginMarketRefresh> {
+    return toResult(this.raw.refreshPluginMarketplace(marketplaceId));
+  }
+
+  /** Install a marketplace release; resolves with the installed release identity. */
+  installLinkCodePlugin(
+    release: LinkCodeMarketplaceReleaseIdentity,
+  ): RequestResult<LinkCodeMarketplaceReleaseIdentity> {
+    return toResult(this.raw.installLinkCodePlugin(release));
+  }
+
+  /** Uninstall a LinkCode plugin; resolves with its id. */
+  uninstallLinkCodePlugin(pluginId: LinkCodePluginId): RequestResult<LinkCodePluginId> {
+    return toResult(this.raw.uninstallLinkCodePlugin(pluginId));
+  }
+
+  /** Masked settings read for installed LinkCode plugins — secret values are never returned. */
+  listLinkCodePluginConfigs(): RequestResult<LinkCodePluginConfigView[]> {
+    return toResult(this.raw.listLinkCodePluginConfigs());
+  }
+
+  /** Per-key settings patch; resolves with the plugin's post-patch masked values. */
+  setLinkCodePluginConfig(params: {
+    pluginId: LinkCodePluginId;
+    set?: Record<string, PluginConfigValue>;
+    remove?: string[];
+  }): RequestResult<LinkCodePluginConfigUpdate> {
+    return toResult(this.raw.setLinkCodePluginConfig(params));
   }
 
   /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

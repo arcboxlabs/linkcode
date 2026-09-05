@@ -13,6 +13,7 @@ import {
   useSetSkillEnabled,
   useUninstallPlugin,
 } from './hooks';
+import { LinkCodeMarketTab } from './linkcode-tab';
 import { McpTab } from './mcp-settings';
 import { filterPluginCards, pluginMcpServerRows, pluginProviderGroups, skillRows } from './view';
 
@@ -77,7 +78,6 @@ export function PluginsSettingsPanel(): React.ReactNode {
         scope: row.standaloneScope,
         enabled,
       });
-      if (updated === undefined) return;
       void mutate(
         (current) =>
           current && {
@@ -97,15 +97,15 @@ export function PluginsSettingsPanel(): React.ReactNode {
     enabled: boolean,
   ): Promise<void> => {
     const updated = await toggle.trigger({ provider: card.provider, id: card.id, enabled, scope });
-    patchPlugin(updated?.plugin);
+    patchPlugin(updated.plugin);
   };
 
   const onInstall = async (card: PluginCardView): Promise<void> => {
     const result = await install.trigger({ provider: card.provider, id: card.id });
-    patchPlugin(result?.plugin);
+    patchPlugin(result.plugin);
     // Most codex plugins are `ON_INSTALL`: the install lands but its apps stay unauthorized, and
     // LinkCode has no OAuth flow — say so rather than let it read as finished.
-    if (result?.pendingAuthApps && result.pendingAuthApps.length > 0) {
+    if (result.pendingAuthApps && result.pendingAuthApps.length > 0) {
       toastManager.add({
         title: t('installNeedsAuthTitle', { title: card.title }),
         description: t('installNeedsAuth', { apps: result.pendingAuthApps.join('、') }),
@@ -115,7 +115,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
 
   const onUninstall = async (card: PluginCardView): Promise<void> => {
     const result = await uninstall.trigger({ provider: card.provider, id: card.id });
-    patchPlugin(result?.plugin);
+    patchPlugin(result.plugin);
   };
 
   return (
@@ -163,6 +163,7 @@ export function PluginsSettingsPanel(): React.ReactNode {
         />
       }
       mcpTab={<McpTab pluginRows={data === undefined ? [] : pluginMcpServerRows(data.plugins)} />}
+      linkcodeTab={<LinkCodeMarketTab searchQuery={searchQuery} />}
       skillsTab={
         <SkillsTab
           busy={mutating || toggleSkill.isMutating}

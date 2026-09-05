@@ -10,9 +10,10 @@ import type {
 import { PluginSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { CustomMcpServerService } from '../agent/custom-mcp-service';
 import { InMemoryProviderConfigStore } from '../agent/provider-config';
+import { InMemoryLinkCodePluginStore } from '../plugin/linkcode-store';
 import { PluginService } from '../plugin/service';
 import { SessionStartOptionsResolver } from '../session/start-options-resolver';
 import type { SimulatorMcpProvider } from '../simulator/mcp';
@@ -89,6 +90,55 @@ const failingMcpPreflightFactory: PluginProviderAdapterFactory = (provider) => (
 function pluginServiceWithFailedMcpPreflight(): PluginService {
   return new PluginService(failingMcpPreflightFactory);
 }
+
+function spyingPluginService(): { plugins: PluginService; listNames: ReturnType<typeof vi.fn> } {
+  const listNames = vi.fn(() => Promise.resolve<string[]>([]));
+  const factory: PluginProviderAdapterFactory = (provider) => ({
+    provider,
+    list: () => Promise.resolve([]),
+    listEnabledMcpServerNames: listNames,
+    listStandaloneSkills: () => Promise.resolve([]),
+  });
+  return { plugins: new PluginService(factory), listNames };
+}
+
+describe('Codex native MCP preflight', () => {
+  it('skips the discovery round trip when neither fold has anything to inject', async () => {
+    const { plugins, listNames } = spyingPluginService();
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      plugins,
+      new InMemoryLinkCodePluginStore(),
+    );
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.mcpServers).toBeUndefined();
+    expect(listNames).not.toHaveBeenCalled();
+  });
+
+  it('runs the discovery exactly once per start when a fold has work', async () => {
+    const { plugins, listNames } = spyingPluginService();
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      customService(customEntry('github')),
+      plugins,
+      new InMemoryLinkCodePluginStore(),
+    );
+
+    const { options } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+    expect(options.mcpServers).toEqual([customEntry('github').server]);
+    expect(listNames).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('simulator MCP injection at session start', () => {
   it('appends the session endpoint for MCP-capable agents', async () => {
@@ -169,25 +219,27 @@ describe('injectedMcpServerNames', () => {
   });
 });
 
-describe('account binding at session start', () => {
-  function storeWith(account: Account, agent: AgentKind): InMemoryProviderConfigStore {
-    const store = new InMemoryProviderConfigStore();
-    // An account with nothing picked refuses to start; these cases are about endpoints.
-    store.update({
-      providers: { [agent]: { enabled: true, enabledAccountIds: [account.id] } },
-      accounts: [{ ...account, models: [{ id: 'picked-model' }] }],
-    });
-    return store;
-  }
+function storeWith(acc: Account, agent: AgentKind): InMemoryProviderConfigStore {
+  const store = new InMemoryProviderConfigStore();
+  // An account with nothing picked refuses to start; these cases are about endpoints.
+  store.update({
+    providers: { [agent]: { enabled: true, enabledAccountIds: [acc.id] } },
+    accounts: [{ ...acc, models: [{ id: 'picked-model' }] }],
+  });
+  return store;
+}
 
-  const account = (overrides: Partial<Account>): Account => ({
+function account(overrides: Partial<Account>): Account {
+  return {
     id: 'acc_1',
     label: 'Test',
     credential: { type: 'api-key', key: 'sk-test' },
     createdAt: 0,
     ...overrides,
-  });
+  };
+}
 
+describe('account binding at session start', () => {
   it('refuses an agent whose account picked no model, but lets one with none resolve its own', async () => {
     const store = new InMemoryProviderConfigStore();
     store.update({ accounts: [account({ service: 'openai-api' })] });
@@ -248,17 +300,19 @@ describe('account binding at session start', () => {
 describe('custom MCP injection at session start', () => {
   it('folds enabled custom servers in for claude-code, codex, and opencode', async () => {
     const kinds = ['claude-code', 'codex', 'opencode'] as const;
-    for (let i = 0, len = kinds.length; i < len; i++) {
-      const kind = kinds[i];
-      const resolver = new SessionStartOptionsResolver(
-        new InMemoryProviderConfigStore(),
-        undefined,
-        undefined,
-        customService(customEntry('github'), customEntry('disabled-one', false)),
-      );
-      const { options: resolved, warnings } = await Effect.runPromise(
-        resolver.resolve({ kind, cwd: '/repo' }, SESSION),
-      );
+    const results = await Promise.all(
+      kinds.map((kind) => {
+        const resolver = new SessionStartOptionsResolver(
+          new InMemoryProviderConfigStore(),
+          undefined,
+          undefined,
+          customService(customEntry('github'), customEntry('disabled-one', false)),
+        );
+        return Effect.runPromise(resolver.resolve({ kind, cwd: '/repo' }, SESSION));
+      }),
+    );
+    for (let i = 0, len = results.length; i < len; i++) {
+      const { options: resolved, warnings } = results[i];
       expect(resolved.mcpServers).toEqual([customEntry('github').server]);
       expect(warnings).toEqual([]);
     }
@@ -353,5 +407,287 @@ describe('custom MCP injection at session start', () => {
 
     expect(options.mcpServers).toBeUndefined();
     expect(warnings).toEqual([{ serverName: 'github', reason: 'provider-preflight-failed' }]);
+  });
+});
+
+describe('LinkCode plugin MCP injection at session start', () => {
+  it('resolves a package-relative entry point against the installed plugin root', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: {
+                MAIL_USER: 'account',
+                MAIL_PASSWORD: 'authcode',
+                MAIL_PRESET: 'preset',
+              },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            authcode: { type: 'password', secret: true },
+            preset: { type: 'enum', enum: ['163', 'qq'] },
+          },
+          assets: [],
+        },
+      },
+      { account: 'user@qq.com', authcode: 'authorization-code', preset: 'qq' },
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+        env: {
+          MAIL_USER: 'user@qq.com',
+          MAIL_PASSWORD: 'authorization-code',
+          MAIL_PRESET: 'qq',
+        },
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('spawns without a missing-config advisory when a setting has no stored value', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: { MAIL_USER: 'account', MAIL_PASSWORD: 'authcode' },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            authcode: { type: 'password', secret: true },
+          },
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    // The missing-config advisory is deferred until clients tolerate unknown warning reasons;
+    // until then a missing setting is just an absent env var, not a warning.
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('injects manifest defaults for settings with no stored value', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    const packageRoot = '/store/plugins/linkcode/mail/0.1.0';
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: packageRoot,
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            {
+              kind: 'mcp-server',
+              name: 'mail',
+              command: 'node',
+              entry: 'dist/index.js',
+              env: { MAIL_USER: 'account', MAIL_PRESET: 'preset' },
+            },
+          ],
+          settings: {
+            account: { type: 'string' },
+            preset: { type: 'enum', enum: ['163', 'qq'], default: '163' },
+          },
+          assets: [],
+        },
+      },
+      { account: 'user@163.com' },
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      store,
+    );
+
+    const { options: resolved, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'claude-code', cwd: '/repo' }, SESSION),
+    );
+
+    expect(resolved.mcpServers).toEqual([
+      {
+        type: 'stdio',
+        name: 'mail',
+        command: 'node',
+        args: [`${packageRoot}/dist/index.js`],
+        env: { MAIL_USER: 'user@163.com', MAIL_PRESET: '163' },
+      },
+    ]);
+    expect(warnings).toEqual([]);
+  });
+
+  it('skips a LinkCode plugin whose MCP name collides with a native Codex plugin', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: '/store/plugins/linkcode/mail/0.1.0',
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            { kind: 'mcp-server', name: 'mail', command: 'node', entry: 'dist/index.js' },
+          ],
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      // Codex's MCP space is shared and un-namespaced: the injected config would silently
+      // override the native plugin's, so the collision is a warning, not an override.
+      pluginServiceWithMcp('mail'),
+      store,
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    expect(options.mcpServers).toBeUndefined();
+    expect(warnings).toEqual([{ serverName: 'mail', reason: 'name-conflict' }]);
+  });
+
+  it('skips LinkCode plugin injection when the strict Codex preflight fails', async () => {
+    const store = new InMemoryLinkCodePluginStore();
+    store.seed(
+      {
+        installed: {
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          marketplaceId: 'linkcode-official',
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          enabled: true,
+          path: '/store/plugins/linkcode/mail/0.1.0',
+        },
+        manifest: {
+          manifestVersion: 1,
+          id: 'linkcode/mail',
+          version: '0.1.0',
+          keywords: ['mail'],
+          components: [
+            { kind: 'mcp-server', name: 'mail', command: 'node', entry: 'dist/index.js' },
+          ],
+          assets: [],
+        },
+      },
+      {},
+    );
+    const resolver = new SessionStartOptionsResolver(
+      new InMemoryProviderConfigStore(),
+      undefined,
+      undefined,
+      undefined,
+      pluginServiceWithFailedMcpPreflight(),
+      store,
+    );
+
+    const { options, warnings } = await Effect.runPromise(
+      resolver.resolve({ kind: 'codex', cwd: '/repo' }, SESSION),
+    );
+
+    // Without the native name set an override cannot be ruled out — skip, don't inject.
+    expect(options.mcpServers).toBeUndefined();
+    expect(warnings).toEqual([{ serverName: 'mail', reason: 'provider-preflight-failed' }]);
   });
 });

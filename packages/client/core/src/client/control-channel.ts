@@ -26,6 +26,9 @@ import type {
   HostedArtifact,
   HostedFile,
   HostedSessionResource,
+  LinkCodeMarketplaceConfig,
+  LinkCodeMarketplaceReleaseIdentity,
+  LinkCodePluginId,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -72,9 +75,13 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type {
+  LinkCodePluginConfigUpdate,
+  LinkCodePluginConfigView,
   PendingRegistry,
   PendingValueMap,
+  PluginConfigValue,
   PluginList,
+  PluginMarketRefresh,
   PluginMutation,
   RequestAck,
   SessionStartResult,
@@ -531,6 +538,64 @@ export class ControlChannel {
   }): Promise<StandaloneSkill> {
     return this.sendCorrelated('skillSetEnabled', (clientReqId) => ({
       kind: 'skill.set-enabled',
+      clientReqId,
+      ...params,
+    }));
+  }
+
+  /** The configured LinkCode marketplaces (HTTPS indexes the daemon refreshes). */
+  listPluginMarketplaces(): Promise<LinkCodeMarketplaceConfig[]> {
+    return this.sendCorrelated('pluginMarketList', (clientReqId) => ({
+      kind: 'plugin-market.list.get',
+      clientReqId,
+    }));
+  }
+
+  /** Refresh one marketplace index; on a 304 the reply carries `notModified` and the cached releases. */
+  refreshPluginMarketplace(marketplaceId: string): Promise<PluginMarketRefresh> {
+    return this.sendCorrelated('pluginMarketRefresh', (clientReqId) => ({
+      kind: 'plugin-market.refresh',
+      clientReqId,
+      marketplaceId,
+    }));
+  }
+
+  /** Install a marketplace release; resolves with the installed release identity. */
+  installLinkCodePlugin(
+    release: LinkCodeMarketplaceReleaseIdentity,
+  ): Promise<LinkCodeMarketplaceReleaseIdentity> {
+    return this.sendCorrelated('pluginMarketInstall', (clientReqId) => ({
+      kind: 'plugin-market.install',
+      clientReqId,
+      release,
+    }));
+  }
+
+  /** Uninstall a LinkCode plugin; resolves with its id. */
+  uninstallLinkCodePlugin(pluginId: LinkCodePluginId): Promise<LinkCodePluginId> {
+    return this.sendCorrelated('pluginMarketUninstall', (clientReqId) => ({
+      kind: 'plugin-market.uninstall',
+      clientReqId,
+      pluginId,
+    }));
+  }
+
+  /** Masked settings read for installed LinkCode plugins — secret values are never returned. */
+  listLinkCodePluginConfigs(): Promise<LinkCodePluginConfigView[]> {
+    return this.sendCorrelated('pluginConfigList', (clientReqId) => ({
+      kind: 'plugin-config.list.get',
+      clientReqId,
+    }));
+  }
+
+  /** Per-key settings patch: typed values set, listed keys removed; resolves with masked values. */
+  setLinkCodePluginConfig(params: {
+    pluginId: LinkCodePluginId;
+    set?: Record<string, PluginConfigValue>;
+    remove?: string[];
+  }): Promise<LinkCodePluginConfigUpdate> {
+    return this.sendCorrelated('pluginConfigUpdate', (clientReqId) => ({
+      kind: 'plugin-config.set',
       clientReqId,
       ...params,
     }));

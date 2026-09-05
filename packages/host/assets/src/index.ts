@@ -16,4 +16,5 @@ export * from './paths';
 export * from './platform';
 export * from './registry-client';
 export * from './resolve';
+export * from './system-proxy';
 export * from './version-pin';

@@ -1,7 +1,11 @@
 import type {
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  LinkCodePluginConfigUpdate,
+  LinkCodePluginConfigView,
+  PluginConfigValue,
   PluginList,
+  PluginMarketRefresh,
   PluginMutation,
   SessionStartResult,
 } from '@linkcode/client-core';
@@ -31,6 +35,9 @@ import type {
   HostedArtifact,
   HostedFile,
   HostedSessionResource,
+  LinkCodeMarketplaceConfig,
+  LinkCodeMarketplaceReleaseIdentity,
+  LinkCodePluginId,
   LoopId,
   LoopInspection,
   LoopRecord,
@@ -339,6 +346,56 @@ export function setSkillEnabled(
 ): RequestResult<StandaloneSkill> {
   const { provider, skillId, path, scope, enabled, cwd } = options;
   return resolveClient(options).setSkillEnabled({ provider, skillId, path, scope, enabled, cwd });
+}
+
+/** The configured LinkCode marketplaces (HTTPS indexes the daemon refreshes with ETag). */
+export function getPluginMarketplaces(
+  options?: Options,
+): RequestResult<LinkCodeMarketplaceConfig[]> {
+  return resolveClient(options).listPluginMarketplaces();
+}
+
+/** Refresh one marketplace index. A `notModified` reply still carries the cached catalog — the
+ * daemon re-flattens its persisted index, so callers can replace their snapshot outright. */
+export function refreshPluginMarketplace(
+  options: Options<{ marketplaceId: string }>,
+): RequestResult<PluginMarketRefresh> {
+  return resolveClient(options).refreshPluginMarketplace(options.marketplaceId);
+}
+
+/** Install a marketplace release; resolves with the installed release identity. */
+export function installLinkCodePlugin(
+  options: Options<{ release: LinkCodeMarketplaceReleaseIdentity }>,
+): RequestResult<LinkCodeMarketplaceReleaseIdentity> {
+  return resolveClient(options).installLinkCodePlugin(options.release);
+}
+
+/** Uninstall a LinkCode plugin; resolves with its id. */
+export function uninstallLinkCodePlugin(
+  options: Options<{ pluginId: LinkCodePluginId }>,
+): RequestResult<LinkCodePluginId> {
+  return resolveClient(options).uninstallLinkCodePlugin(options.pluginId);
+}
+
+/** Masked settings read for installed LinkCode plugins: field schemas plus non-secret values. */
+export function getLinkCodePluginConfigs(
+  options?: Options,
+): RequestResult<LinkCodePluginConfigView[]> {
+  return resolveClient(options).listLinkCodePluginConfigs();
+}
+
+/** Per-key settings patch (`set` upserts typed values, `remove` deletes keys); resolves with the
+ * plugin's post-patch masked values so callers patch one cache entry. Secret fields write to the
+ * daemon vault and never come back. */
+export function setLinkCodePluginConfig(
+  options: Options<{
+    pluginId: LinkCodePluginId;
+    set?: Record<string, PluginConfigValue>;
+    remove?: string[];
+  }>,
+): RequestResult<LinkCodePluginConfigUpdate> {
+  const { pluginId, set, remove } = options;
+  return resolveClient(options).setLinkCodePluginConfig({ pluginId, set, remove });
 }
 
 /** Which agent CLIs the host can actually spawn (probed once at daemon boot). */

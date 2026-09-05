@@ -34,6 +34,7 @@
     "better-sqlite3": "^13.0.2",
     "foxts": "^5.9.1",
     "pino": "^10.3.1",
+    "tar": "^7.5.22",
     "zod": "catalog:"
   },
   "devDependencies": {

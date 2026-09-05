@@ -37,6 +37,8 @@ export interface SecretStore {
   get: (key: string) => string | null;
   set: (key: string, secret: string) => void;
   delete: (key: string) => void;
+  /** Every key currently stored in this namespace (without the namespace prefix). */
+  keys: () => string[];
   /**
    * Replace this namespace's entire content in **one** write: keys absent from `entries` are dropped.
    * This is what a `save*` should call — it makes deletion implicit and costs a single re-encrypt no
@@ -51,7 +53,7 @@ export interface SecretStore {
  * impossible. Domain knowledge (which keys exist, what they mean) belongs to the owning module, not
  * here — this is only the list of who has a slice.
  */
-export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'custom-mcp' | 'device';
+export type SecretNamespace = 'cloud' | 'provider' | 'account' | 'custom-mcp' | 'plugin' | 'device';
 
 export type SecretProtection = 'os-keyring' | 'plaintext';
 
@@ -139,6 +141,13 @@ export function createSecretVault(file: string, loadKey: () => MasterKey | null)
       return {
         protection,
         get: (key) => secrets.get(prefix + key) ?? null,
+        keys() {
+          const keys: string[] = [];
+          for (const ref of secrets.keys()) {
+            if (ref.startsWith(prefix)) keys.push(ref.slice(prefix.length));
+          }
+          return keys;
+        },
         set(key, secret) {
           const ref = prefix + key;
           const previous = secrets.get(ref);

@@ -240,6 +240,9 @@ importers:
       pino:
         specifier: ^10.3.1
         version: 10.3.1
+      tar:
+        specifier: ^7.5.22
+        version: 7.5.22
       zod:
         specifier: 'catalog:'
         version: 4.4.3
