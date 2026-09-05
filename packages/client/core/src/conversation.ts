@@ -18,6 +18,7 @@ import type {
   ToolCallUpdate,
   UsageReport,
 } from '@linkcode/schema';
+import { attachmentIdFromUri } from '@linkcode/schema';
 
 /**
  * Conversation view-model: folds the daemon's flat, append-only `AgentEvent[]` into the structured
@@ -170,6 +171,16 @@ export interface ConversationViewModel {
 }
 
 export type Conversation = ConversationViewModel;
+
+/** A `conversation.read` user row names stored attachments as `attachment:` resource links. The
+ * live echo is text-only — never let that echo replace a row that already carries those refs. */
+function hasAttachmentRef(blocks: readonly ContentBlock[]): boolean {
+  for (let i = 0, len = blocks.length; i < len; i++) {
+    const block = blocks[i];
+    if (block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined) return true;
+  }
+  return false;
+}
 
 /** Append a content block, concatenating consecutive text blocks for smooth streaming. Pure:
  * returns a fresh array so previously emitted snapshots never observe the append. */
@@ -375,9 +386,11 @@ function createConversationProjection(): ConversationBuilder {
         if (existing !== undefined) {
           const item = items[existing];
           if (item.kind === 'message' && item.role === 'user') {
+            const incoming = event.content;
+            const keepRefs = hasAttachmentRef(item.blocks) && !hasAttachmentRef(incoming);
             items[existing] = {
               ...item,
-              blocks: [...event.content],
+              blocks: keepRefs ? item.blocks : [...incoming],
               branchCursor: event.branchCursor ?? item.branchCursor,
               receivedAt: receivedAt ?? item.receivedAt,
             };

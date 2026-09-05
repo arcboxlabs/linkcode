@@ -297,6 +297,33 @@ describe('buildConversation', () => {
     });
   });
 
+  it('keeps durable attachment refs when a later echo for the same row is text-only', () => {
+    const messageId = 'msg-turn-1' as MessageId;
+    const link = {
+      type: 'resource_link' as const,
+      uri: 'attachment:att-1',
+      name: 'shot.png',
+    };
+    const c = buildConversation([
+      {
+        type: 'user-message',
+        messageId,
+        content: [{ type: 'text', text: 'describe this' }, link],
+      },
+      {
+        type: 'user-message',
+        messageId,
+        content: [{ type: 'text', text: 'describe this' }],
+      },
+    ]);
+
+    expect(c.items).toHaveLength(1);
+    expect(c.items[0]).toMatchObject({
+      id: messageId,
+      blocks: [{ type: 'text', text: 'describe this' }, link],
+    });
+  });
+
   it('rewinds the selected prompt and every later conversation event before replacement', () => {
     const c = buildConversation([
       { type: 'status', status: 'idle' },

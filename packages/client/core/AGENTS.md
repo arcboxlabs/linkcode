@@ -36,9 +36,10 @@ Rules the projection store enforces — keep them when touching it:
   no watermark, supersedes nothing, and takes its baseline from the first stamped event.
 - **A stamped repeat stays in the `EventBuffer`** (attach replays resolved asks): dropping it would
   read as a gap. Only unstamped repeats are deduped.
-- **The echo's attachment blocks win** for the row sharing its identity: durable prompts are
-  text-only until attachment refs land, so the store overlays the buffered echo's content on a read
-  row with the same id. Remove this with the attachment store.
+- **Durable user rows carry attachment refs** (`resource_link` with an `attachment:` URI). The live
+  echo is text-only; do not overlay echo content onto a read row — that leaked inline base64 and
+  hid the durable refs. Pending drafts render from the client's blob cache until submit roots the
+  attachment.
 - Live user echoes carry no envelope `turnId` (they precede turn tracking); never bucket by it.
 
 `history-unavailable` read items become `ConversationItem`s of that kind under the current turn:
