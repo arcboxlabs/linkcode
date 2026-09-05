@@ -3,7 +3,9 @@ import type { ContentBlock, SessionId, TurnId } from '@linkcode/schema';
 import { AttachmentIdSchema, userRowMessageId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  clearInflightUserAttachments,
   isStoredAttachmentBlock,
+  noteInflightUserAttachments,
   notePendingUserAttachments,
   overlayPendingUserAttachments,
   promptBlocksFromComposer,
@@ -85,6 +87,53 @@ describe('overlayPendingUserAttachments', () => {
     };
     expect(overlayPendingUserAttachments(durable, sessionId).items[0]).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }, link],
+    });
+  });
+
+  it('fills a live echo from inflight refs without painting an older user row', () => {
+    const inflightSession = 'sess-inflight' as SessionId;
+    const olderId = userRowMessageId('turn-0' as TurnId);
+    const echoId = userRowMessageId('turn-2' as TurnId);
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-2',
+      name: 'later.png',
+    };
+    noteInflightUserAttachments(inflightSession, [link]);
+    const started = Date.now();
+    const conversation: Conversation = {
+      ...EMPTY,
+      items: [
+        {
+          kind: 'message',
+          id: olderId,
+          turnId: 'turn-0',
+          role: 'user',
+          blocks: [{ type: 'text', text: 'previous' }],
+          isStreaming: false,
+          receivedAt: 1,
+        },
+        {
+          kind: 'message',
+          id: echoId,
+          turnId: 'turn-2',
+          role: 'user',
+          blocks: [{ type: 'text', text: 'look' }],
+          isStreaming: false,
+          receivedAt: started + 1,
+        },
+      ],
+    };
+    const overlaid = overlayPendingUserAttachments(conversation, inflightSession);
+    expect(overlaid.items[0]).toMatchObject({
+      blocks: [{ type: 'text', text: 'previous' }],
+    });
+    expect(overlaid.items[1]).toMatchObject({
+      blocks: [{ type: 'text', text: 'look' }, link],
+    });
+    clearInflightUserAttachments(inflightSession);
+    expect(overlayPendingUserAttachments(conversation, inflightSession).items[1]).toMatchObject({
+      blocks: [{ type: 'text', text: 'look' }],
     });
   });
 
