@@ -20,7 +20,7 @@ import type { EditorState, LexicalEditor } from 'lexical';
 import { $getSelection, $setSelection, CLEAR_HISTORY_COMMAND } from 'lexical';
 import { ShieldIcon } from 'lucide-react';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
-import { useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { ChatAttachment } from '../chat/attachments';
 import { Attachments } from '../chat/attachments';
@@ -267,11 +267,30 @@ export function Composer({
   const commandListId = `${commandMenuId}-listbox`;
   const [highlightedCommandIndex, setHighlightedCommandIndex] = useState<number | null>(null);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const trayUrlsRef = useRef(new Set<string>());
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+      const urls = Array.from(trayUrlsRef.current);
+      trayUrlsRef.current.clear();
+      for (let i = 0, len = urls.length; i < len; i++) URL.revokeObjectURL(urls[i]);
+    },
+    [],
+  );
   const submissionPendingRef = useRef(false);
   const [submissionPending, setSubmissionPending] = useState(false);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const dragCounterRef = useRef(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  function rememberTrayUrl(url: string | undefined): void {
+    if (url?.startsWith('blob:') === true) trayUrlsRef.current.add(url);
+  }
+  function releaseTrackedUrl(attachment: { url?: string }): void {
+    const { url } = attachment;
+    if (url?.startsWith('blob:') === true) trayUrlsRef.current.delete(url);
+    releaseComposerAttachmentUrl(attachment);
+  }
   const hasAttachments = attachments.length > 0;
   const hasPendingAttachment = attachments.some((attachment) => attachment.status === 'pending');
   const hasReadyAttachment = attachments.some(
@@ -425,7 +444,7 @@ export function Composer({
         for (let i = 0, len = current.length; i < len; i++) {
           const attachment = current[i];
           if (attachmentIds.has(attachment.id)) {
-            releaseComposerAttachmentUrl(attachment);
+            releaseTrackedUrl(attachment);
             continue;
           }
           kept.push(attachment);
@@ -596,11 +615,17 @@ export function Composer({
           : onPrepareAttachment(file, pending);
       void ready
         .then((ready) => {
+          if (!mountedRef.current) {
+            releaseComposerAttachmentUrl(ready);
+            return;
+          }
+          rememberTrayUrl(ready.url);
           setAttachments((prev) =>
             prev.map((attachment) => (attachment.id === pending.id ? ready : attachment)),
           );
         })
         .catch((err: unknown) => {
+          if (!mountedRef.current) return;
           const message = extractErrorMessage(err) ?? t('attachmentReadFailed');
           setAttachments((prev) =>
             prev.map((attachment) =>
@@ -615,7 +640,7 @@ export function Composer({
   }
 
   function handleRemoveAttachment(attachment: ChatAttachment): void {
-    releaseComposerAttachmentUrl(attachment);
+    releaseTrackedUrl(attachment);
     setAttachments((prev) => prev.filter((a) => a.id !== attachment.id));
   }
 
@@ -684,6 +709,7 @@ export function Composer({
       total += attachment.sizeBytes ?? 0;
       return attachment;
     });
+    for (let i = 0, len = merged.length; i < len; i++) rememberTrayUrl(merged[i].url);
     setAttachments((prev) => [...prev, ...merged]);
   }
 

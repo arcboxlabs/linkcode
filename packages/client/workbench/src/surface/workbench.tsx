@@ -82,7 +82,9 @@ import { submitActiveSessionInput } from './active-session-input';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import {
   attachmentObjectUrl,
+  clearInflightUserAttachments,
   isStoredAttachmentBlock,
+  noteInflightUserAttachments,
   notePendingUserAttachments,
   overlayPendingUserAttachments,
   pendingUserAttachmentsVersion,
@@ -362,10 +364,13 @@ function WorkbenchSessionSurface({
       await submitActiveSessionInput({ type: 'prompt', content }, turnInputMutation.trigger);
       return;
     }
+    noteInflightUserAttachments(sessionId, content);
     try {
       const { turnId } = await client.submitTurn(sessionId, { type: 'prompt', blocks });
       notePendingUserAttachments(sessionId, userRowMessageId(turnId), content);
+      clearInflightUserAttachments(sessionId);
     } catch (error) {
+      clearInflightUserAttachments(sessionId);
       if (!isRequestFailureReportedInConversation(error)) onError(error);
       throw error;
     }

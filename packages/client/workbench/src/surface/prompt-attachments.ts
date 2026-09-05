@@ -11,7 +11,6 @@ import { AttachmentIdSchema, attachmentIdFromUri, attachmentUri } from '@linkcod
 import type { ComposerAttachment } from '@linkcode/ui';
 
 const objectUrls = new Map<string, string>();
-const OBJECT_URL_CAP = 8;
 
 function blobUrlFor(bytes: Uint8Array, mimeType?: string): string {
   const copy = new Uint8Array(bytes.byteLength);
@@ -19,25 +18,16 @@ function blobUrlFor(bytes: Uint8Array, mimeType?: string): string {
   return URL.createObjectURL(new Blob([copy], { type: mimeType || undefined }));
 }
 
-/** Timeline preview URLs, LRU-capped. Composer tray URLs are owned by the tray and revoked there. */
+/** Timeline preview URLs. Revoked on session switch. Composer tray URLs are owned by the tray. */
 export function attachmentObjectUrl(
   attachmentId: string,
   bytes: Uint8Array,
   mimeType?: string,
 ): string {
   const existing = objectUrls.get(attachmentId);
-  if (existing) {
-    objectUrls.delete(attachmentId);
-    objectUrls.set(attachmentId, existing);
-    return existing;
-  }
+  if (existing) return existing;
   const url = blobUrlFor(bytes, mimeType);
   objectUrls.set(attachmentId, url);
-  for (const [oldest, stale] of objectUrls) {
-    if (oldest === attachmentId || objectUrls.size <= OBJECT_URL_CAP) break;
-    objectUrls.delete(oldest);
-    URL.revokeObjectURL(stale);
-  }
   return url;
 }
 
@@ -136,6 +126,7 @@ export async function stageStoreAttachmentFromBase64(
 type PendingKey = `${string}:${string}`;
 
 const pendingByRow = new Map<PendingKey, ContentBlock[]>();
+const inflightBySession = new Map<SessionId, { blocks: ContentBlock[]; startedAt: number }>();
 let pendingVersion = 0;
 const pendingListeners = new Set<() => void>();
 
@@ -156,6 +147,22 @@ export function notePendingUserAttachments(
   const refs = storedAttachmentBlocks(blocks);
   if (refs.length === 0) return;
   pendingByRow.set(pendingKey(sessionId, messageId), refs);
+  bumpPending();
+}
+
+/** Stash refs before `await submitTurn` — the echo arrives during send, `turn.submitted` after. */
+export function noteInflightUserAttachments(
+  sessionId: SessionId,
+  blocks: readonly ContentBlock[],
+): void {
+  const refs = storedAttachmentBlocks(blocks);
+  if (refs.length === 0) return;
+  inflightBySession.set(sessionId, { blocks: refs, startedAt: Date.now() });
+  bumpPending();
+}
+
+export function clearInflightUserAttachments(sessionId: SessionId): void {
+  if (!inflightBySession.delete(sessionId)) return;
   bumpPending();
 }
 
@@ -189,6 +196,19 @@ export function overlayPendingUserAttachments(
     }
     changed = true;
     next[i] = { ...item, blocks: [...item.blocks, ...extra] };
+  }
+  const inflight = inflightBySession.get(sessionId);
+  if (inflight !== undefined) {
+    for (let i = next.length - 1; i >= 0; i--) {
+      const item = next[i];
+      if (item.kind !== 'message' || item.role !== 'user') continue;
+      if (item.receivedAt === undefined || item.receivedAt < inflight.startedAt) continue;
+      if (!item.blocks.some(isStoredAttachmentBlock)) {
+        next[i] = { ...item, blocks: [...item.blocks, ...inflight.blocks] };
+        changed = true;
+      }
+      break;
+    }
   }
   if (!changed) return conversation;
   return { ...conversation, items: next };
