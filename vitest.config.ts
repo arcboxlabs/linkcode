@@ -1,7 +1,13 @@
 import { fileURLToPath } from 'node:url';
+import babel from '@rolldown/plugin-babel';
+import { reactCompilerPreset } from '@vitejs/plugin-react';
 import { ExternalPackageIconLoader } from 'unplugin-icons/loaders';
 import Icons from 'unplugin-icons/vite';
 import { configDefaults, defineConfig } from 'vitest/config';
+
+/** The renderers ship React-Compiler output; a hook that only works uncompiled is a production bug
+ * no uncompiled test can see, so the shared presentation/runtime packages are compiled here too. */
+const rReactCompiled = /\/packages\/(?:presentation\/ui|client\/workbench)\/src\/.*\.tsx$/;
 
 export default defineConfig({
   test: {
@@ -12,6 +18,7 @@ export default defineConfig({
         // Mirror the renderers' unplugin-icons setup so modules importing `~icons/*`
         // virtual modules (e.g. the shell's AgentIcon) load under the root vitest runner.
         plugins: [
+          babel({ include: rReactCompiled, presets: [reactCompilerPreset()] }),
           Icons({
             compiler: 'jsx',
             jsx: 'react',

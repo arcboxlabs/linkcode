@@ -4,6 +4,9 @@ import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
   await client.connect();
@@ -59,8 +62,14 @@ describe('dev mock attachment store', () => {
     const client = new LinkCodeClient(transport);
     await client.connect();
     const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
-    const bytes = new TextEncoder().encode('attached by prompt');
-    const draft = await client.putAttachment({ bytes, name: 'note.txt', attachmentKind: 'file' });
+    // codex declares images only, and the mock admits like the daemon: a `file` ref is refused.
+    const bytes = new Uint8Array(Buffer.from(PNG_1X1_BASE64, 'base64'));
+    const draft = await client.putAttachment({
+      bytes,
+      name: 'shot.png',
+      mimeType: 'image/png',
+      attachmentKind: 'image',
+    });
 
     await expect(client.getAttachmentBytes(sessionId, draft.attachmentId)).rejects.toThrow(
       'Attachment not found',
@@ -89,9 +98,10 @@ describe('dev mock attachment store', () => {
       {
         type: 'resource_link',
         uri: `attachment:${draft.attachmentId}`,
-        name: 'note.txt',
+        name: 'shot.png',
+        mimeType: 'image/png',
         size: bytes.byteLength,
-        description: 'file',
+        description: 'image',
       },
     ]);
     client.dispose();
@@ -122,6 +132,32 @@ describe('dev mock attachment store', () => {
         attachmentKind: 'image',
       }),
     ).rejects.toThrow('File contents are not image/png');
+    client.dispose();
+  });
+
+  it('refuses a prompt ref the daemon would refuse: unknown id, or a harness without images', async () => {
+    const client = await connectedClient();
+    const codex = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    await expect(
+      client.submitTurn(codex, {
+        type: 'prompt',
+        blocks: [{ type: 'attachment_ref', attachmentId: AttachmentIdSchema.parse('att-nope') }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported_attachment', message: 'Unknown attachment' });
+
+    const bytes = new TextEncoder().encode('PNG not really');
+    const { attachmentId } = await client.putAttachment({
+      bytes,
+      name: 'note.bin',
+      attachmentKind: 'image',
+    });
+    const grok = await client.startSession({ kind: 'grok-build', cwd: '/mock/repo' });
+    await expect(
+      client.submitTurn(grok, {
+        type: 'prompt',
+        blocks: [{ type: 'attachment_ref', attachmentId }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported_attachment' });
     client.dispose();
   });
 });

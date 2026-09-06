@@ -87,7 +87,7 @@ import {
   noteInflightUserAttachments,
   notePendingUserAttachments,
   overlayPendingUserAttachments,
-  pendingUserAttachmentsVersion,
+  pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
   revokeAttachmentObjectUrls,
   stageStoreAttachment,
@@ -266,8 +266,15 @@ function WorkbenchSessionSurface({
   const sdkClient = useWorkbenchSdkClient();
   const client = sdkClient.raw;
   const activeSessionId = sessions.activeId;
-  useSyncExternalStore(subscribePendingUserAttachments, pendingUserAttachmentsVersion);
-  const displayedConversation = overlayPendingUserAttachments(conversation, activeSessionId);
+  const pendingAttachments = useSyncExternalStore(
+    subscribePendingUserAttachments,
+    pendingUserAttachmentsSnapshot,
+  );
+  const displayedConversation = overlayPendingUserAttachments(
+    conversation,
+    activeSessionId,
+    pendingAttachments,
+  );
   // Announce observation of the focused session so the daemon replays buffered per-session state
   // this client missed (e.g. the approval-policy advertisement after a reload). Fire-and-forget.
   useEffect(() => {
@@ -360,7 +367,7 @@ function WorkbenchSessionSurface({
       return;
     }
     const blocks = promptBlocksFromComposer(content);
-    if (blocks.length === 0) {
+    if (blocks === undefined || blocks.length === 0) {
       await submitActiveSessionInput({ type: 'prompt', content }, turnInputMutation.trigger);
       return;
     }

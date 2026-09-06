@@ -1,4 +1,4 @@
-import { createContext, useContext, useSyncExternalStore } from 'react';
+import { createContext, useContext, useEffect, useSyncExternalStore } from 'react';
 
 export interface AttachmentPreview {
   url?: string;
@@ -12,11 +12,12 @@ const AttachmentPreviewContext = createContext<AttachmentPreviewResolve | null>(
 const previews = new Map<string, AttachmentPreview>();
 const inflight = new Set<string>();
 const failedUntil = new Map<string, number>();
+const attempts = new Map<string, number>();
 const retryTimers = new Set<ReturnType<typeof setTimeout>>();
-let previewVersion = 0;
 let previewGeneration = 0;
 const previewListeners = new Set<() => void>();
-const PREVIEW_RETRY_MS = 2000;
+const PREVIEW_RETRY_BASE_MS = 2000;
+const PREVIEW_RETRY_MAX_ATTEMPTS = 5;
 
 function subscribePreviews(onStoreChange: () => void): () => void {
   previewListeners.add(onStoreChange);
@@ -25,12 +26,7 @@ function subscribePreviews(onStoreChange: () => void): () => void {
   };
 }
 
-function previewStoreVersion(): number {
-  return previewVersion;
-}
-
-function bumpPreviews(): void {
-  previewVersion += 1;
+function notifyPreviews(): void {
   for (const listener of previewListeners) listener();
 }
 
@@ -39,28 +35,53 @@ function ensurePreview(attachmentId: string, resolve: AttachmentPreviewResolve):
   const retryAt = failedUntil.get(attachmentId);
   if (retryAt !== undefined && retryAt > Date.now()) return;
   inflight.add(attachmentId);
-  const generation = previewGeneration;
-  void resolve(attachmentId)
-    .then((result) => {
-      if (generation !== previewGeneration) return;
-      failedUntil.delete(attachmentId);
-      // `null` is a durable miss (GC / 404). Transient failures throw and are not cached.
-      previews.set(attachmentId, result ?? {});
-    })
-    .catch(() => {
-      if (generation !== previewGeneration) return;
-      failedUntil.set(attachmentId, Date.now() + PREVIEW_RETRY_MS);
-      const timer = setTimeout(() => {
-        retryTimers.delete(timer);
-        bumpPreviews();
-      }, PREVIEW_RETRY_MS);
-      retryTimers.add(timer);
-    })
-    .finally(() => {
-      if (generation !== previewGeneration) return;
-      inflight.delete(attachmentId);
-      bumpPreviews();
-    });
+  void fetchPreview(attachmentId, resolve, previewGeneration);
+}
+
+async function fetchPreview(
+  attachmentId: string,
+  resolve: AttachmentPreviewResolve,
+  generation: number,
+): Promise<void> {
+  let result: AttachmentPreview | null;
+  try {
+    result = await resolve(attachmentId);
+  } catch {
+    if (generation !== previewGeneration) return;
+    inflight.delete(attachmentId);
+    scheduleRetry(attachmentId, resolve, generation);
+    return;
+  }
+  if (generation !== previewGeneration) return;
+  inflight.delete(attachmentId);
+  attempts.delete(attachmentId);
+  // `null` is a durable miss (GC / 404). Transient failures throw and retry with backoff.
+  previews.set(attachmentId, result ?? {});
+  notifyPreviews();
+}
+
+function scheduleRetry(
+  attachmentId: string,
+  resolve: AttachmentPreviewResolve,
+  generation: number,
+): void {
+  const attempt = (attempts.get(attachmentId) ?? 0) + 1;
+  if (attempt >= PREVIEW_RETRY_MAX_ATTEMPTS) {
+    attempts.delete(attachmentId);
+    previews.set(attachmentId, {});
+    notifyPreviews();
+    return;
+  }
+  attempts.set(attachmentId, attempt);
+  const delay = PREVIEW_RETRY_BASE_MS * 2 ** (attempt - 1);
+  failedUntil.set(attachmentId, Date.now() + delay);
+  const timer = setTimeout(() => {
+    retryTimers.delete(timer);
+    if (generation !== previewGeneration) return;
+    failedUntil.delete(attachmentId);
+    ensurePreview(attachmentId, resolve);
+  }, delay);
+  retryTimers.add(timer);
 }
 
 export function resetAttachmentPreviews(): void {
@@ -70,7 +91,8 @@ export function resetAttachmentPreviews(): void {
   previews.clear();
   inflight.clear();
   failedUntil.clear();
-  bumpPreviews();
+  attempts.clear();
+  notifyPreviews();
 }
 
 export function AttachmentPreviewProvider({
@@ -87,13 +109,15 @@ export function AttachmentPreviewProvider({
   );
 }
 
-/** `undefined` while the resolver is in flight, `null` when nothing is wired. */
+/** `undefined` while the resolver is in flight, `null` when nothing is wired. The snapshot is the
+ * cached entry itself: a version counter plus a render-time map read is memoized away by the React
+ * Compiler, and the fetch runs in an effect so it lands after the switch-time reset, not before. */
 export function useAttachmentPreview(attachmentId: string): AttachmentPreview | null | undefined {
   const resolve = useContext(AttachmentPreviewContext);
-  useSyncExternalStore(subscribePreviews, previewStoreVersion);
+  const cached = useSyncExternalStore(subscribePreviews, () => previews.get(attachmentId));
+  useEffect(() => {
+    if (resolve !== null && cached === undefined) ensurePreview(attachmentId, resolve);
+  }, [attachmentId, cached, resolve]);
   if (resolve === null) return null;
-  const cached = previews.get(attachmentId);
-  if (cached !== undefined) return cached;
-  ensurePreview(attachmentId, resolve);
-  return undefined;
+  return cached;
 }

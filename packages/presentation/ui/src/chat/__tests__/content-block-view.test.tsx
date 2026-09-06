@@ -113,6 +113,24 @@ it('renders a stored image from the preview resolver', async () => {
   expect(image.getAttribute('src')).toBe('blob:preview');
 });
 
+it('marks a stored image unavailable when its bytes are gone but its record survives', async () => {
+  const { findByText } = render(
+    <AttachmentPreviewProvider resolve={() => Promise.resolve(null)}>
+      <ContentBlockView
+        block={{
+          type: 'resource_link',
+          uri: 'attachment:att-1',
+          name: 'shot.png',
+          mimeType: 'image/png',
+          size: 12,
+          description: 'image',
+        }}
+      />
+    </AttachmentPreviewProvider>,
+  );
+  expect(await findByText('attachmentUnavailable')).toBeDefined();
+});
+
 it('renders unknown-scheme resource links as inert chips titled by uri', () => {
   const { getByText, queryByRole } = render(
     <ContentBlockView block={resourceLink('mock://notes/showcase.md')} />,

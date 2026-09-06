@@ -50,6 +50,7 @@ import {
   attachmentUri,
   blobIdFromSha256,
   declaredMimeTypeMatches,
+  effectiveAttachmentCapability,
   managedAgentAssetId,
   managedAssetIdEquals,
   managedAssetKey,
@@ -1423,6 +1424,23 @@ export class DevMockHost {
     }
     if (p.input.type === 'prompt') {
       const blocks = p.input.blocks;
+      // Admission mirrors the daemon's typed refusals so a composer bug cannot hide behind the mock.
+      const capability = effectiveAttachmentCapability(session.kind);
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
+        if (block.type !== 'attachment_ref') continue;
+        const record = this.attachmentRecords.get(block.attachmentId);
+        if (record === undefined) {
+          this.sendFailure(p.clientReqId, 'Unknown attachment', { code: 'unsupported_attachment' });
+          return;
+        }
+        if (capability?.kinds[record.kind === 'image' ? 'image' : 'file'] === undefined) {
+          this.sendFailure(p.clientReqId, 'This agent does not accept attachments of this kind', {
+            code: 'unsupported_attachment',
+          });
+          return;
+        }
+      }
       for (let i = 0, len = blocks.length; i < len; i++) {
         const block = blocks[i];
         if (block.type === 'attachment_ref') this.rootAttachment(p.sessionId, block.attachmentId);
@@ -2000,7 +2018,15 @@ export class DevMockHost {
       );
       return;
     }
-    const chunk = mockBase64ToBytes(payload.data);
+    let chunk: Uint8Array;
+    try {
+      chunk = mockBase64ToBytes(payload.data);
+    } catch {
+      this.sendFailure(payload.clientReqId, 'Chunk data is not valid base64', {
+        code: 'invalid_request',
+      });
+      return;
+    }
     if (upload.received + chunk.byteLength > upload.declaredSize) {
       this.sendFailure(payload.clientReqId, 'Chunk exceeds the declared size', {
         code: 'invalid_request',
