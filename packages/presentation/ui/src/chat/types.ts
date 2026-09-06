@@ -44,6 +44,8 @@ export interface ConversationLineage {
   onSelectVersion: (messageId: string, direction: -1 | 1) => void;
   notice: ConversationLineageNotice | null;
   promptEditState: PromptEditState;
+  /** Edits submit through the turn graph, so a row the graph knows needs no legacy branch cursor. */
+  rewritesViaGraph: boolean;
 }
 
 /**

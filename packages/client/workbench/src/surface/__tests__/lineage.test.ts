@@ -1,13 +1,17 @@
+import type { ConversationGraphSnapshot } from '@linkcode/client-core';
 import type { ConversationGraphTurn, SessionId, TurnId } from '@linkcode/schema';
 import { userRowMessageId } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import {
+  continuationParent,
   descendToLeaf,
   lineageIncludes,
   lineageParentKey,
   lineagePath,
   lineageVersions,
+  onActiveLineage,
   siblingsOf,
+  timelineLeftActiveLineage,
   turnsById,
 } from '../lineage';
 
@@ -87,5 +91,50 @@ describe('lineage helpers', () => {
     expect(descendToLeaf(TURNS, 'B2' as TurnId, remembered)).toBe('C2');
     // A remembered child that no longer exists falls back to the newest.
     expect(descendToLeaf(TURNS, 'B2' as TurnId, { B2: 'gone' as TurnId })).toBe('C3');
+  });
+
+  it('continues from a version’s last completed turn, never from a failed tip', () => {
+    const byId = turnsById(TURNS);
+    expect(continuationParent(byId, 'C3' as TurnId)).toBe('B2');
+    expect(continuationParent(byId, 'C1' as TurnId)).toBe('C1');
+    const failedRoot = turnsById([turn('F', null, 1, 1, 'failed')]);
+    expect(continuationParent(failedRoot, 'F' as TurnId)).toBeNull();
+  });
+
+  it('places a read on the active lineage unless it is of another version', () => {
+    const graph = (activeLeaf: string): ConversationGraphSnapshot => ({
+      sessionId,
+      graphRevision: 1,
+      activeLeafTurnId: activeLeaf as TurnId,
+      turns: TURNS,
+    });
+    expect(onActiveLineage('C2' as TurnId, graph('C2'))).toBe(true);
+    // Behind the default on its own lineage: a continuation folds onto it.
+    expect(onActiveLineage('B2' as TurnId, graph('C2'))).toBe(true);
+    // Another version.
+    expect(onActiveLineage('C1' as TurnId, graph('C2'))).toBe(false);
+    // Ahead of a stale snapshot, or not placed by it yet.
+    expect(onActiveLineage('C2' as TurnId, graph('B2'))).toBe(true);
+    expect(onActiveLineage('new' as TurnId, graph('C2'))).toBe(true);
+    // Nothing to judge against without a leaf or a tree.
+    expect(onActiveLineage(undefined, graph('C2'))).toBe(true);
+    expect(onActiveLineage('C1' as TurnId, undefined)).toBe(true);
+  });
+
+  it('notices a timeline showing a turn off the active lineage', () => {
+    const graph = (activeLeaf: string): ConversationGraphSnapshot => ({
+      sessionId,
+      graphRevision: 1,
+      activeLeafTurnId: activeLeaf as TurnId,
+      turns: TURNS,
+    });
+    const rows = (...ids: string[]) => ids.map((id) => userRowMessageId(id as TurnId));
+    // Following B1's lineage when the default moved to B2's: B1 and C1 are off it.
+    expect(timelineLeftActiveLineage(rows('A', 'B1', 'C1'), graph('C2'))).toBe(true);
+    // The edit's own echo folded onto the old lineage, then the tree caught up.
+    expect(timelineLeftActiveLineage(rows('A', 'B1', 'B2'), graph('B2'))).toBe(true);
+    expect(timelineLeftActiveLineage(rows('A', 'B2', 'C2'), graph('C2'))).toBe(false);
+    // A row the tree does not know yet is a fresher echo, not a foreign version.
+    expect(timelineLeftActiveLineage(rows('A', 'B2', 'C2', 'new'), graph('C2'))).toBe(false);
   });
 });

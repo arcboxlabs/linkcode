@@ -276,11 +276,26 @@ describe('UserMessage', () => {
       blocks: [{ type: 'text', text: 'original prompt' }],
       isStreaming: false,
     };
+    const { unmount } = render(
+      <UserMessage
+        item={item}
+        promptEditState="enabled"
+        version={{ index: 1, count: 1, state: null }}
+        onEditPrompt={onEditPrompt}
+      />,
+    );
+    // A known graph node on a harness whose edits still need a cursor stays uneditable.
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'editUnavailable' }).disabled,
+    ).toBe(true);
+    unmount();
+
     render(
       <UserMessage
         item={item}
         promptEditState="enabled"
         version={{ index: 1, count: 1, state: null }}
+        rewritesViaGraph
         onEditPrompt={onEditPrompt}
       />,
     );

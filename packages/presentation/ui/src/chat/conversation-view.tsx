@@ -37,6 +37,7 @@ export interface ConversationViewProps {
   /** Sibling versions per user row (by message id), from the turn graph. */
   versions?: ReadonlyMap<string, TurnVersion>;
   onSelectVersion?: (messageId: string, direction: -1 | 1) => void;
+  rewritesViaGraph?: boolean;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
   /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
@@ -56,6 +57,7 @@ export function ConversationView({
   onEditPrompt,
   versions,
   onSelectVersion,
+  rewritesViaGraph,
   onReviewChanges,
   onOpenBilling,
   scrollContextRef,
@@ -147,6 +149,7 @@ export function ConversationView({
             onEditPrompt={onEditPrompt}
             versions={versions}
             onSelectVersion={onSelectVersion}
+            rewritesViaGraph={rewritesViaGraph}
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
             onOpenBilling={onOpenBilling}

@@ -48,6 +48,7 @@ export interface TurnSegmentViewProps {
   /** Sibling versions per user row (by message id), from the turn graph. */
   versions?: ReadonlyMap<string, TurnVersion>;
   onSelectVersion?: (messageId: string, direction: -1 | 1) => void;
+  rewritesViaGraph?: boolean;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -77,6 +78,7 @@ export function TurnSegmentView({
   onEditPrompt,
   versions,
   onSelectVersion,
+  rewritesViaGraph,
   onExpandTask,
   onReviewChanges,
   onOpenBilling,
@@ -166,6 +168,7 @@ export function TurnSegmentView({
                   ? undefined
                   : (direction) => onSelectVersion(item.id, direction)
               }
+              rewritesViaGraph={rewritesViaGraph}
             />
           );
         }
