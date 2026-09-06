@@ -188,7 +188,8 @@ describe('dev mock host conversation parity', () => {
     );
     expect(pagedRead.kind).toBe('request.failed');
 
-    const parentSubmit = await request(
+    // An explicit-parent submit is admitted like the daemon's: a stale revision is a conflict.
+    const staleSubmit = await request(
       {
         kind: 'turn.submit',
         clientReqId: 's-parent',
@@ -196,11 +197,11 @@ describe('dev mock host conversation parity', () => {
         operationId: OperationIdSchema.parse('op-mock-parent'),
         input: { type: 'shell-command', command: 'ls' },
         parentTurnId: null,
-        expectedGraphRevision: 0,
+        expectedGraphRevision: 7,
       },
       's-parent',
     );
-    expect(parentSubmit.kind).toBe('request.failed');
+    expect(staleSubmit).toMatchObject({ kind: 'request.failed', code: 'conflict' });
   }, 15000);
 
   it('fails loudly for conversation reads on unknown sessions', async () => {
