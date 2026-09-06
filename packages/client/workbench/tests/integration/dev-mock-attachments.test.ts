@@ -1,7 +1,11 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import { ATTACHMENT_UPLOAD_CHUNK_BYTES, AttachmentIdSchema } from '@linkcode/schema';
+import {
+  ATTACHMENT_UPLOAD_CHUNK_BYTES,
+  AttachmentIdSchema,
+  attachmentIdFromUri,
+} from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 const PNG_1X1_BASE64 =
@@ -158,6 +162,47 @@ describe('dev mock attachment store', () => {
         blocks: [{ type: 'attachment_ref', attachmentId }],
       }),
     ).rejects.toMatchObject({ code: 'unsupported_attachment' });
+    client.dispose();
+  });
+
+  it('stores a legacy inline image as a ref on the read row and serves its bytes', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const bytes = new Uint8Array(Buffer.from(PNG_1X1_BASE64, 'base64'));
+    // The legacy ack lands after the whole mock reply streams; read the row as soon as it exists.
+    const sending = client.send(sessionId, {
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'image', data: PNG_1X1_BASE64, mimeType: 'image/png', name: 'shot.png' },
+      ],
+    });
+    const content = await vi.waitFor(async () => {
+      const page = await client.readConversation(sessionId);
+      const userRow = page.events.find(
+        (item) => 'event' in item && item.event.type === 'user-message',
+      );
+      const blocks =
+        userRow && 'event' in userRow && userRow.event.type === 'user-message'
+          ? userRow.event.content
+          : undefined;
+      if (blocks?.[1]?.type !== 'resource_link') throw new Error('row not projected yet');
+      return blocks;
+    });
+    const link = content[1];
+    if (link?.type !== 'resource_link') throw new Error('expected a stored attachment link');
+    expect(link).toMatchObject({
+      name: 'shot.png',
+      mimeType: 'image/png',
+      size: bytes.byteLength,
+      description: 'image',
+    });
+    expect(JSON.stringify(content)).not.toContain(PNG_1X1_BASE64);
+    const attachmentId = AttachmentIdSchema.parse(nullthrow(attachmentIdFromUri(link.uri)));
+    const read = await client.getAttachmentBytes(sessionId, attachmentId);
+    expect(read.bytes).toEqual(bytes);
+    await client.send(sessionId, { type: 'cancel' });
+    await sending;
     client.dispose();
   });
 });
