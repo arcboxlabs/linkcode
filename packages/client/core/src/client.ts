@@ -110,6 +110,10 @@ import type { SequencedAgentEvent } from './client/event-buffer';
 import { EventBuffer } from './client/event-buffer';
 import { LoopLogBuffer } from './client/loop-log-buffer';
 import type {
+  AttachmentChunkAck,
+  AttachmentCommitResult,
+  AttachmentReadResult,
+  AttachmentUploadBegun,
   ConversationGraphSnapshot,
   ConversationReadPage,
   PluginList,
@@ -1391,28 +1395,51 @@ export class LinkCodeClient {
     return this.control.hostResource(resourceId);
   }
 
-  beginAttachmentUpload(input: AttachmentBeginInput) {
+  /** A peer below the store's wire version drops `attachment.*` frames unanswered — the request
+   * would hang forever — so every attachment method fails typed instead. */
+  private attachmentStoreUnsupported(): Promise<never> {
+    return Promise.reject(
+      new Error(`Peer wire ${this.peerWire?.version ?? 'unknown'} has no attachment store`),
+    );
+  }
+
+  beginAttachmentUpload(input: AttachmentBeginInput): Promise<AttachmentUploadBegun> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.beginUpload(input);
   }
 
-  sendAttachmentChunk(uploadId: UploadId, offset: number, data: string) {
+  sendAttachmentChunk(
+    uploadId: UploadId,
+    offset: number,
+    data: string,
+  ): Promise<AttachmentChunkAck> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.sendChunk(uploadId, offset, data);
   }
 
-  commitAttachmentUpload(uploadId: UploadId) {
+  commitAttachmentUpload(uploadId: UploadId): Promise<AttachmentCommitResult> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.commit(uploadId);
   }
 
-  abortAttachmentUpload(uploadId: UploadId) {
+  abortAttachmentUpload(uploadId: UploadId): Promise<{ ok: true }> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.abort(uploadId);
   }
 
-  readAttachment(sessionId: SessionId, attachmentId: AttachmentId, offset: number, length: number) {
+  readAttachment(
+    sessionId: SessionId,
+    attachmentId: AttachmentId,
+    offset: number,
+    length: number,
+  ): Promise<AttachmentReadResult> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.read(sessionId, attachmentId, offset, length);
   }
 
   /** Hash + windowed chunked upload. Identical bytes commit with no transfer. */
-  putAttachment(input: AttachmentPutInput) {
+  putAttachment(input: AttachmentPutInput): Promise<AttachmentCommitResult> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.put(input);
   }
 
@@ -1421,6 +1448,7 @@ export class LinkCodeClient {
     sessionId: SessionId,
     attachmentId: AttachmentId,
   ): Promise<AttachmentReadBytes> {
+    if (!this.supportsAttachmentStore) return this.attachmentStoreUnsupported();
     return this.attachments.get(sessionId, attachmentId);
   }
   subscribeResources(cb: ResourceEventCb): Unsubscribe {

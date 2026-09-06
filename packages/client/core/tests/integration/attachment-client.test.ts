@@ -3,6 +3,7 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
   BlobIdSchema,
+  MAX_ATTACHMENT_BYTES,
   SessionIdSchema,
   UploadIdSchema,
 } from '@linkcode/schema';
@@ -320,5 +321,51 @@ describe('AttachmentBlobCache', () => {
     cache.set('huge', new Uint8Array(40));
     expect(cache.has('huge')).toBe(true);
     expect(cache.has('a')).toBe(false);
+  });
+});
+
+describe('LinkCodeClient attachment guards', () => {
+  it('rejects an oversize put before any frame leaves the client', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const seen: string[] = [];
+    serverTransport.onMessage((message) => {
+      seen.push(message.payload.kind);
+    });
+    await expect(
+      client.putAttachment({
+        bytes: new Uint8Array(MAX_ATTACHMENT_BYTES + 1),
+        name: 'huge.bin',
+        attachmentKind: 'file',
+      }),
+    ).rejects.toThrow('exceeds');
+    expect(seen).not.toContain('attachment.upload.begin');
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('fails typed against a peer without the attachment store instead of hanging', async () => {
+    const [clientTransport, serverTransport] = createLocalTransportPair();
+    await serverTransport.connect();
+    serverTransport.onMessage((message) => {
+      if (message.payload.kind === 'ping') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'pong',
+            version: ATTACHMENT_STORE_WIRE_VERSION - 1,
+            minCompatible: ATTACHMENT_STORE_WIRE_VERSION - 4,
+          }),
+        );
+      }
+    });
+    const older = new LinkCodeClient(clientTransport);
+    await older.connect();
+    await expect(
+      older.getAttachmentBytes(
+        SessionIdSchema.parse('session-1'),
+        AttachmentIdSchema.parse('att-1'),
+      ),
+    ).rejects.toThrow('has no attachment store');
+    older.dispose();
+    serverTransport.close();
   });
 });

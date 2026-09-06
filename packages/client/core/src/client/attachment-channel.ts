@@ -1,5 +1,9 @@
 import type { AttachmentId, OperationId, SessionId, UploadId } from '@linkcode/schema';
-import { ATTACHMENT_UPLOAD_CHUNK_BYTES, ATTACHMENT_UPLOAD_WINDOW_CHUNKS } from '@linkcode/schema';
+import {
+  ATTACHMENT_UPLOAD_CHUNK_BYTES,
+  ATTACHMENT_UPLOAD_WINDOW_CHUNKS,
+  MAX_ATTACHMENT_BYTES,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
 import type { Sha256Hex } from './blob-cache';
@@ -31,8 +35,8 @@ export interface AttachmentPutInput {
 }
 
 /**
- * Chunked attachment upload/read. Credit-windowed puts retry from zero; completed re-sends are
- * free via the daemon's SHA-256 short-circuit. The cache is keyed by `blobId`.
+ * Chunked attachment upload/read. A failed put aborts its lease and the caller retries from zero;
+ * a completed re-send is free via the daemon's SHA-256 short-circuit. The cache is keyed by `blobId`.
  */
 export class AttachmentChannel {
   readonly cache = new AttachmentBlobCache();
@@ -100,6 +104,10 @@ export class AttachmentChannel {
 
   /** Hash, begin, windowed chunks, commit. Identical bytes short-circuit to `exists`. */
   async put(input: AttachmentPutInput): Promise<AttachmentCommitResult> {
+    // The wire schema caps `declaredSize`; an oversize begin is dropped unanswered, never refused.
+    if (input.bytes.byteLength > MAX_ATTACHMENT_BYTES) {
+      throw new Error(`Attachment exceeds ${MAX_ATTACHMENT_BYTES} bytes`);
+    }
     const declaredSha256 = await this.digest(input.bytes);
     const begun = await this.beginUpload({
       declaredSha256,
@@ -120,7 +128,7 @@ export class AttachmentChannel {
       await this.abort(begun.uploadId).catch(noop);
       throw error;
     }
-    this.cache.set(committed.blobId, input.bytes);
+    this.cache.set(committed.blobId, input.bytes.slice());
     return committed;
   }
 
