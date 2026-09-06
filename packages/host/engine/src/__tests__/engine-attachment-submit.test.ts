@@ -50,8 +50,10 @@ async function started(kind: 'claude-code' | 'grok-build' = 'claude-code') {
   const stateDir = await mkdtemp(join(tmpdir(), 'linkcode-attach-submit-'));
   temporaryDirectories.push(stateDir);
   const conversationStore = new InMemoryConversationStore();
-  const attachmentStore = new InMemoryAttachmentStore(() =>
-    conversationStore.referencedAttachmentIds(),
+  const attachmentStore = new InMemoryAttachmentStore(
+    () => conversationStore.referencedAttachmentIds(),
+    (sessionId, attachmentId) =>
+      conversationStore.referencedAttachmentIdsForSession(sessionId).includes(attachmentId),
   );
   const blobStore = new FsBlobStore(join(stateDir, 'blobs'));
   const h = harness(
@@ -288,5 +290,90 @@ describe('turn.submit attachment admit and materialize', () => {
     });
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(turnsBefore.length);
     expect(h.adapter.sentInputs).toHaveLength(1);
+  });
+});
+
+describe('legacy agent.input inline images', () => {
+  it('stores the image as a ref on the durable row while the adapter and echo keep it inline', async () => {
+    const h = await started();
+    const image = {
+      type: 'image' as const,
+      data: PNG_1X1.toString('base64'),
+      mimeType: 'image/png',
+      name: 'shot.png',
+    };
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'legacy',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [{ type: 'text', text: 'look' }, image] },
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'request.succeeded', replyTo: 'legacy' }),
+      );
+    });
+    expect(h.adapter.sentInputs).toEqual([
+      { type: 'prompt', content: [{ type: 'text', text: 'look' }, image] },
+    ]);
+    const echo = h.sent.find(
+      (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+    );
+    if (echo?.kind !== 'agent.event' || echo.event.type !== 'user-message') {
+      throw new Error('no live prompt echo');
+    }
+    expect(echo.event.content).toEqual([{ type: 'text', text: 'look' }, image]);
+
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+    const turnInput = nullthrow(turn, 'expected a persisted turn').input;
+    const promptId = nullthrow(
+      turnInput.type === 'prompt' ? turnInput.promptId : null,
+      'a prompt turn must persist a promptId',
+    );
+    const prompt = nullthrow(await h.conversationStore.getPrompt(promptId));
+    const ref = prompt.blocks[1];
+    if (ref?.type !== 'attachment_ref') throw new Error('expected an attachment_ref');
+    expect(prompt.blocks[0]).toEqual({ type: 'text', text: 'look' });
+    expect(JSON.stringify(prompt.blocks)).not.toContain(image.data);
+
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId: h.sessionId });
+    const read = h.sent.find(
+      (payload) => payload.kind === 'conversation.read.result' && payload.replyTo === 'rr',
+    );
+    if (read?.kind !== 'conversation.read.result') throw new Error('no conversation.read.result');
+    const row = read.events.find((item) => 'event' in item && item.event.type === 'user-message');
+    if (row === undefined || !('event' in row) || row.event.type !== 'user-message') {
+      throw new Error('no user row');
+    }
+    expect(row.event.content).toEqual([
+      { type: 'text', text: 'look' },
+      {
+        type: 'resource_link',
+        uri: attachmentUri(ref.attachmentId),
+        name: 'shot.png',
+        mimeType: 'image/png',
+        size: PNG_1X1.byteLength,
+        description: 'image',
+      },
+    ]);
+
+    await h.inject({
+      kind: 'attachment.read',
+      clientReqId: 'read',
+      sessionId: h.sessionId,
+      attachmentId: ref.attachmentId,
+      offset: 0,
+      length: PNG_1X1.byteLength,
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'attachment.read.result', replyTo: 'read' }),
+      );
+    });
+    const page = h.sent.find(
+      (payload) => payload.kind === 'attachment.read.result' && payload.replyTo === 'read',
+    );
+    if (page?.kind !== 'attachment.read.result') throw new Error('no attachment.read.result');
+    expect(page.data).toBe(image.data);
   });
 });

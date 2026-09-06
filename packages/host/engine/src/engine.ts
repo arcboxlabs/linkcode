@@ -20,6 +20,7 @@ import type { AttachmentReachability } from './attachment/attachment-store';
 import { InMemoryAttachmentStore } from './attachment/attachment-store';
 import { FsBlobStore } from './attachment/blob-store';
 import { AttachmentGc } from './attachment/gc';
+import { AttachmentIngest } from './attachment/ingest';
 import { AttachmentIoMutex } from './attachment/io-mutex';
 import { PromptMaterializer } from './attachment/materializer';
 import { AttachmentRequestHandler } from './attachment/request-handler';
@@ -139,6 +140,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const attachmentIo = new AttachmentIoMutex();
   const attachmentGc = new AttachmentGc(attachmentStore, blobStore, Date.now, attachmentIo);
   const materializer = new PromptMaterializer(attachmentStore, blobStore, stateDir, attachmentIo);
+  const ingest = new AttachmentIngest(blobStore, attachmentStore, attachmentIo);
   const resources = new ResourceService(
     transport,
     resourceStore,
@@ -146,8 +148,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     stateDir,
     fileHost,
     blobStore,
-    attachmentStore,
-    attachmentIo,
+    ingest,
   );
   const uploads = new AttachmentUploadService(blobStore, attachmentStore, attachmentIo);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
@@ -215,6 +216,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     resources,
     conversationTurns,
     conversationJournals,
+    ingest,
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
@@ -277,6 +279,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     conversationCheckpoints,
     attachmentStore,
     materializer,
+    ingest,
   );
   const sessionRequests = new SessionRequestHandler(
     transport,

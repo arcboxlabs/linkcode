@@ -40,13 +40,6 @@ function mintPromptId(): PromptId {
   return `prompt-${randomUUID()}` as PromptId;
 }
 
-/** Durable prompt blocks from legacy prompt content: text only. Inline images are not ingested. */
-export function promptBlocksFromContent(content: ContentBlock[]): PromptBlock[] {
-  return content.flatMap((block) =>
-    block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
-  );
-}
-
 /** What a submit wants persisted, before ids and ordinals exist. */
 export interface TurnIntentSpec {
   readonly sessionId: SessionId;

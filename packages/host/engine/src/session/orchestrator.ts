@@ -17,11 +17,12 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { AttachmentIngest } from '../attachment/ingest';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
 import type { ConversationLiveJournals } from '../conversation/live-journal';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
-import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
+import { mintOperationId } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
@@ -47,6 +48,7 @@ export class SessionOrchestrator {
     private readonly resources: ResourceService,
     private readonly turns: ConversationTurnService,
     private readonly journals: ConversationLiveJournals,
+    private readonly ingest: AttachmentIngest,
     private readonly browserTools?: BrowserToolsetFactory,
     private readonly onRunEnded?: (sessionId: SessionId, runId: RunId) => void,
   ) {
@@ -59,7 +61,7 @@ export class SessionOrchestrator {
       turns,
       journals,
     );
-    this.inputs = new SessionInputDispatcher(records, this.events, resources, turns);
+    this.inputs = new SessionInputDispatcher(records, this.events, resources, turns, ingest);
   }
 
   private get(sessionId: SessionId): LiveSession | undefined {
@@ -207,7 +209,7 @@ export class SessionOrchestrator {
       }
       session.turnInputActive = true;
       const content: ContentBlock[] = [{ type: 'text', text }];
-      const { records, turns } = this;
+      const { ingest, records, turns } = this;
       return session.run(
         Effect.gen({ self: this }, function* () {
           if (yield* turns.hasOpenOperation(sessionId)) {
@@ -220,7 +222,7 @@ export class SessionOrchestrator {
             operationId: mintOperationId(),
             runId: session.runId,
             parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
-            input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
+            input: { type: 'prompt', blocks: yield* ingest.promptBlocks(content) },
           });
           const result = yield* Effect.sync(() => {
             this.events.broadcast(
