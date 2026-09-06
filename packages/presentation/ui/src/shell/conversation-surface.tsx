@@ -173,6 +173,7 @@ export function ConversationSurface({
               onEditPrompt={onEditPrompt}
               versions={lineage?.versions}
               onSelectVersion={lineage?.onSelectVersion}
+              rewritesViaGraph={lineage?.rewritesViaGraph}
               onReviewChanges={onReviewChanges}
               onOpenBilling={onOpenBilling}
             />

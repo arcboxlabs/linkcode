@@ -1,3 +1,4 @@
+import type { ConversationGraphSnapshot } from '@linkcode/client-core';
 import type { ConversationGraphTurn, TurnId } from '@linkcode/schema';
 import { userRowMessageId } from '@linkcode/schema';
 import type { TurnVersion } from '@linkcode/ui';
@@ -38,6 +39,57 @@ export function lineageIncludes(
   turnId: TurnId,
 ): boolean {
   return lineagePath(byId, leafTurnId).some((turn) => turn.turnId === turnId);
+}
+
+/** Where a send from a view of `leafTurnId` lands: the lineage's last completed turn — a failed or
+ * cancelled tip ran nothing to continue from, so the send is a sibling of it — else a new root. */
+export function continuationParent(
+  byId: ReadonlyMap<TurnId, ConversationGraphTurn>,
+  leafTurnId: TurnId,
+): TurnId | null {
+  const path = lineagePath(byId, leafTurnId);
+  for (let i = path.length - 1; i >= 0; i--) {
+    if (path[i].state === 'completed') return path[i].turnId;
+  }
+  return null;
+}
+
+/** Whether a read toward `leafTurnId` is on the active lineage as far as `graph` knows: on or
+ * behind the host default, ahead of a stale snapshot, or not placed by it yet. Only a read of
+ * another version is not — the live stream, which belongs to the active lineage's run, must not
+ * fold into it. */
+export function onActiveLineage(
+  leafTurnId: TurnId | undefined,
+  graph: ConversationGraphSnapshot | undefined,
+): boolean {
+  if (leafTurnId === undefined || graph?.activeLeafTurnId === undefined) return true;
+  const byId = turnsById(graph.turns);
+  if (!byId.has(leafTurnId)) return true;
+  return (
+    lineageIncludes(byId, graph.activeLeafTurnId, leafTurnId) ||
+    lineageIncludes(byId, leafTurnId, graph.activeLeafTurnId)
+  );
+}
+
+/** Whether a timeline shows a user row of a turn the active lineage does not run through: the host
+ * default moved to another version while this view followed it (an edit from any device), so the
+ * view must read toward the default. Rows the tree does not know yet — an echo fresher than the
+ * snapshot — do not count. */
+export function timelineLeftActiveLineage(
+  userRowIds: readonly string[],
+  graph: ConversationGraphSnapshot,
+): boolean {
+  const known = new Set<string>(graph.turns.map((turn) => userRowMessageId(turn.turnId)));
+  const onPath = new Set<string>(
+    lineagePath(turnsById(graph.turns), graph.activeLeafTurnId).map((turn) =>
+      userRowMessageId(turn.turnId),
+    ),
+  );
+  for (let i = 0, len = userRowIds.length; i < len; i++) {
+    const id = userRowIds[i];
+    if (known.has(id) && !onPath.has(id)) return true;
+  }
+  return false;
 }
 
 /** A turn's siblings in ordinal order, itself included. */

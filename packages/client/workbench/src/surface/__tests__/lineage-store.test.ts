@@ -27,23 +27,23 @@ beforeEach(() => {
 });
 
 describe('lineage store', () => {
-  it('parks, dismisses the elsewhere chip for one revision, and follows again', () => {
+  it('parks against the host default, dismisses the elsewhere chip per default, and follows again', () => {
     const store = useLineageStore.getState();
-    store.park(sessionId, 'B1' as TurnId, 3);
+    store.park(sessionId, 'B1' as TurnId, 'B2' as TurnId);
     expect(useLineageStore.getState().parkedBySession[sessionId]).toEqual({
       leafTurnId: 'B1',
-      atRevision: 3,
-      dismissedRevision: null,
+      sinceLeafTurnId: 'B2',
+      dismissedLeafTurnId: undefined,
     });
-    store.dismissElsewhere(sessionId, 4);
-    expect(useLineageStore.getState().parkedBySession[sessionId]?.dismissedRevision).toBe(4);
+    store.dismissElsewhere(sessionId, 'C2' as TurnId);
+    expect(useLineageStore.getState().parkedBySession[sessionId]?.dismissedLeafTurnId).toBe('C2');
     store.follow(sessionId);
     expect(useLineageStore.getState().parkedBySession[sessionId]).toBeUndefined();
   });
 
   it('releases a parked view once the host default runs through its leaf', () => {
     const store = useLineageStore.getState();
-    store.park(sessionId, 'B1' as TurnId, 3);
+    store.park(sessionId, 'B1' as TurnId, 'B2' as TurnId);
     // The active lineage moved to a sibling: still parked.
     store.noteGraph(snapshot('B2', [turn('A', null), turn('B1', 'A'), turn('B2', 'A')]));
     expect(useLineageStore.getState().parkedBySession[sessionId]?.leafTurnId).toBe('B1');

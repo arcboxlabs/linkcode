@@ -3,11 +3,9 @@ import { isRequestFailureReportedInConversation } from '@linkcode/client-core';
 import type {
   AgentInput,
   ContentBlock,
-  ConversationTurnState,
   EffortLevel,
   QuestionOutcome,
   SessionId,
-  TurnId,
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
@@ -83,6 +81,7 @@ import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import { submitActiveSessionInput } from './active-session-input';
 import {
+  continuationParent,
   descendToLeaf,
   lineageParentKey,
   lineagePath,
@@ -113,13 +112,10 @@ import { DefaultWorkbenchShell } from './shell';
 import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
 import { RuntimeTaskResourcesPanel } from './task-resources-panel';
 import { useAgentStartCatalogs } from './use-agent-catalogs';
-import { useConversationGraph } from './use-conversation-graph';
 import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
-
-const SETTLED_TURN_STATES = new Set<ConversationTurnState>(['completed', 'failed', 'cancelled']);
 
 async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
   const { data } = await hostArtifact({ content, mimeType });
@@ -196,22 +192,10 @@ export function Workbench({
   };
   useWorkbenchKeyboardShortcuts(rootRef, sessions);
   const activeSessionId = sessions.active?.sessionId ?? null;
-  const noteGraph = useLineageStore((state) => state.noteGraph);
-  const graph = useConversationGraph(activeSessionId, noteGraph);
+  const { conversation, graph } = useSeededConversation(sessions.active, handleError);
   const parked = useLineageStore((state) =>
     activeSessionId === null ? undefined : state.parkedBySession[activeSessionId],
   );
-  // A parked view is frozen at its read — the live stream belongs to the active lineage — unless
-  // the viewed leaf is itself in flight: this client's own edit or continue, before the host
-  // default catches up with it.
-  const parkedTurn =
-    parked === undefined || graph === undefined
-      ? undefined
-      : turnsById(graph.turns).get(parked.leafTurnId);
-  const followLive =
-    parked === undefined ||
-    (parkedTurn !== undefined && !SETTLED_TURN_STATES.has(parkedTurn.state));
-  const conversation = useSeededConversation(sessions.active, handleError, followLive);
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
   // sidebar, panels, terminals), which must stay permanently mounted across session switches —
@@ -399,18 +383,22 @@ function WorkbenchSessionSurface({
     [threadGroups],
   );
 
-  /** Where a turn-starting input lands while this client browses an earlier version: under that
-   * version's leaf — "continue from here" — never onto the host default behind the viewer's back. */
+  const graphById = graph === undefined ? undefined : turnsById(graph.turns);
+  /** Where a turn-starting input lands while this client browses an earlier version: that
+   * version's last completed turn — "continue from here" — never onto the host default behind
+   * the viewer's back. */
   const parkedTarget =
-    parked !== undefined && graph !== undefined
-      ? { parentTurnId: parked.leafTurnId, expectedGraphRevision: graph.graphRevision }
+    parked !== undefined && graph !== undefined && graphById !== undefined
+      ? {
+          parentTurnId: continuationParent(graphById, parked.leafTurnId),
+          expectedGraphRevision: graph.graphRevision,
+        }
       : undefined;
 
-  function followSubmittedTurn(sessionId: SessionId, turnId: TurnId): void {
-    if (graph === undefined) return;
-    // This device follows the lineage it just created; the store releases the view once the host
-    // default catches up (see `noteGraph`).
-    useLineageStore.getState().park(sessionId, turnId, graph.graphRevision);
+  /** The daemon moves its default onto a submitted turn before it replies, so this device follows
+   * the lineage it just created by following the default again. */
+  function followSubmitted(sessionId: SessionId): void {
+    useLineageStore.getState().follow(sessionId);
   }
 
   function submitActiveInput(input: AgentInput): Promise<void> {
@@ -421,8 +409,8 @@ function WorkbenchSessionSurface({
       (input.type === 'command' || input.type === 'shell-command')
     ) {
       const sessionId = sessions.activeId;
-      return client.submitTurn(sessionId, input, parkedTarget).then(({ turnId }) => {
-        followSubmittedTurn(sessionId, turnId);
+      return client.submitTurn(sessionId, input, parkedTarget).then(() => {
+        followSubmitted(sessionId);
       });
     }
     return submitActiveSessionInput(input, turnInputMutation.trigger);
@@ -450,7 +438,7 @@ function WorkbenchSessionSurface({
       );
       notePendingUserAttachments(sessionId, userRowMessageId(turnId), content);
       clearInflightUserAttachments(sessionId);
-      if (parkedTarget !== undefined) followSubmittedTurn(sessionId, turnId);
+      followSubmitted(sessionId);
     } catch (error) {
       clearInflightUserAttachments(sessionId);
       if (!isRequestFailureReportedInConversation(error)) onError(error);
@@ -473,26 +461,30 @@ function WorkbenchSessionSurface({
     content: ContentBlock[],
   ): Promise<void> {
     // Non-destructive rewrite: a sibling under the edited turn's parent (a new root lineage for
-    // the first prompt). The old version stays switchable; the host rejects a stale revision.
-    if (graph !== undefined && active !== null && graphEditable) {
-      const turn = graph.turns.find(
-        (candidate) => userRowMessageId(candidate.turnId) === messageId,
-      );
-      const blocks = promptBlocksFromComposer(content);
-      if (turn === undefined || blocks === undefined || blocks.length === 0) {
-        throw new Error('Prompt editing is unavailable for this message');
-      }
+    // the first prompt). The old version stays switchable; the host rejects a stale revision. A
+    // row the graph does not know (a transcript-seeded session) takes the legacy branch below.
+    const turn =
+      graph !== undefined && graphEditable
+        ? graph.turns.find((candidate) => userRowMessageId(candidate.turnId) === messageId)
+        : undefined;
+    // Content the graph cannot carry (legacy inline images) branches the old way where it can.
+    const blocks = turn === undefined ? undefined : promptBlocksFromComposer(content);
+    if (graph !== undefined && active !== null && turn !== undefined && blocks?.length) {
       const { turnId } = await client.submitTurn(
         active.sessionId,
         { type: 'prompt', blocks },
         { parentTurnId: turn.parentTurnId, expectedGraphRevision: graph.graphRevision },
       );
       notePendingUserAttachments(active.sessionId, userRowMessageId(turnId), content);
-      followSubmittedTurn(active.sessionId, turnId);
+      followSubmitted(active.sessionId);
       return;
     }
     if (branchCursor === undefined || active?.historyCapabilities?.branch !== true) {
-      throw new Error('Prompt editing is unavailable for this session');
+      throw new Error(
+        turn === undefined
+          ? 'Prompt editing is unavailable for this session'
+          : 'Prompt editing is unavailable for this message',
+      );
     }
     const stripped = content.filter((block) => !isStoredAttachmentBlock(block));
     await rewriteMutation.trigger({
@@ -703,7 +695,7 @@ function WorkbenchSessionSurface({
     );
     // Switching is a pure read: the host default never moves until something is submitted.
     if (leaf === graph.activeLeafTurnId) store.follow(active.sessionId);
-    else store.park(active.sessionId, leaf, graph.graphRevision);
+    else store.park(active.sessionId, leaf, graph.activeLeafTurnId);
   }
 
   function handleJumpToLatest(): void {
@@ -712,31 +704,32 @@ function WorkbenchSessionSurface({
 
   function handleDismissElsewhere(): void {
     if (active !== null && graph !== undefined) {
-      useLineageStore.getState().dismissElsewhere(active.sessionId, graph.graphRevision);
+      useLineageStore.getState().dismissElsewhere(active.sessionId, graph.activeLeafTurnId);
     }
   }
 
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
   const lineage: ConversationLineage | undefined =
-    graph === undefined || active === null
+    graph === undefined || graphById === undefined || active === null
       ? undefined
       : {
           versions: lineageVersions(
             graph.turns,
-            lineagePath(turnsById(graph.turns), parked?.leafTurnId ?? graph.activeLeafTurnId),
+            lineagePath(graphById, parked?.leafTurnId ?? graph.activeLeafTurnId),
           ),
           onSelectVersion: handleSelectVersion,
           notice:
             parked === undefined
               ? null
-              : parked.atRevision < graph.graphRevision &&
-                  parked.dismissedRevision !== graph.graphRevision
+              : graph.activeLeafTurnId !== parked.sinceLeafTurnId &&
+                  graph.activeLeafTurnId !== parked.dismissedLeafTurnId
                 ? {
                     kind: 'elsewhere',
                     onJump: handleJumpToLatest,
                     onDismiss: handleDismissElsewhere,
                   }
                 : { kind: 'parked', onJump: handleJumpToLatest },
+          rewritesViaGraph: graphEditable,
           promptEditState:
             graphEditable || active.historyCapabilities?.branch === true
               ? isRunning

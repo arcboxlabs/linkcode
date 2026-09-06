@@ -6,7 +6,6 @@ import { noop } from 'foxact/noop';
 import { useEffect } from 'react';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useData } from '../runtime/tayori';
-import { useLineageStore } from './lineage-store';
 
 async function fetchConversationGraph(
   options: Options<{ sessionId: SessionId }>,
@@ -16,9 +15,10 @@ async function fetchConversationGraph(
 
 /**
  * The session's turn tree — ids, parents, ordinals, states — revalidated on every
- * `conversation.graph.changed`. Undefined before the first read and on hosts without a graph.
- * `onSnapshot` runs per fresh snapshot for event-time bookkeeping (a parked view that the host
- * default caught up with), never during render.
+ * `conversation.graph.changed` (a settle re-announces at the same revision, so the badges follow).
+ * Undefined before the first read and on hosts without a graph. `onSnapshot` runs per fresh
+ * snapshot for event-time bookkeeping (a parked view that the host default caught up with), never
+ * during render.
  */
 export function useConversationGraph(
   sessionId: SessionId | null,
@@ -31,19 +31,9 @@ export function useConversationGraph(
   });
   useEffect(() => {
     if (!enabled) return;
-    const revalidate = (): void => {
+    return client.subscribeGraphChanges(sessionId, () => {
       void mutate().catch(noop);
-    };
-    const unsubscribeChanges = client.subscribeGraphChanges(sessionId, revalidate);
-    // Parking at a just-submitted turn must see it in the tree before any `graph.changed` lands:
-    // its state decides whether the view follows the live stream.
-    const unsubscribeParked = useLineageStore.subscribe((state, previous) => {
-      if (state.parkedBySession[sessionId] !== previous.parkedBySession[sessionId]) revalidate();
     });
-    return () => {
-      unsubscribeChanges();
-      unsubscribeParked();
-    };
   }, [client, enabled, sessionId, mutate]);
   return data;
 }

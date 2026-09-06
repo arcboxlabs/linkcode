@@ -40,14 +40,15 @@ function commandEcho(text: string): { name: string; args: string } | undefined {
 type MessageItem = Extract<ConversationItem, { kind: 'message' }>;
 
 /** A user bubble: collapses long messages, with copy/edit and the send time revealed on hover.
- * With `version`, the turn is a known graph node: its `‹ 1/N ›` control stays visible and an edit
- * needs no legacy branch cursor. */
+ * With `version`, the turn is a known graph node: its `‹ 1/N ›` control stays visible, and where
+ * edits submit through the graph (`rewritesViaGraph`) one needs no legacy branch cursor. */
 export function UserMessage({
   item,
   promptEditState = 'unsupported',
   onEditPrompt,
   version,
   onSelectVersion,
+  rewritesViaGraph = false,
 }: {
   item: MessageItem;
   promptEditState?: PromptEditState;
@@ -58,6 +59,7 @@ export function UserMessage({
   ) => Promise<void>;
   version?: TurnVersion;
   onSelectVersion?: (direction: -1 | 1) => void;
+  rewritesViaGraph?: boolean;
 }): React.ReactNode {
   const t = useTranslations('workbench.message');
   const format = useFormatter();
@@ -73,7 +75,11 @@ export function UserMessage({
   const hasPromptAttachment = item.blocks.some(
     (block) => block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined,
   );
-  const editable = item.branchCursor !== undefined || version !== undefined;
+  // A graph rewrite resubmits text and attachment refs; only a legacy branch carries inline images.
+  const hasInlineImage = item.blocks.some((block) => block.type === 'image');
+  const editable =
+    item.branchCursor !== undefined ||
+    (version !== undefined && rewritesViaGraph && !hasInlineImage);
   const canEdit =
     promptEditState === 'enabled' && editable && onEditPrompt !== undefined && !hasPromptAttachment;
   const editTooltip = hasPromptAttachment
