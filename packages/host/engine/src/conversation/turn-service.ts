@@ -402,12 +402,16 @@ export class ConversationTurnService {
       for (let i = 0, len = open.length; i < len; i++) sweep.add(open[i].sessionId);
       for (const sessionId of sweep) {
         const turns = yield* this.listTurns(sessionId);
+        const activeLeafTurnId = this.records.get(sessionId)?.activeLeafTurnId;
+        const threadRunId = turns.find((turn) => turn.turnId === activeLeafTurnId)?.runId;
         for (let i = 0, len = turns.length; i < len; i++) {
           const turn = turns[i];
           if (TERMINAL_TURN_STATES.has(turn.state)) continue;
           yield* storeOperation('conversation.turn.save', () =>
             this.store.saveTurn({ ...turn, state: 'failed' }),
           );
+          // A dead turn off the thread's run was a relaunch that never became the thread.
+          if (turn.runId !== threadRunId) this.records.abandonRun(sessionId, turn.runId);
         }
       }
       const resolvedAt = Date.now();

@@ -1,6 +1,7 @@
 import type { AgentHistoryEvent, ConversationTurn, SessionRecord, TurnId } from '@linkcode/schema';
 import { RequestError } from '../failure';
 import { promptContentFingerprint } from '../session/live-session';
+import { TERMINAL_TURN_STATES } from './turn-service';
 
 export interface ProviderPartition {
   readonly userRow: AgentHistoryEvent;
@@ -20,13 +21,21 @@ export interface CorpusAttribution {
 
 /** Whether provider rows can precede the lineage's root turn: an imported transcript, or a created
  * session whose earlier runs wrote provider history before the root was recorded (a session older
- * than its turn rows). A run that died before its first prompt left nothing behind. */
+ * than its turn rows). A run that died before its first prompt, or was abandoned, left nothing
+ * behind. */
 export function hasHiddenPrefix(record: SessionRecord, root: ConversationTurn): boolean {
   if (record.origin.type !== 'created') return true;
   const index = record.runs.findIndex((run) => run.runId === root.runId);
   // A root whose run cannot be placed (a pre-runId record) takes the safe direction.
   if (index < 0) return true;
-  return record.runs.slice(0, index).some((run) => run.historyId !== undefined);
+  return record.runs
+    .slice(0, index)
+    .some((run) => run.historyId !== undefined && run.abandonedAt === undefined);
+}
+
+/** The path turns that expect provider rows: settled, and not failed (nothing durable ran). */
+export function settledWithProvider(path: readonly ConversationTurn[]): ConversationTurn[] {
+  return path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state) && turn.state !== 'failed');
 }
 
 /** Root→leaf path through `parentTurnId`; a broken chain fails loud rather than rendering wrong. */
