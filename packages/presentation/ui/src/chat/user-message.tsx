@@ -230,9 +230,9 @@ export function UserMessage({
               : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
           )}
         >
-          {version === undefined ? null : (
+          {version !== undefined && (version.count > 1 || version.state !== null) ? (
             <TurnVersionNav version={version} onSelect={onSelectVersion} />
-          )}
+          ) : null}
           {item.receivedAt === undefined ? null : (
             <span className="text-muted-foreground text-xs mr-1">
               {format.dateTime(new Date(item.receivedAt), { timeStyle: 'short' })}
