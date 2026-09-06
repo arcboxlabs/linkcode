@@ -40,7 +40,11 @@ export function isStoredAttachmentBlock(block: ContentBlock): boolean {
   return block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined;
 }
 
-export function promptBlocksFromComposer(content: readonly ContentBlock[]): PromptBlock[] {
+/** `undefined` when a block has no `turn.submit` form (inline image, resource): the caller must
+ * send that content on the legacy path rather than silently drop the block. */
+export function promptBlocksFromComposer(
+  content: readonly ContentBlock[],
+): PromptBlock[] | undefined {
   const blocks: PromptBlock[] = [];
   for (let i = 0, len = content.length; i < len; i++) {
     const block = content[i];
@@ -48,9 +52,8 @@ export function promptBlocksFromComposer(content: readonly ContentBlock[]): Prom
       blocks.push({ type: 'text', text: block.text });
       continue;
     }
-    if (block.type !== 'resource_link') continue;
-    const id = attachmentIdFromUri(block.uri);
-    if (id === undefined) continue;
+    const id = block.type === 'resource_link' ? attachmentIdFromUri(block.uri) : undefined;
+    if (id === undefined) return;
     blocks.push({ type: 'attachment_ref', attachmentId: AttachmentIdSchema.parse(id) });
   }
   return blocks;
@@ -123,22 +126,39 @@ export async function stageStoreAttachmentFromBase64(
   };
 }
 
-type PendingKey = `${string}:${string}`;
-
-const pendingByRow = new Map<PendingKey, ContentBlock[]>();
-const inflightBySession = new Map<SessionId, { blocks: ContentBlock[]; startedAt: number }>();
-let pendingVersion = 0;
-const pendingListeners = new Set<() => void>();
-
-function pendingKey(sessionId: SessionId, messageId: string): PendingKey {
-  return `${sessionId}:${messageId}`;
+interface PendingUserRow {
+  readonly messageId: string;
+  readonly blocks: readonly ContentBlock[];
 }
 
-function bumpPending(): void {
-  pendingVersion += 1;
+interface InflightUserAttachments {
+  readonly blocks: readonly ContentBlock[];
+  readonly startedAt: number;
+}
+
+/** Replaced wholesale on every change: the render reads this snapshot, never the module maps. */
+export interface PendingUserAttachments {
+  readonly pending: ReadonlyMap<SessionId, PendingUserRow>;
+  readonly inflight: ReadonlyMap<SessionId, InflightUserAttachments>;
+}
+
+let snapshot: PendingUserAttachments = { pending: new Map(), inflight: new Map() };
+const pendingListeners = new Set<() => void>();
+
+function updatePending(
+  mutate: (
+    pending: Map<SessionId, PendingUserRow>,
+    inflight: Map<SessionId, InflightUserAttachments>,
+  ) => void,
+): void {
+  const pending = new Map(snapshot.pending);
+  const inflight = new Map(snapshot.inflight);
+  mutate(pending, inflight);
+  snapshot = { pending, inflight };
   for (const listener of pendingListeners) listener();
 }
 
+/** Only a session's newest prompt can still be echoing text-only, so one entry per session. */
 export function notePendingUserAttachments(
   sessionId: SessionId,
   messageId: MessageId,
@@ -146,8 +166,9 @@ export function notePendingUserAttachments(
 ): void {
   const refs = storedAttachmentBlocks(blocks);
   if (refs.length === 0) return;
-  pendingByRow.set(pendingKey(sessionId, messageId), refs);
-  bumpPending();
+  updatePending((pending) => {
+    pending.set(sessionId, { messageId, blocks: refs });
+  });
 }
 
 /** Stash refs before `await submitTurn` — the echo arrives during send, `turn.submitted` after. */
@@ -157,13 +178,16 @@ export function noteInflightUserAttachments(
 ): void {
   const refs = storedAttachmentBlocks(blocks);
   if (refs.length === 0) return;
-  inflightBySession.set(sessionId, { blocks: refs, startedAt: Date.now() });
-  bumpPending();
+  updatePending((_pending, inflight) => {
+    inflight.set(sessionId, { blocks: refs, startedAt: Date.now() });
+  });
 }
 
 export function clearInflightUserAttachments(sessionId: SessionId): void {
-  if (!inflightBySession.delete(sessionId)) return;
-  bumpPending();
+  if (!snapshot.inflight.has(sessionId)) return;
+  updatePending((_pending, inflight) => {
+    inflight.delete(sessionId);
+  });
 }
 
 export function subscribePendingUserAttachments(onStoreChange: () => void): () => void {
@@ -173,38 +197,39 @@ export function subscribePendingUserAttachments(onStoreChange: () => void): () =
   };
 }
 
-export function pendingUserAttachmentsVersion(): number {
-  return pendingVersion;
+export function pendingUserAttachmentsSnapshot(): PendingUserAttachments {
+  return snapshot;
 }
 
 export function overlayPendingUserAttachments(
   conversation: Conversation,
   sessionId: SessionId | null,
+  { inflight, pending }: PendingUserAttachments,
 ): Conversation {
   if (!sessionId) return conversation;
-  const items = conversation.items;
+  const row = pending.get(sessionId);
+  const live = inflight.get(sessionId);
+  if (row === undefined && live === undefined) return conversation;
   let changed = false;
-  const next = items.slice();
-  for (let i = 0, len = items.length; i < len; i++) {
-    const item = items[i];
-    if (item.kind !== 'message' || item.role !== 'user') continue;
-    const extra = pendingByRow.get(pendingKey(sessionId, item.id));
-    if (extra === undefined) continue;
-    if (item.blocks.some(isStoredAttachmentBlock)) {
-      pendingByRow.delete(pendingKey(sessionId, item.id));
-      continue;
+  const next = conversation.items.slice();
+  if (row !== undefined) {
+    for (let i = next.length - 1; i >= 0; i--) {
+      const item = next[i];
+      if (item.kind !== 'message' || item.role !== 'user' || item.id !== row.messageId) continue;
+      if (!item.blocks.some(isStoredAttachmentBlock)) {
+        next[i] = { ...item, blocks: [...item.blocks, ...row.blocks] };
+        changed = true;
+      }
+      break;
     }
-    changed = true;
-    next[i] = { ...item, blocks: [...item.blocks, ...extra] };
   }
-  const inflight = inflightBySession.get(sessionId);
-  if (inflight !== undefined) {
+  if (live !== undefined) {
     for (let i = next.length - 1; i >= 0; i--) {
       const item = next[i];
       if (item.kind !== 'message' || item.role !== 'user') continue;
-      if (item.receivedAt === undefined || item.receivedAt < inflight.startedAt) continue;
+      if (item.receivedAt === undefined || item.receivedAt < live.startedAt) continue;
       if (!item.blocks.some(isStoredAttachmentBlock)) {
-        next[i] = { ...item, blocks: [...item.blocks, ...inflight.blocks] };
+        next[i] = { ...item, blocks: [...item.blocks, ...live.blocks] };
         changed = true;
       }
       break;

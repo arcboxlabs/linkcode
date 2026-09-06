@@ -27,7 +27,7 @@ function StoredImageAttachment({
       name={block.name}
       previewUrl={preview?.url}
       size={block.size}
-      unavailable={preview != null && preview.url === undefined && block.mimeType === undefined}
+      unavailable={preview != null && preview.url === undefined}
     />
   );
 }

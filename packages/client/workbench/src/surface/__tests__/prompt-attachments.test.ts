@@ -8,6 +8,7 @@ import {
   noteInflightUserAttachments,
   notePendingUserAttachments,
   overlayPendingUserAttachments,
+  pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
 } from '../prompt-attachments';
 
@@ -38,12 +39,26 @@ describe('promptBlocksFromComposer', () => {
       promptBlocksFromComposer([
         { type: 'text', text: 'look' },
         { type: 'resource_link', uri: `attachment:${attachmentId}`, name: 'shot.png' },
-        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
       ]),
     ).toEqual([
       { type: 'text', text: 'look' },
       { type: 'attachment_ref', attachmentId },
     ]);
+  });
+
+  it('refuses content that turn.submit cannot carry instead of dropping the block', () => {
+    expect(
+      promptBlocksFromComposer([
+        { type: 'text', text: 'look' },
+        { type: 'image', data: 'cG5n', mimeType: 'image/png' },
+      ]),
+    ).toBeUndefined();
+    expect(
+      promptBlocksFromComposer([
+        { type: 'text', text: 'look' },
+        { type: 'resource_link', uri: 'file:///tmp/a.ts', name: 'a.ts' },
+      ]),
+    ).toBeUndefined();
   });
 });
 
@@ -68,7 +83,9 @@ describe('overlayPendingUserAttachments', () => {
         },
       ],
     };
-    expect(overlayPendingUserAttachments(echo, sessionId).items[0]).toMatchObject({
+    expect(
+      overlayPendingUserAttachments(echo, sessionId, pendingUserAttachmentsSnapshot()).items[0],
+    ).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }, link],
     });
 
@@ -85,7 +102,9 @@ describe('overlayPendingUserAttachments', () => {
         },
       ],
     };
-    expect(overlayPendingUserAttachments(durable, sessionId).items[0]).toMatchObject({
+    expect(
+      overlayPendingUserAttachments(durable, sessionId, pendingUserAttachmentsSnapshot()).items[0],
+    ).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }, link],
     });
   });
@@ -124,7 +143,11 @@ describe('overlayPendingUserAttachments', () => {
         },
       ],
     };
-    const overlaid = overlayPendingUserAttachments(conversation, inflightSession);
+    const overlaid = overlayPendingUserAttachments(
+      conversation,
+      inflightSession,
+      pendingUserAttachmentsSnapshot(),
+    );
     expect(overlaid.items[0]).toMatchObject({
       blocks: [{ type: 'text', text: 'previous' }],
     });
@@ -132,7 +155,10 @@ describe('overlayPendingUserAttachments', () => {
       blocks: [{ type: 'text', text: 'look' }, link],
     });
     clearInflightUserAttachments(inflightSession);
-    expect(overlayPendingUserAttachments(conversation, inflightSession).items[1]).toMatchObject({
+    expect(
+      overlayPendingUserAttachments(conversation, inflightSession, pendingUserAttachmentsSnapshot())
+        .items[1],
+    ).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }],
     });
   });
