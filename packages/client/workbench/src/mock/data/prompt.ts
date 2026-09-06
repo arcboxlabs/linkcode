@@ -61,6 +61,10 @@ export const MOCK_USAGE_REPORT: UsageReport = {
 
 /** Prompting exactly this text forces the error path (the platform mocks' `?outcome=` analog). */
 export const FAIL_PROMPT = 'fail';
+/** Prompting exactly this text is refused before dispatch: the tree gains a failed sibling, the
+ * default leaf stays, and the reply is the typed failure (the daemon's `resolveFailed` shape). */
+export const REFUSE_PROMPT = 'refuse';
+export const REFUSE_MESSAGE = `Mock refusal requested via the "${REFUSE_PROMPT}" prompt.`;
 
 /** Simulated round-trip on control ops so list/start loading states stay visible in dev. */
 export const CONTROL_LATENCY_MS = 300;

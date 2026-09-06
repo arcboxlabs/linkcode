@@ -1,5 +1,6 @@
 import { LinkCodeClient } from '@linkcode/client-core';
 import type { ConversationReadItem, TurnId } from '@linkcode/schema';
+import { userRowMessageId } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it, vi } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
@@ -82,6 +83,14 @@ describe('dev mock turn lineages', () => {
         { parentTurnId: 'turn-nope' as TurnId, expectedGraphRevision: graph.graphRevision },
       ),
     ).rejects.toMatchObject({ code: 'not_found' });
+    // The daemon judges the parent before the revision.
+    await expect(
+      client.submitTurn(
+        sessionId,
+        { type: 'shell-command', command: 'orphan' },
+        { parentTurnId: 'turn-nope' as TurnId, expectedGraphRevision: graph.graphRevision - 1 },
+      ),
+    ).rejects.toMatchObject({ code: 'not_found' });
 
     // A prompt turn streams for a while: the session is busy until it settles.
     const running = await client.submitTurn(sessionId, {
@@ -100,7 +109,7 @@ describe('dev mock turn lineages', () => {
     client.dispose();
   });
 
-  it('announces a sibling that failed after it began, keeping its ordinal and the leaf', async () => {
+  it('re-announces a turn that failed after it began at the same revision, keeping its ordinal and the leaf', async () => {
     const client = new LinkCodeClient(createDevMockTransport());
     await client.connect();
     const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
@@ -119,8 +128,72 @@ describe('dev mock turn lineages', () => {
     });
     expect(graph.turns.find((turn) => turn.turnId === failing.turnId)?.siblingOrdinal).toBe(1);
     expect(client.latestGraphChange(sessionId)).toEqual({
-      graphRevision: begun.graphRevision + 1,
+      graphRevision: begun.graphRevision,
       activeLeafTurnId: begun.activeLeafTurnId,
+    });
+    client.dispose();
+  });
+
+  it('refuses a prompt before dispatch: the tree gains a failed sibling, the default leaf stays', async () => {
+    const client = new LinkCodeClient(createDevMockTransport());
+    await client.connect();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    client.attachSession(sessionId);
+    const echoes: string[] = [];
+    client.subscribe(sessionId, (entry) => {
+      if (entry.event.type === 'user-message') echoes.push(entry.event.messageId);
+    });
+    const a = await client.submitTurn(sessionId, { type: 'shell-command', command: 'a' });
+    const b = await client.submitTurn(sessionId, { type: 'shell-command', command: 'b' });
+    let graph = await client.getConversationGraph(sessionId);
+
+    await expect(
+      client.submitTurn(
+        sessionId,
+        { type: 'prompt', blocks: [{ type: 'text', text: 'refuse' }] },
+        { parentTurnId: a.turnId, expectedGraphRevision: graph.graphRevision },
+      ),
+    ).rejects.toMatchObject({ code: 'operation_failed' });
+
+    expect(client.latestGraphChange(sessionId)).toEqual({
+      graphRevision: graph.graphRevision + 1,
+      activeLeafTurnId: b.turnId,
+    });
+    graph = await client.getConversationGraph(sessionId);
+    const refused = nullthrow(
+      graph.turns.find((turn) => turn.parentTurnId === a.turnId && turn.siblingOrdinal === 2),
+    );
+    expect(refused.state).toBe('failed');
+    expect(graph.activeLeafTurnId).toBe(b.turnId);
+    expect(echoes).not.toContain(userRowMessageId(refused.turnId));
+    // Its lineage reads as the shared prefix plus its own prompt row — no placeholder: nothing ran.
+    const read = await client.readConversation(sessionId, { leafTurnId: refused.turnId });
+    expect(userTexts(read.events)).toEqual(['$ a', 'refuse']);
+    expect(read.events.some((item) => !('event' in item) && item.turnId === refused.turnId)).toBe(
+      false,
+    );
+    client.dispose();
+  });
+
+  it('settles a cancelled prompt as cancelled and re-announces the tree at its revision', async () => {
+    const client = new LinkCodeClient(createDevMockTransport());
+    await client.connect();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    client.attachSession(sessionId);
+    const running = await client.submitTurn(sessionId, {
+      type: 'prompt',
+      blocks: [{ type: 'text', text: 'slow reply' }],
+    });
+    const begun = nullthrow(client.latestGraphChange(sessionId));
+    await client.send(sessionId, { type: 'cancel' });
+    await vi.waitFor(async () => {
+      const snapshot = await client.getConversationGraph(sessionId);
+      const turn = snapshot.turns.find((candidate) => candidate.turnId === running.turnId);
+      if (turn?.state !== 'cancelled') throw new Error('not cancelled yet');
+    });
+    expect(client.latestGraphChange(sessionId)).toEqual({
+      graphRevision: begun.graphRevision,
+      activeLeafTurnId: running.turnId,
     });
     client.dispose();
   });

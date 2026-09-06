@@ -78,6 +78,8 @@ import {
   FAIL_PROMPT,
   MOCK_REPLY,
   MOCK_USAGE_REPORT,
+  REFUSE_MESSAGE,
+  REFUSE_PROMPT,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
@@ -177,6 +179,8 @@ interface MockTurn {
   /** `conversation.read` user-row content; the live echo stays text-only. */
   readContent?: ContentBlock[];
 }
+
+type MockReplyOutcome = { state: 'completed' | 'cancelled' } | { state: 'failed'; message: string };
 
 interface MockJournalEntry {
   epoch: number;
@@ -1368,7 +1372,7 @@ export class DevMockHost {
       case 'shell-command': {
         const content = [textBlock(`$ ${input.command}`)];
         const turn = this.beginTurn(session, content, input);
-        settleTurn(session, turn, 'completed');
+        this.settleTurn(session, turn, 'completed');
         this.sendSuccess(replyTo);
         break;
       }
@@ -1420,7 +1424,7 @@ export class DevMockHost {
     }
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
-    settleTurn(session, turn, 'completed');
+    this.settleTurn(session, turn, 'completed');
     this.sendSuccess(replyTo);
   }
 
@@ -1440,14 +1444,10 @@ export class DevMockHost {
       this.sendFailure(p.clientReqId, `Session is busy: ${p.sessionId}`, { code: 'busy' });
       return;
     }
-    // Explicit-parent submits carry the daemon's admit rules: the revision must match, the parent
-    // must exist and have completed. `null` starts a new root lineage.
+    // Explicit-parent submits carry the daemon's admit rules in its order: the parent must exist
+    // and have completed, then the revision must match. `null` starts a new root lineage.
     let parentTurnId: TurnId | null | undefined;
     if (p.parentTurnId !== undefined) {
-      if (p.expectedGraphRevision !== session.graphRevision) {
-        this.sendFailure(p.clientReqId, 'The conversation graph has moved', { code: 'conflict' });
-        return;
-      }
       if (p.parentTurnId !== null) {
         const parent = session.graphTurns.find((turn) => turn.graph.turnId === p.parentTurnId);
         if (parent === undefined) {
@@ -1462,6 +1462,10 @@ export class DevMockHost {
           });
           return;
         }
+      }
+      if (p.expectedGraphRevision !== session.graphRevision) {
+        this.sendFailure(p.clientReqId, 'The conversation graph has moved', { code: 'conflict' });
+        return;
       }
       parentTurnId = p.parentTurnId;
     }
@@ -1490,6 +1494,12 @@ export class DevMockHost {
       }
     }
     const content = turnSubmitContent(p.input);
+    if (p.input.type === 'prompt' && promptText(content).toLowerCase() === REFUSE_PROMPT) {
+      const refused = this.refuseTurn(session, content, parentTurnId);
+      refused.readContent = this.projectTurnSubmit(p.input);
+      this.sendFailure(p.clientReqId, REFUSE_MESSAGE, { code: 'operation_failed' });
+      return;
+    }
     const turn = this.beginTurn(
       session,
       content,
@@ -1500,18 +1510,17 @@ export class DevMockHost {
     this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
       const result = await this.streamMockReply(session, content);
-      settleTurn(session, turn, result.ok ? 'completed' : 'failed');
-      if (!result.ok) this.announceGraphShape(session);
+      this.settleTurn(session, turn, result.state);
       return;
     }
     // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
-    settleTurn(session, turn, 'completed');
+    this.settleTurn(session, turn, 'completed');
   }
 
-  /** A turn failed after it began: the tree changed shape but the default leaf stays — the daemon
-   * announces the same way from `resolveFailed`. */
-  private announceGraphShape(session: MockSession): void {
-    session.graphRevision += 1;
+  /** Every device refetches the tree: a node it did not have moves the revision; a settle keeps
+   * it — the badge is what changed (the daemon's `announceGraph`). */
+  private announceGraph(session: MockSession, gainedNode: boolean): void {
+    if (gainedNode) session.graphRevision += 1;
     this.send({
       kind: 'conversation.graph.changed',
       sessionId: session.sessionId,
@@ -1520,18 +1529,28 @@ export class DevMockHost {
     });
   }
 
-  /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
-   * and point the frames that follow at it. */
-  private beginTurn(
+  private settleTurn(
+    session: MockSession,
+    turn: MockTurn,
+    state: 'completed' | 'failed' | 'cancelled',
+  ): void {
+    turn.graph.state = state;
+    if (session.runningTurnId === turn.graph.turnId) session.runningTurnId = undefined;
+    this.announceGraph(session, false);
+  }
+
+  /** Persist a graph turn the way the daemon does before dispatch: a plain send lands under the
+   * active leaf, an explicit parent lands a sibling (or a root). */
+  private mintTurn(
     session: MockSession,
     content: ContentBlock[],
-    input?: Exclude<TurnSubmitInput, { type: 'prompt' }>,
-    parentTurnId?: TurnId | null,
+    input: Exclude<TurnSubmitInput, { type: 'prompt' }> | undefined,
+    parentTurnId: TurnId | null | undefined,
+    state: 'running' | 'failed',
   ): MockTurn {
     this.turnSeq += 1;
     const id = this.turnSeq.toString(36);
     const turnId = `turn-mock-${id}` as TurnId;
-    // A plain send lands under the active leaf; an explicit parent lands a sibling (or a root).
     const parent = parentTurnId === undefined ? (session.activeLeafTurnId ?? null) : parentTurnId;
     const siblingOrdinal =
       session.graphTurns.filter((turn) => turn.graph.parentTurnId === parent).length + 1;
@@ -1543,15 +1562,27 @@ export class DevMockHost {
         siblingOrdinal,
         input: input ?? { type: 'prompt', promptId: `prompt-mock-${id}` as PromptId },
         runId: `run-mock-${id}` as RunId,
-        state: 'running',
+        state,
         createdAt: Date.now(),
         inputSummary: promptText(content).slice(0, 140),
       },
       content,
     };
     session.graphTurns.push(turn);
+    return turn;
+  }
+
+  /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
+   * and point the frames that follow at it: the default leaf moves as the turn commits running. */
+  private beginTurn(
+    session: MockSession,
+    content: ContentBlock[],
+    input?: Exclude<TurnSubmitInput, { type: 'prompt' }>,
+    parentTurnId?: TurnId | null,
+  ): MockTurn {
+    const turn = this.mintTurn(session, content, input, parentTurnId, 'running');
+    const { turnId } = turn.graph;
     session.activeLeafTurnId = turnId;
-    session.graphRevision += 1;
     session.runningTurnId = turnId;
     // Echo before graph.changed so a subscribed projection store sees the new leaf row and
     // treats a plain send as continuation, matching the engine dispatcher.
@@ -1560,12 +1591,20 @@ export class DevMockHost {
       messageId: userRowMessageId(turnId),
       content,
     });
-    this.send({
-      kind: 'conversation.graph.changed',
-      sessionId: session.sessionId,
-      graphRevision: session.graphRevision,
-      activeLeafTurnId: turnId,
-    });
+    this.announceGraph(session, true);
+    return turn;
+  }
+
+  /** A prompt the provider refuses before it runs — the daemon's `resolveFailed` shape: the tree
+   * gains a failed node and announces it, the default leaf stays, and nothing is echoed live. */
+  private refuseTurn(
+    session: MockSession,
+    content: ContentBlock[],
+    parentTurnId: TurnId | null | undefined,
+  ): MockTurn {
+    const turn = this.mintTurn(session, content, undefined, parentTurnId, 'failed');
+    turn.readContent = content;
+    this.announceGraph(session, true);
     return turn;
   }
 
@@ -1585,19 +1624,26 @@ export class DevMockHost {
         return;
       }
     }
+    if (promptText(content).toLowerCase() === REFUSE_PROMPT) {
+      this.refuseTurn(session, content, undefined);
+      this.sendFailure(replyTo, REFUSE_MESSAGE, { code: 'operation_failed' });
+      return;
+    }
     const turn = this.beginTurn(session, content);
     turn.readContent = await this.ingestInlineImages(session.sessionId, content);
     const result = await this.streamMockReply(session, content);
-    settleTurn(session, turn, result.ok ? 'completed' : 'failed');
-    if (!result.ok) this.announceGraphShape(session);
-    if (result.ok) this.sendSuccess(replyTo);
-    else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
+    this.settleTurn(session, turn, result.state);
+    if (result.state === 'failed') {
+      this.sendFailure(replyTo, result.message, { reportedInConversation: true });
+    } else {
+      this.sendSuccess(replyTo);
+    }
   }
 
   private async streamMockReply(
     session: MockSession,
     content: ContentBlock[],
-  ): Promise<{ ok: true } | { ok: false; message: string }> {
+  ): Promise<MockReplyOutcome> {
     const text = promptText(content);
     if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
@@ -1611,7 +1657,7 @@ export class DevMockHost {
       return session.epoch !== epoch;
     };
 
-    if (await cancelledAfter(200)) return { ok: true };
+    if (await cancelledAfter(200)) return { state: 'cancelled' };
     const thoughtId = this.nextMessageId('mock-thought');
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
@@ -1620,7 +1666,7 @@ export class DevMockHost {
     });
 
     if (text.toLowerCase() === FAIL_PROMPT) {
-      if (await cancelledAfter(200)) return { ok: true };
+      if (await cancelledAfter(200)) return { state: 'cancelled' };
       const message = `Mock failure requested via the "${FAIL_PROMPT}" prompt.`;
       this.emit(session.sessionId, {
         type: 'error',
@@ -1630,7 +1676,7 @@ export class DevMockHost {
       });
       session.status = 'idle';
       this.emit(session.sessionId, { type: 'status', status: 'idle' });
-      return { ok: false, message };
+      return { state: 'failed', message };
     }
 
     const messageId = this.nextMessageId('mock-message');
@@ -1639,7 +1685,7 @@ export class DevMockHost {
     if (chunks != null) {
       for (let i = 0, len = chunks.length; i < len; i++) {
         // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
-        if (await cancelledAfter(CHUNK_LATENCY_MS)) return { ok: true };
+        if (await cancelledAfter(CHUNK_LATENCY_MS)) return { state: 'cancelled' };
         this.emit(session.sessionId, {
           type: 'agent-message-chunk',
           messageId,
@@ -1657,7 +1703,7 @@ export class DevMockHost {
     this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
-    return { ok: true };
+    return { state: 'completed' };
   }
 
   /** Emitted in one burst, not streamed: this transcript exists to be long, not to look live. */
@@ -2391,11 +2437,6 @@ function promptText(content: readonly ContentBlock[]): string {
     .trim();
 }
 
-function settleTurn(session: MockSession, turn: MockTurn, state: 'completed' | 'failed'): void {
-  turn.graph.state = state;
-  if (session.runningTurnId === turn.graph.turnId) session.runningTurnId = undefined;
-}
-
 /** The turns on the root→leaf path, the way the daemon reads one lineage of the tree. */
 function pathTurnIds(session: MockSession, leafTurnId: TurnId | undefined): Set<TurnId> {
   const onPath = new Set<TurnId>();
@@ -2443,6 +2484,19 @@ function readMockProjection(
     ) {
       items.push({ type: 'history-unavailable', turnId: entry.turnId });
     }
+  }
+  // A turn refused before it ran journaled nothing; its lineage's read still carries its host user
+  // row, the way the daemon reads one from the turn table — and no placeholder: nothing ran.
+  const leaf = session.graphTurns.find((turn) => turn.graph.turnId === leafTurnId);
+  if (leaf !== undefined && !session.journal.some((entry) => entry.turnId === leaf.graph.turnId)) {
+    items.push({
+      turnId: leaf.graph.turnId,
+      event: {
+        type: 'user-message',
+        messageId: userRowMessageId(leaf.graph.turnId),
+        content: leaf.readContent ?? leaf.content,
+      },
+    });
   }
   return items;
 }
