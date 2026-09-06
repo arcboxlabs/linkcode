@@ -21,7 +21,7 @@ import { AgentTurnActions } from './turn-actions';
 import { TurnDiffSummary } from './turn-diff-summary';
 import type { TurnSegment } from './turn-edits';
 import { turnFileEdits } from './turn-edits';
-import type { PromptEditState } from './types';
+import type { PromptEditState, TurnVersion } from './types';
 import { UserMessage } from './user-message';
 
 export interface TurnSegmentViewProps {
@@ -42,9 +42,12 @@ export interface TurnSegmentViewProps {
   promptEditState: PromptEditState;
   onEditPrompt?: (
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ) => Promise<void>;
+  /** Sibling versions per user row (by message id), from the turn graph. */
+  versions?: ReadonlyMap<string, TurnVersion>;
+  onSelectVersion?: (messageId: string, direction: -1 | 1) => void;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -72,6 +75,8 @@ export function TurnSegmentView({
   TerminalBlockComponent,
   promptEditState,
   onEditPrompt,
+  versions,
+  onSelectVersion,
   onExpandTask,
   onReviewChanges,
   onOpenBilling,
@@ -155,6 +160,12 @@ export function TurnSegmentView({
               item={item}
               promptEditState={promptEditState}
               onEditPrompt={onEditPrompt}
+              version={versions?.get(item.id)}
+              onSelectVersion={
+                onSelectVersion === undefined
+                  ? undefined
+                  : (direction) => onSelectVersion(item.id, direction)
+              }
             />
           );
         }

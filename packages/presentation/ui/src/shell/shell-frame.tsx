@@ -9,7 +9,7 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import type { ConversationViewModel } from '../chat';
+import type { ConversationLineage, ConversationViewModel } from '../chat';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -74,9 +74,11 @@ export interface ShellFrameProps
   conversation: ConversationViewModel;
   onEditPrompt?: (
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ) => Promise<void>;
+  /** Turn-graph affordances for the active conversation; absent on hosts without a graph. */
+  lineage?: ConversationLineage;
   respondingRequestIds: ReadonlySet<string>;
   responseErrors?: ReadonlyMap<string, string>;
   header?: React.ReactNode;
@@ -143,6 +145,7 @@ export function ShellFrame({
   onOpenBilling,
   conversation,
   onEditPrompt,
+  lineage,
   respondingRequestIds,
   responseErrors,
   header,
@@ -262,6 +265,7 @@ export function ShellFrame({
               active?.historyCapabilities?.branch === true ? 'enabled' : 'unsupported'
             }
             onEditPrompt={onEditPrompt}
+            lineage={lineage}
             mentionItems={mentionItems}
             onMentionQueryChange={(query) => onMentionQueryChange(active?.cwd, query)}
             showPlanInPromptDock={showPlanInPromptDock}

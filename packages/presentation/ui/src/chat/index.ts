@@ -40,5 +40,6 @@ export * from './test-results';
 export * from './thought-block';
 export * from './tool';
 export * from './tool-call-item';
+export * from './turn-version-nav';
 export type * from './types';
 export * from './web-preview';
