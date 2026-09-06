@@ -188,3 +188,33 @@ describe('assertInlineAttachmentsSupported', () => {
     expect.fail('expected a typed refusal');
   });
 });
+
+describe('admitPromptAttachments with a file kind declared', () => {
+  const capability = {
+    kinds: {
+      file: { mimeTypes: ['application/pdf'], maxBytes: MAX_ATTACHMENT_BYTES, maxCount: 1 },
+    },
+    representations: ['readonly_file'],
+  };
+
+  it('bounds an unknown kind by the file maxCount', () => {
+    const document = stored({ kind: 'document', mimeType: 'application/pdf', sizeBytes: 1 });
+    expect(() =>
+      admitPromptAttachments(
+        [{ type: 'attachment_ref', attachmentId: ATT_1 }],
+        [document],
+        capability,
+      ),
+    ).not.toThrow();
+    expect(() =>
+      admitPromptAttachments(
+        [
+          { type: 'attachment_ref', attachmentId: ATT_1 },
+          { type: 'attachment_ref', attachmentId: ATT_1 },
+        ],
+        [document],
+        capability,
+      ),
+    ).toThrow(RequestError);
+  });
+});

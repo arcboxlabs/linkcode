@@ -1,7 +1,9 @@
 import { z } from 'zod';
 import {
   AttachmentKindSchema,
+  AttachmentNameSchema,
   BlobIdSchema,
+  MimeTypeSchema,
   Sha256HexSchema,
   UploadIdSchema,
 } from '../model/attachment';
@@ -35,8 +37,8 @@ export const attachmentWireVariants = [
     operationId: OperationIdSchema.optional(),
     declaredSha256: Sha256HexSchema,
     declaredSize: z.number().int().nonnegative().max(MAX_ATTACHMENT_BYTES),
-    name: z.string().min(1),
-    mimeType: z.string().min(1).optional(),
+    name: AttachmentNameSchema,
+    mimeType: MimeTypeSchema.optional(),
     /** AttachmentRecord.kind — not the frame discriminator. */
     attachmentKind: AttachmentKindSchema,
   }),

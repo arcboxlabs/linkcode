@@ -12,6 +12,7 @@ import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
 import { OperationError, RequestError } from '../failure';
 import type { AttachmentStore } from './attachment-store';
+import { UploadLeaseGoneError } from './attachment-store';
 import type { BlobStage, BlobStore } from './blob-store';
 import { BlobIntegrityError } from './blob-store';
 import { UPLOAD_LEASE_TTL_MS } from './gc';
@@ -177,7 +178,10 @@ export class AttachmentUploadService {
             });
           }
           await stage.write(offset, bytes);
-          if (offset === 0) live.head = bytes.subarray(0, Math.min(HEAD_BYTES, bytes.byteLength));
+          // Copy: a view would pin the whole decoded chunk in heap for the life of the upload.
+          if (offset === 0) {
+            live.head = new Uint8Array(bytes.subarray(0, Math.min(HEAD_BYTES, bytes.byteLength)));
+          }
           live.receivedBytes += bytes.byteLength;
           return { uploadId, receivedBytes: live.receivedBytes };
         }),
@@ -207,13 +211,19 @@ export class AttachmentUploadService {
         pinnedBlobId === undefined
           ? undefined
           : yield* files('stat', () => this.blobs.stat(pinnedBlobId));
-      // A dedupe hit only counts when the stored bytes are the size the client declared; otherwise
-      // the declared size is a lie and the exists path would skip every coverage check.
-      const exists = live?.state === 'exists' || existsFile?.sizeBytes === lease.declaredSize;
+      // A dedupe hit only counts when the pinned bytes are on disk now at the declared size: a
+      // wrong size would skip every coverage check, and `begin`'s answer is stale once the lease
+      // outlived its blob (expired, then swept).
+      const exists = existsFile?.sizeBytes === lease.declaredSize;
+      if (!exists && live?.state === 'exists') {
+        return yield* invalid('conflict', 'Blob bytes are missing; retry from begin');
+      }
       if (exists) {
         const blobId = pinnedBlobId ?? blobIdFromSha256(lease.declaredSha256);
-        const head =
-          (yield* files('read', () => this.blobs.read(blobId, 0, HEAD_BYTES))) ?? new Uint8Array(0);
+        const head = yield* files('read', () => this.blobs.read(blobId, 0, HEAD_BYTES));
+        if (head === undefined) {
+          return yield* invalid('conflict', 'Blob bytes are missing; retry from begin');
+        }
         yield* assertMime(lease.mimeType, head);
         const committed = yield* publishExists(lease, blobId);
         yield* files('discard', () => discard(uploadId));
@@ -451,6 +461,12 @@ function mapCause(
   if (cause instanceof RequestError) return cause;
   if (cause instanceof BlobIntegrityError) {
     return new RequestError({ code: 'invalid_request', message: cause.message });
+  }
+  if (cause instanceof UploadLeaseGoneError) {
+    return new RequestError({
+      code: 'conflict',
+      message: 'Upload lease expired; retry from begin',
+    });
   }
   return new OperationError({
     subsystem,

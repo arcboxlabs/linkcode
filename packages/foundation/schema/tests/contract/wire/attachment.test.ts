@@ -2,6 +2,8 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BASE64_MAX,
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
   WIRE_PROTOCOL_VERSION,
   WireMessageSchema,
 } from '@linkcode/schema';
@@ -186,5 +188,29 @@ describe('attachment upload/read frames', () => {
         state: 'exists',
       }),
     ).toBe(true);
+  });
+
+  it('caps the name and MIME type a begin may persist onto every projected row', () => {
+    const begin = {
+      kind: 'attachment.upload.begin',
+      clientReqId: 'request-1',
+      declaredSha256: sha256,
+      declaredSize: 1,
+      attachmentKind: 'file',
+    };
+    expect(parses({ ...begin, name: 'x'.repeat(MAX_ATTACHMENT_NAME_LENGTH) })).toBe(true);
+    expect(parses({ ...begin, name: 'x'.repeat(MAX_ATTACHMENT_NAME_LENGTH + 1) })).toBe(false);
+    expect(parses({ ...begin, name: 'x', mimeType: 'a'.repeat(MAX_MIME_TYPE_LENGTH + 1) })).toBe(
+      false,
+    );
+    expect(
+      parses({
+        kind: 'resource.source.upload',
+        clientReqId: 'request-1',
+        sessionId: 'session-1',
+        name: 'x'.repeat(MAX_ATTACHMENT_NAME_LENGTH + 1),
+        data: 'YQ==',
+      }),
+    ).toBe(false);
   });
 });

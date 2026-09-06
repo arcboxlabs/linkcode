@@ -44,7 +44,11 @@ export const RunIdSchema = z.string().min(1).brand<'RunId'>();
 export type RunId = z.infer<typeof RunIdSchema>;
 
 /** Attachment ID: identity of an immutable prompt/session attachment. */
-export const AttachmentIdSchema = z.string().min(1).brand<'AttachmentId'>();
+/** The charset is also a materialized filename segment — anything else is a path traversal. */
+export const AttachmentIdSchema = z
+  .string()
+  .regex(/^[\w-]{1,128}$/)
+  .brand<'AttachmentId'>();
 export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
 
 /** Operation ID: client-minted idempotency key for conversation mutations (see conversation.ts). */

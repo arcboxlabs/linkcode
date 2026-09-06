@@ -63,6 +63,8 @@ class FsBlobStage implements BlobStage {
   }
 
   async commit(expected: { sha256: string; sizeBytes: number }): Promise<BlobId> {
+    // Flush before publishing: the row commits with fsync, so the bytes must not lag it.
+    await this.handle?.sync();
     await this.close();
     const sizeBytes = (await stat(this.path)).size;
     const sha256 = await sha256OfFile(this.path);
