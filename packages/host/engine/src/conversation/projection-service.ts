@@ -8,6 +8,7 @@ import type {
   ConversationGraphTurn,
   ConversationReadItem,
   ConversationTurn,
+  ConversationTurnState,
   ConversationWatermark,
   RunId,
   SessionId,
@@ -27,7 +28,7 @@ import { encodeLiveBranchCursor } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationCheckpointService } from './checkpoint-service';
 import type { ProviderPartition } from './lineage-attribution';
-import { pathToLeaf } from './lineage-attribution';
+import { pathToLeaf, settledWithProvider } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
 import type { ConversationTurnService } from './turn-service';
@@ -58,6 +59,8 @@ export interface ConversationReadResult {
 }
 
 const INPUT_SUMMARY_MAX_LENGTH = 140;
+/** Turns a peer can see: running or settled. */
+const VISIBLE_TURN_STATES = new Set<ConversationTurnState>(['running', ...TERMINAL_TURN_STATES]);
 const WHITESPACE_RUN_RE = /\s+/g;
 /** One page = one logical tunnel message; oversized reassembly is silently dropped by the tunnel
  * (the history-util.ts byte-budget rationale applies verbatim). */
@@ -95,6 +98,9 @@ export class ConversationProjectionService {
       sessionTurns.sort(byCreation);
       const graphTurns: ConversationGraphTurn[] = [];
       for (let i = 0, len = sessionTurns.length; i < len; i++) {
+        // A turn that has not run yet is the submitting client's alone: peers see it once it runs
+        // or fails, which is also when the tree announces it.
+        if (!VISIBLE_TURN_STATES.has(sessionTurns[i].state)) continue;
         const summary = yield* inputSummary(sessionTurns[i]);
         graphTurns.push(
           summary === undefined ? sessionTurns[i] : { ...sessionTurns[i], inputSummary: summary },
@@ -157,11 +163,9 @@ export class ConversationProjectionService {
         }
         offset = decoded.offset;
       }
-      // Positional attribution is sound only on the active lineage: a sibling lineage has the
-      // same path length by construction (and can carry identical prompt text on a retry), so an
-      // inactive-leaf read renders host rows + placeholders until per-turn bindings (CODE-632).
-      const isActiveLineage = leafTurnId !== undefined && leafTurnId === record.activeLeafTurnId;
-      const durable = yield* composeDurable(record, path, isActiveLineage);
+      const activePath =
+        leafTurnId === record.activeLeafTurnId ? path : pathToLeaf(byId, record.activeLeafTurnId);
+      const durable = yield* composeDurable(record, path, activePath);
       const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
       const { events, nextOffset } = pageReadItems(
         durable,
@@ -194,35 +198,58 @@ export class ConversationProjectionService {
   private composeDurable(
     record: SessionRecord,
     path: ConversationTurn[],
-    isActiveLineage: boolean,
+    activePath: ConversationTurn[],
   ): Effect.Effect<ConversationReadItem[], OperationError> {
     const { checkpoints, records, turns } = this;
+    const hostContents = (
+      lineage: ConversationTurn[],
+    ): Effect.Effect<(ContentBlock[] | undefined)[], OperationError> =>
+      Effect.forEach(lineage, (turn) => turns.hostUserContent(turn));
     return Effect.gen(function* () {
       const items: ConversationReadItem[] = [];
-      const contents: (ContentBlock[] | undefined)[] = [];
-      for (let i = 0, len = path.length; i < len; i++) {
-        contents.push(yield* turns.hostUserContent(path[i]));
-      }
+      const contents = yield* hostContents(path);
       let attributed: ProviderPartition[] = [];
       let leading: AgentHistoryEvent[] = [];
-      // The active lineage reads the live history. An inactive lineage reads only a history of
-      // its own (its leaf run's, when that is not the live one): a sibling that shares the live
-      // history has the same path length by construction, so slicing it positionally would hand
-      // it the active lineage's rows. Reading the corpus also backfills replay bindings.
+      const settled = settledWithProvider(path);
+      const anchor = settled.at(-1);
+      const activeIds = new Set(activePath.map((turn) => turn.turnId));
       const liveHistoryId = records.historyId(record.sessionId);
-      const lineageHistoryId = isActiveLineage
-        ? liveHistoryId
-        : inactiveLineageHistoryId(record, path, liveHistoryId);
-      if (lineageHistoryId !== undefined) {
+      // Reading a corpus also backfills replay bindings on it.
+      const ownHistoryId =
+        anchor === undefined || activeIds.has(anchor.turnId)
+          ? undefined
+          : runHistoryId(record, anchor.runId);
+      if (ownHistoryId !== undefined && ownHistoryId !== liveHistoryId) {
+        // An inactive lineage on a history of its own reads it whole: rows, cursors, and bindings
+        // all live there — never the live copy a later fork made of its prefix.
         const attribution = yield* checkpoints.attributeLineage(
           record,
           path,
           contents,
-          lineageHistoryId,
+          ownHistoryId,
         );
         if (attribution !== undefined) {
           attributed = attribution.attributed;
           leading = attribution.leading;
+        }
+      } else if (anchor !== undefined) {
+        // The turns a lineage shares with the active one read where the active lineage reads: the
+        // live history, verified from the start, cut to that shared prefix. Whatever lies beyond
+        // stays a placeholder — a sibling sharing the live history has the same path length by
+        // construction (and can repeat the prompt text on a retry), so slicing it positionally
+        // would hand it the active lineage's rows.
+        const shared = settled.filter((turn) => activeIds.has(turn.turnId)).length;
+        if (shared > 0) {
+          const attribution = yield* checkpoints.attributeLineage(
+            record,
+            activePath,
+            activePath === path ? contents : yield* hostContents(activePath),
+            liveHistoryId,
+          );
+          if (attribution !== undefined) {
+            attributed = attribution.attributed.slice(0, shared);
+            leading = attribution.leading;
+          }
         }
       }
       for (let i = 0, len = leading.length; i < len; i++) {
@@ -465,17 +492,6 @@ function projectedItem(
 
 function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
   return record.runs.find((run) => run.runId === runId)?.historyId;
-}
-
-function inactiveLineageHistoryId(
-  record: SessionRecord,
-  path: readonly ConversationTurn[],
-  liveHistoryId: AgentHistoryId | undefined,
-): AgentHistoryId | undefined {
-  const leaf = path.at(-1);
-  if (leaf === undefined) return;
-  const historyId = runHistoryId(record, leaf.runId);
-  return historyId === liveHistoryId ? undefined : historyId;
 }
 
 function projectedUserRow(

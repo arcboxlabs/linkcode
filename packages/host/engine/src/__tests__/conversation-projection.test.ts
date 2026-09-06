@@ -411,12 +411,13 @@ describe('conversation projection attribution gate', () => {
     await store.saveTurn(shellTurn('turn-b2', 'turn-a', 'b', 'completed', 2));
 
     // The inactive sibling B1 carries IDENTICAL prompt text to the active B2: counts and
-    // fingerprints both pass, so only the active-lineage gate stops the mis-slice.
+    // fingerprints both pass, so only the active-lineage gate stops the mis-slice. The shared
+    // prefix reads where the active lineage reads.
     const inactive = await Effect.runPromise(
       service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
     );
-    expect(answers(inactive.events)).toEqual([]);
-    expect(placeholderTurnIds(inactive.events)).toEqual(['turn-a', 'turn-b1']);
+    expect(answers(inactive.events)).toEqual([['ans-a', 'turn-a']]);
+    expect(placeholderTurnIds(inactive.events)).toEqual(['turn-b1']);
 
     // The active lineage attributes normally.
     const active = await Effect.runPromise(service.read({ sessionId }));
@@ -461,21 +462,56 @@ describe('conversation projection attribution gate', () => {
       ...shellTurn('turn-b2', 'turn-a', 'b2', 'completed', 2),
       runId: forkRunId,
     });
+    // A continue from B1 that never ran: its own lineage still reads from B1's history.
+    await store.saveTurn({
+      ...shellTurn('turn-c1', 'turn-b1', 'c1', 'failed'),
+      runId: 'run-3' as RunId,
+    });
 
-    const inactive = await Effect.runPromise(
-      service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
-    );
-    expect(answers(inactive.events)).toEqual([
-      ['ans-a', 'turn-a'],
-      ['ans-b1', 'turn-b1'],
-    ]);
-    expect(placeholderTurnIds(inactive.events)).toEqual([]);
+    const expectOwnHistory = async (leafTurnId: TurnId) => {
+      const inactive = await Effect.runPromise(service.read({ sessionId, leafTurnId }));
+      expect(answers(inactive.events)).toEqual([
+        ['ans-a', 'turn-a'],
+        ['ans-b1', 'turn-b1'],
+      ]);
+      expect(placeholderTurnIds(inactive.events)).toEqual([]);
+    };
+    await expectOwnHistory('turn-b1' as TurnId);
+    await expectOwnHistory('turn-c1' as TurnId);
 
     const active = await Effect.runPromise(service.read({ sessionId }));
     expect(answers(active.events)).toEqual([
       ['ans-a2', 'turn-a'],
       ['ans-b2', 'turn-b2'],
     ]);
+  });
+
+  it('reads the shared prefix of a lineage whose leaf failed from the live history', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-l' as TurnId, true),
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-l', 'l'),
+        providerAnswer('ans-l', 'answer l'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-l', 'turn-a', 'l', 'completed', 1));
+    // An edit of L refused at dispatch: a failed sibling on the live run, nothing durable ran.
+    await store.saveTurn(shellTurn('turn-l2', 'turn-a', 'l2', 'failed', 2));
+
+    const failed = await Effect.runPromise(
+      service.read({ sessionId, leafTurnId: 'turn-l2' as TurnId }),
+    );
+    expect(answers(failed.events)).toEqual([['ans-a', 'turn-a']]);
+    expect(placeholderTurnIds(failed.events)).toEqual([]);
+    expect(
+      failed.events.flatMap((item) =>
+        'event' in item && item.event.type === 'user-message' ? [item.turnId] : [],
+      ),
+    ).toEqual(['turn-a', 'turn-l2']);
   });
 
   it('attributes nothing when the trailing extra partition is not the in-flight prompt', async () => {

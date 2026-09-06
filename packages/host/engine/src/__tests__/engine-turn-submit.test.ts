@@ -920,12 +920,15 @@ describe('turn.submit saga', () => {
     await vi.waitFor(() => submittedTurnId(h.sent, 's1'));
     const firstTurnId = submittedTurnId(h.sent, 's1');
     await settleEngineTasks();
-    // One commit, and the turn's own stop (held until then) settled THIS turn with its checkpoint.
+    // One commit, and the turn's own stop (held until then) settled THIS turn with its checkpoint;
+    // the settle re-announces the tree at the same revision.
     expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('completed');
     expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
       expect.objectContaining({ checkpoint: 'after-first', capturedFrom: 'live' }),
     ]);
-    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(1);
+    expect(
+      h.sent.flatMap((p) => (p.kind === 'conversation.graph.changed' ? [p.graphRevision] : [])),
+    ).toEqual([1, 1]);
 
     await submitPrompt(h, 's2', 'second');
     await vi.waitFor(() => expect(adapter.sentInputs).toHaveLength(2));
