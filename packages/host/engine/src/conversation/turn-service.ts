@@ -354,6 +354,20 @@ export class ConversationTurnService {
       if (this.dispatching.get(sessionId)?.turn.turnId === turnId) {
         this.dispatching.delete(sessionId);
       }
+      // A failed turn keeps its ordinal and renders with a state badge, so every device must learn
+      // the tree gained it — the default leaf did not move.
+      const graphRevision = this.records.commitGraphShape(sessionId);
+      const activeLeafTurnId = this.records.get(sessionId)?.activeLeafTurnId;
+      if (graphRevision !== undefined) {
+        this.transport.send(
+          createWireMessage({
+            kind: 'conversation.graph.changed',
+            sessionId,
+            graphRevision,
+            ...(activeLeafTurnId !== undefined && { activeLeafTurnId }),
+          }),
+        );
+      }
       return { ...operation, error };
     });
   }

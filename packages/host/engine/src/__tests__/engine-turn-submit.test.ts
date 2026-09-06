@@ -701,7 +701,10 @@ describe('turn.submit saga', () => {
     const operation = await h.conversationStore.getOperation(OperationIdSchema.parse('op-s1'));
     expect(operation?.state).toBe('failed');
     expect((await h.conversationStore.listTurns(h.sessionId))[0].state).toBe('failed');
-    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
+    // The failed turn keeps its ordinal, so the tree's shape is announced — without a leaf move.
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toEqual([
+      { kind: 'conversation.graph.changed', sessionId: h.sessionId, graphRevision: 1 },
+    ]);
     const [record] = await h.store.load();
     expect(record.activeLeafTurnId).toBeUndefined();
 
@@ -718,7 +721,10 @@ describe('turn.submit saga', () => {
       'failed',
     ]);
     expect(await h.conversationStore.listOpenOperations(h.sessionId)).toHaveLength(0);
-    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toHaveLength(0);
+    expect(h.sent.filter((p) => p.kind === 'conversation.graph.changed')).toEqual([
+      { kind: 'conversation.graph.changed', sessionId: h.sessionId, graphRevision: 1 },
+      { kind: 'conversation.graph.changed', sessionId: h.sessionId, graphRevision: 2 },
+    ]);
   });
 
   it('starts a new root fresh when the created session’s earlier run never wrote provider history', async () => {
