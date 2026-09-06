@@ -78,21 +78,21 @@ export class ConversationCheckpointService {
   }
 
   /**
-   * Attribute the active lineage (`path` root→active leaf, `contents` per path turn) to the
-   * latest provider history under the §9 gate. Side effect: every attributed turn whose
-   * successor row carries a provider cursor gains a `replay` binding on that history, unless a
-   * binding already exists there — a live capture is never overwritten by a cold read.
+   * Attribute one lineage (`path` root→leaf, `contents` per path turn) to the provider history
+   * that lineage wrote — the live history for the active lineage, an inactive lineage's own leaf
+   * run history otherwise — under the §9 gate. Side effect: every attributed turn whose successor
+   * row carries a provider cursor gains a `replay` binding on that history, unless a binding
+   * already exists there — a live capture is never overwritten by a cold read.
    */
-  attributeActiveLineage(
+  attributeLineage(
     record: SessionRecord,
     path: readonly ConversationTurn[],
     contents: ReadonlyArray<ContentBlock[] | undefined>,
+    historyId: AgentHistoryId | undefined,
   ): Effect.Effect<CorpusAttribution | undefined, OperationError> {
-    const { records } = this;
     const readCorpus = this.readCorpus.bind(this);
     const backfill = this.backfill.bind(this);
     return Effect.gen(function* () {
-      const historyId = records.historyId(record.sessionId);
       const expectsProvider = settledWithProvider(path);
       if (historyId === undefined || expectsProvider.length === 0) return;
       const corpus = yield* readCorpus(record, historyId);
@@ -209,7 +209,7 @@ export class ConversationCheckpointService {
     target: ConversationTurn,
   ): Effect.Effect<ForkCut | undefined, OperationError> {
     const { records, turns } = this;
-    const attributeActiveLineage = this.attributeActiveLineage.bind(this);
+    const attributeLineage = this.attributeLineage.bind(this);
     return Effect.gen(function* () {
       const anchor =
         path.find((turn) => turn.turnId === target.turnId) ??
@@ -219,8 +219,8 @@ export class ConversationCheckpointService {
       for (let i = 0, len = path.length; i < len; i++) {
         contents.push(yield* turns.hostUserContent(path[i]));
       }
-      const attribution = yield* attributeActiveLineage(record, path, contents);
       const historyId = records.historyId(record.sessionId);
+      const attribution = yield* attributeLineage(record, path, contents, historyId);
       if (attribution === undefined || historyId === undefined) return;
       const position = settledWithProvider(path).findIndex((turn) => turn.turnId === anchor.turnId);
       const row =
