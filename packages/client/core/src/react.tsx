@@ -110,12 +110,13 @@ export function useConversation(
   sessionId: SessionId | null,
   seed?: ConversationSeed | ConversationProjectionSeed,
   onResync?: (reason: ConversationResyncReason) => void,
+  followLive = true,
 ): Conversation {
   const client = useLinkCodeClient();
   const handleResync = useStableHandler(onResync ?? noop);
   const store = useMemo(
-    () => createConversationStore(client, sessionId, seed, { onResync: handleResync }),
-    [client, sessionId, seed, handleResync],
+    () => createConversationStore(client, sessionId, seed, { onResync: handleResync, followLive }),
+    [client, sessionId, seed, handleResync, followLive],
   );
   return useSyncExternalStore(store.subscribe, store.getSnapshot);
 }

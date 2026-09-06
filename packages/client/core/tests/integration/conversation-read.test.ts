@@ -8,7 +8,7 @@ import type {
 import { createWireMessage } from '@linkcode/transport';
 import { describe, expect, it } from 'vitest';
 import type { ConversationReadPage } from '../../src/client';
-import { readConversationProjection } from '../../src/conversation-read';
+import { readConversationProjection, readConversationSeed } from '../../src/conversation-read';
 import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-read' as SessionId;
@@ -153,6 +153,25 @@ describe('readConversationProjection', () => {
     );
 
     await expect(readConversationProjection(client, sessionId)).resolves.toBeUndefined();
+    close();
+  });
+
+  it('reads toward the leaf a seed source names instead of the active one', async () => {
+    const parked = 'turn-old' as TurnId;
+    const { client, requests, close } = await readingHarness(() =>
+      page([userRow('turn-old', 'old version')], {
+        leafTurnId: parked,
+        watermark: { epoch: 1, seq: 4 },
+      }),
+    );
+    const seed = await readConversationSeed(client, {
+      sessionId,
+      agentKind: 'codex',
+      cwd: '/repo',
+      leafTurnId: parked,
+    });
+    expect(requests.map((request) => request.leafTurnId)).toEqual([parked]);
+    expect(seed !== undefined && 'items' in seed ? seed.leafTurnId : undefined).toBe(parked);
     close();
   });
 });
