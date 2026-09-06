@@ -196,7 +196,7 @@ export class ConversationProjectionService {
     path: ConversationTurn[],
     isActiveLineage: boolean,
   ): Effect.Effect<ConversationReadItem[], OperationError> {
-    const { checkpoints, turns } = this;
+    const { checkpoints, records, turns } = this;
     return Effect.gen(function* () {
       const items: ConversationReadItem[] = [];
       const contents: (ContentBlock[] | undefined)[] = [];
@@ -205,9 +205,21 @@ export class ConversationProjectionService {
       }
       let attributed: ProviderPartition[] = [];
       let leading: AgentHistoryEvent[] = [];
-      if (isActiveLineage) {
-        // Reading the corpus also backfills replay bindings for the attributed turns.
-        const attribution = yield* checkpoints.attributeActiveLineage(record, path, contents);
+      // The active lineage reads the live history. An inactive lineage reads only a history of
+      // its own (its leaf run's, when that is not the live one): a sibling that shares the live
+      // history has the same path length by construction, so slicing it positionally would hand
+      // it the active lineage's rows. Reading the corpus also backfills replay bindings.
+      const liveHistoryId = records.historyId(record.sessionId);
+      const lineageHistoryId = isActiveLineage
+        ? liveHistoryId
+        : inactiveLineageHistoryId(record, path, liveHistoryId);
+      if (lineageHistoryId !== undefined) {
+        const attribution = yield* checkpoints.attributeLineage(
+          record,
+          path,
+          contents,
+          lineageHistoryId,
+        );
         if (attribution !== undefined) {
           attributed = attribution.attributed;
           leading = attribution.leading;
@@ -453,6 +465,17 @@ function projectedItem(
 
 function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
   return record.runs.find((run) => run.runId === runId)?.historyId;
+}
+
+function inactiveLineageHistoryId(
+  record: SessionRecord,
+  path: readonly ConversationTurn[],
+  liveHistoryId: AgentHistoryId | undefined,
+): AgentHistoryId | undefined {
+  const leaf = path.at(-1);
+  if (leaf === undefined) return;
+  const historyId = runHistoryId(record, leaf.runId);
+  return historyId === liveHistoryId ? undefined : historyId;
 }
 
 function projectedUserRow(

@@ -52,14 +52,14 @@ function stamped(seq: number, turnId: TurnId, event: AgentEvent): JournaledEvent
 }
 
 class CannedHistoryAdapter extends FakeAdapter {
-  constructor(private readonly events: AgentHistoryEvent[]) {
+  constructor(private readonly eventsFor: (historyId: string) => AgentHistoryEvent[]) {
     super();
   }
 
   override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
     return Promise.resolve({
       session: { historyId: opts.historyId, kind: this.kind, cwd: '/repo', createdAt: 1 },
-      events: [...this.events],
+      events: [...this.eventsFor(opts.historyId)],
     });
   }
 }
@@ -68,7 +68,10 @@ async function makeService(opts: {
   journals: ConversationLiveJournals;
   record: SessionRecord;
   openRequests?: AgentEvent[];
+  /** One corpus for every history id. */
   historyEvents?: AgentHistoryEvent[];
+  /** A corpus per history id — forked lineages read different histories. */
+  historiesById?: Record<string, AgentHistoryEvent[]>;
 }) {
   const runTask = (effect: Effect.Effect<void>) => {
     void Effect.runPromise(effect);
@@ -85,8 +88,11 @@ async function makeService(opts: {
   records.register(opts.record);
   const store = new InMemoryConversationStore();
   const turns = new ConversationTurnService(store, records, transport, runTask);
+  const { historyEvents, historiesById } = opts;
   const history = new HistoryService(() =>
-    opts.historyEvents ? new CannedHistoryAdapter(opts.historyEvents) : new FakeAdapter(),
+    historyEvents || historiesById
+      ? new CannedHistoryAdapter((historyId) => historiesById?.[historyId] ?? historyEvents ?? [])
+      : new FakeAdapter(),
   );
   const service = new ConversationProjectionService(
     turns,
@@ -419,6 +425,57 @@ describe('conversation projection attribution gate', () => {
       ['ans-b', 'turn-b2'],
     ]);
     expect(placeholderTurnIds(active.events)).toEqual([]);
+  });
+
+  it('attributes an inactive lineage against its own run history, never the live one', async () => {
+    const forkRunId = 'run-2' as RunId;
+    const record: SessionRecord = {
+      ...makeRecord('turn-b2' as TurnId, true),
+      runs: [
+        { runId, startedAt: 1, historyId: asHistoryId('hist-1') },
+        { runId: forkRunId, startedAt: 2, historyId: asHistoryId('hist-2') },
+      ],
+    };
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record,
+      historiesById: {
+        'hist-1': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a', 'answer a'),
+          providerUser('u-b1', 'b1'),
+          providerAnswer('ans-b1', 'answer b1'),
+        ],
+        // The fork copied the prefix, then the sibling's own turn ran here.
+        'hist-2': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a2', 'answer a'),
+          providerUser('u-b2', 'b2'),
+          providerAnswer('ans-b2', 'answer b2'),
+        ],
+      },
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-b1', 'turn-a', 'b1', 'completed', 1));
+    await store.saveTurn({
+      ...shellTurn('turn-b2', 'turn-a', 'b2', 'completed', 2),
+      runId: forkRunId,
+    });
+
+    const inactive = await Effect.runPromise(
+      service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
+    );
+    expect(answers(inactive.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b1', 'turn-b1'],
+    ]);
+    expect(placeholderTurnIds(inactive.events)).toEqual([]);
+
+    const active = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(active.events)).toEqual([
+      ['ans-a2', 'turn-a'],
+      ['ans-b2', 'turn-b2'],
+    ]);
   });
 
   it('attributes nothing when the trailing extra partition is not the in-flight prompt', async () => {
