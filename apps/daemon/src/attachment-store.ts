@@ -4,6 +4,7 @@ import type {
   AttachmentSweepWindow,
   StoredAttachment,
 } from '@linkcode/engine';
+import { UploadLeaseGoneError } from '@linkcode/engine';
 import type {
   AttachmentId,
   BlobId,
@@ -136,10 +137,13 @@ export function createAttachmentStore(db: DaemonDatabaseClient): AttachmentStore
           })
           .run();
         if (uploadId !== undefined) {
-          tx.update(uploadLeases)
+          const claimed = tx
+            .update(uploadLeases)
             .set({ blobId: blob.blobId, attachmentId: attachment.attachmentId })
             .where(eq(uploadLeases.uploadId, uploadId))
             .run();
+          // Throwing rolls the whole commit back: no row may outlive the pin that kept its bytes.
+          if (claimed.changes === 0) throw new UploadLeaseGoneError(uploadId);
         }
       });
       return Promise.resolve();

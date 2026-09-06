@@ -13,7 +13,8 @@ import { Effect } from 'effect';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { FsBlobStore } from '../attachment/blob-store';
-import { UPLOAD_LEASE_TTL_MS } from '../attachment/gc';
+import { AttachmentGc, UPLOAD_LEASE_TTL_MS } from '../attachment/gc';
+import { AttachmentIoMutex } from '../attachment/io-mutex';
 import { AttachmentUploadService } from '../attachment/upload-service';
 
 const temporaryDirectories: string[] = [];
@@ -372,6 +373,79 @@ describe('AttachmentUploadService', () => {
       _tag: 'RequestError',
       code: 'invalid_request',
     });
+  });
+
+  it('refuses a dedupe commit whose lease expired and whose blob the reaper unlinked', async () => {
+    let now = 1000;
+    const root = await mkdtemp(join(tmpdir(), 'linkcode-upload-dangling-'));
+    temporaryDirectories.push(root);
+    const blobs = new FsBlobStore(join(root, 'blobs'));
+    const attachments = new InMemoryAttachmentStore();
+    const io = new AttachmentIoMutex();
+    const uploads = new AttachmentUploadService(blobs, attachments, io, () => now);
+    const gc = new AttachmentGc(attachments, blobs, () => now, io);
+    const bytes = Buffer.from('plain text payload');
+    const input = {
+      declaredSha256: sha256(bytes),
+      declaredSize: bytes.byteLength,
+      name: 'a.txt',
+      mimeType: 'text/plain',
+      attachmentKind: 'file',
+    };
+
+    const first = await run(uploads.begin(input));
+    await run(uploads.chunk(first.uploadId, 0, bytes.toString('base64')));
+    const committed = await run(uploads.commit(first.uploadId));
+    const second = await run(uploads.begin(input));
+    expect(second.state).toBe('exists');
+
+    now += UPLOAD_LEASE_TTL_MS + 1;
+    expect((await gc.sweep()).removedBlobs).toEqual([committed.blobId]);
+    expect(await blobs.stat(committed.blobId)).toBeUndefined();
+
+    await expect(run(uploads.commit(second.uploadId))).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'conflict',
+    });
+    expect(await attachments.getBlob(committed.blobId)).toBeUndefined();
+  });
+
+  it('refuses a commit whose lease the store already dropped, writing no row', async () => {
+    const { attachments, uploads } = await makeService();
+    const bytes = Buffer.from('lease dropped underneath');
+    const begun = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'late.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    await run(uploads.chunk(begun.uploadId, 0, bytes.toString('base64')));
+    await attachments.deleteLease(begun.uploadId);
+    await expect(run(uploads.commit(begun.uploadId))).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'conflict',
+    });
+    expect(await attachments.getBlob(blobIdFromSha256(sha256(bytes)))).toBeUndefined();
+  });
+
+  it('keeps only the sniff head of the first chunk, not the whole decoded buffer', async () => {
+    const { uploads } = await makeService();
+    const bytes = Buffer.alloc(ATTACHMENT_UPLOAD_CHUNK_BYTES + 5, 1);
+    const begun = await run(
+      uploads.begin({
+        declaredSha256: sha256(bytes),
+        declaredSize: bytes.byteLength,
+        name: 'big.bin',
+        attachmentKind: 'file',
+      }),
+    );
+    await run(uploads.chunk(begun.uploadId, 0, chunksOf(bytes)[0].data));
+    const live = (uploads as unknown as { live: Map<string, { head: Uint8Array }> }).live.get(
+      begun.uploadId,
+    );
+    expect(live?.head.buffer.byteLength).toBeLessThanOrEqual(16);
   });
 });
 

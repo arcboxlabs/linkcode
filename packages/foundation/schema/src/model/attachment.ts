@@ -42,13 +42,19 @@ export type BlobRecord = z.infer<typeof BlobRecordSchema>;
 export const AttachmentKindSchema = z.string().min(1).max(32);
 
 export const MAX_ATTACHMENT_METADATA_BYTES = 4096;
+/** Both ride every projected user row, so an unbounded value would outgrow a tunnel frame. */
+export const MAX_ATTACHMENT_NAME_LENGTH = 255;
+export const MAX_MIME_TYPE_LENGTH = 128;
+
+export const AttachmentNameSchema = z.string().min(1).max(MAX_ATTACHMENT_NAME_LENGTH);
+export const MimeTypeSchema = z.string().min(1).max(MAX_MIME_TYPE_LENGTH);
 
 /** Business identity of one attachment; many records may share one blob. */
 export const AttachmentRecordSchema = z.object({
   attachmentId: AttachmentIdSchema,
   kind: AttachmentKindSchema,
-  name: z.string().min(1),
-  mimeType: z.string().min(1),
+  name: AttachmentNameSchema,
+  mimeType: MimeTypeSchema,
   sizeBytes: z.number().int().nonnegative(),
   metadata: z
     .record(z.string(), z.unknown())
@@ -76,8 +82,8 @@ export const UploadLeaseSchema = z.object({
   uploadId: UploadIdSchema,
   declaredSha256: Sha256HexSchema,
   declaredSize: z.number().int().nonnegative(),
-  name: z.string().min(1),
-  mimeType: z.string().min(1).optional(),
+  name: AttachmentNameSchema,
+  mimeType: MimeTypeSchema.optional(),
   kind: AttachmentKindSchema,
   blobId: BlobIdSchema.optional(),
   attachmentId: AttachmentIdSchema.optional(),

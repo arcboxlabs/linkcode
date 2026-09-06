@@ -23,6 +23,14 @@ export interface AttachmentCommit {
   readonly uploadId?: UploadId;
 }
 
+/** `commitAttachment` named a lease that no longer exists: its pin is gone, so the bytes may be too. */
+export class UploadLeaseGoneError extends Error {
+  constructor(uploadId: UploadId, options?: ErrorOptions) {
+    super(`Upload lease is gone: ${uploadId}`, options);
+    this.name = 'UploadLeaseGoneError';
+  }
+}
+
 export interface AttachmentSweepWindow {
   readonly now: Timestamp;
   /** Rows created at or after this instant are never collected: their root may be one
@@ -46,7 +54,8 @@ export interface AttachmentStore {
   beginUpload(lease: UploadLease): Promise<UploadLease>;
   deleteLease(uploadId: UploadId): Promise<void>;
   /** Atomic: the blob row (if new), the attachment with its `original` variant, and the lease
-   * pointed at the attachment. */
+   * pointed at the attachment. Rejects with `UploadLeaseGoneError` when `uploadId` names no live
+   * lease — nothing is written, since the reaper may already have unlinked the pinned bytes. */
   commitAttachment(commit: AttachmentCommit): Promise<void>;
   /** Whether a prompt of a turn in `sessionId`, or a session resource of that session, names the
    * attachment. Integrity, not confidentiality — every peer of this store is one account. */
@@ -115,12 +124,15 @@ export class InMemoryAttachmentStore implements AttachmentStore {
   }
 
   commitAttachment({ attachment, blob, uploadId }: AttachmentCommit): Promise<void> {
+    const lease = uploadId === undefined ? undefined : this.leases.get(uploadId);
+    if (uploadId !== undefined && lease === undefined) {
+      return Promise.reject(new UploadLeaseGoneError(uploadId));
+    }
     if (!this.blobs.has(blob.blobId)) this.blobs.set(blob.blobId, structuredClone(blob));
     this.attachments.set(attachment.attachmentId, {
       ...structuredClone(attachment),
       blobId: blob.blobId,
     });
-    const lease = uploadId === undefined ? undefined : this.leases.get(uploadId);
     if (lease) {
       this.leases.set(lease.uploadId, {
         ...lease,

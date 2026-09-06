@@ -13,6 +13,7 @@ export {
   type AttachmentSweepWindow,
   InMemoryAttachmentStore,
   type StoredAttachment,
+  UploadLeaseGoneError,
 } from './attachment/attachment-store';
 export { type BlobStage, type BlobStore, FsBlobStore } from './attachment/blob-store';
 export type { LoopStore, ScheduleStore } from './automation';
