@@ -205,4 +205,22 @@ describe('dev mock attachment store', () => {
     await sending;
     client.dispose();
   });
+
+  it('refuses a legacy inline image whose bytes are not the declared type', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    await expect(
+      client.send(sessionId, {
+        type: 'prompt',
+        content: [
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'),
+          },
+        ],
+      }),
+    ).rejects.toThrow('File contents are not image/png');
+    client.dispose();
+  });
 });

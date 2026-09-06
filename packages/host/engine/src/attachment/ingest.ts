@@ -1,10 +1,16 @@
 import { Buffer } from 'node:buffer';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AttachmentId, ContentBlock, PromptBlock } from '@linkcode/schema';
-import { AttachmentIdSchema, blobIdFromSha256, MAX_ATTACHMENT_NAME_LENGTH } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  blobIdFromSha256,
+  declaredMimeTypeMatches,
+  MAX_ATTACHMENT_NAME_LENGTH,
+} from '@linkcode/schema';
 import { Effect } from 'effect';
+import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
-import { OperationError } from '../failure';
+import { OperationError, RequestError } from '../failure';
 import type { AttachmentStore } from './attachment-store';
 import type { BlobStore } from './blob-store';
 import type { AttachmentIoMutex } from './io-mutex';
@@ -57,15 +63,33 @@ export class AttachmentIngest {
 
   /** Durable blocks for legacy prompt content: inline images are stored and referenced, so the
    * row keeps them after the live echo is gone. Other binary blocks were refused at admit. */
-  promptBlocks(content: readonly ContentBlock[]): Effect.Effect<PromptBlock[], OperationError> {
+  promptBlocks(
+    content: readonly ContentBlock[],
+  ): Effect.Effect<PromptBlock[], OperationError | RequestError> {
+    const images = new Map<number, Buffer>();
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
+      if (block.type !== 'image') continue;
+      const bytes = Buffer.from(block.data, 'base64');
+      // Every writer into the store sniffs: a mislabeled record is trusted on every later reference.
+      if (!declaredMimeTypeMatches(block.mimeType, bytes.subarray(0, 16))) {
+        return Effect.fail(
+          new RequestError({
+            code: 'invalid_request',
+            message: `File contents are not ${block.mimeType}`,
+          }),
+        );
+      }
+      images.set(i, bytes);
+    }
     return Effect.tryPromise({
       try: () =>
         Promise.all(
-          content.map(async (block): Promise<PromptBlock | undefined> => {
+          content.map(async (block, index): Promise<PromptBlock | undefined> => {
             if (block.type === 'text') return { type: 'text', text: block.text };
             if (block.type !== 'image') return;
             // The legacy block's name is unbounded; the record's is not.
-            const attachmentId = await this.store(Buffer.from(block.data, 'base64'), {
+            const attachmentId = await this.store(nullthrow(images.get(index)), {
               kind: 'image',
               name: (block.name || 'image').slice(0, MAX_ATTACHMENT_NAME_LENGTH),
               mimeType: block.mimeType,

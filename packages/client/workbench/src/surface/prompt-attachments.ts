@@ -89,12 +89,12 @@ export async function stageStoreAttachment(
   client: Pick<LinkCodeClient, 'putAttachment'>,
   file: File,
   pending: ComposerAttachment,
-  errors: { unsupportedType: string },
+  errors: { contentMismatch: string },
 ): Promise<ComposerAttachment> {
   const bytes = new Uint8Array(await file.arrayBuffer());
   // The daemon sniffs at commit; refusing here saves the transfer of a mislabeled file.
   if (!declaredMimeTypeMatches(file.type, bytes.subarray(0, 16))) {
-    throw new Error(errors.unsupportedType);
+    throw new Error(errors.contentMismatch);
   }
   const kind = pending.kind === 'image' ? 'image' : 'file';
   const { attachmentId } = await client.putAttachment({

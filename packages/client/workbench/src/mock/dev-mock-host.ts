@@ -1507,6 +1507,17 @@ export class DevMockHost {
     session: MockSession,
     content: ContentBlock[],
   ): Promise<void> {
+    // The daemon sniffs before it stores; a mislabeled inline image is refused before any echo.
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
+      if (block.type !== 'image') continue;
+      if (!declaredMimeTypeMatches(block.mimeType, mockBase64ToBytes(block.data).subarray(0, 16))) {
+        this.sendFailure(replyTo, `File contents are not ${block.mimeType}`, {
+          code: 'invalid_request',
+        });
+        return;
+      }
+    }
     const turn = this.beginTurn(session, content);
     turn.readContent = await this.ingestInlineImages(session.sessionId, content);
     const result = await this.streamMockReply(session, content);
