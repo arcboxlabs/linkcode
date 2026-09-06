@@ -72,6 +72,9 @@ export const SessionRunSchema = z.object({
   approvalPolicyId: ApprovalPolicyIdSchema.optional(),
   startedAt: TimestampSchema,
   endedAt: TimestampSchema.optional(),
+  /** Launched onto other provider history for a submit whose turn never ran; that history is not
+   * the thread's, so history resolution skips the run. */
+  abandonedAt: TimestampSchema.optional(),
 });
 export type SessionRun = z.infer<typeof SessionRunSchema>;
 

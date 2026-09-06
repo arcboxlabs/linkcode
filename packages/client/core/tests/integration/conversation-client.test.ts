@@ -1,5 +1,5 @@
 import type { RunId, SessionId, TurnId } from '@linkcode/schema';
-import { AttachmentIdSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { AttachmentIdSchema, CONVERSATION_GRAPH_WIRE_VERSION } from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
@@ -25,8 +25,8 @@ describe('LinkCodeClient conversation graph API', () => {
         serverTransport.send(
           createWireMessage({
             kind: 'pong',
-            version: WIRE_PROTOCOL_VERSION - 1,
-            minCompatible: WIRE_PROTOCOL_VERSION - 4,
+            version: CONVERSATION_GRAPH_WIRE_VERSION - 1,
+            minCompatible: CONVERSATION_GRAPH_WIRE_VERSION - 4,
           }),
         );
       }

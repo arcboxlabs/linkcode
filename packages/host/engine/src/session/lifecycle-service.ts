@@ -455,6 +455,7 @@ export class SessionLifecycleService {
   submitTurn(request: TurnSubmitRequest): Effect.Effect<TerminalOperation, EngineFailure> {
     const { sessions, turns } = this;
     const admitSubmit = this.admitSubmit.bind(this);
+    const abandonRelaunch = this.abandonRelaunch.bind(this);
     const relaunch = this.relaunch.bind(this);
     const resumeSession = this.resumeSession.bind(this);
     const materializeSubmitInput = this.materializeSubmitInput.bind(this);
@@ -479,6 +480,13 @@ export class SessionLifecycleService {
         );
       }
       const { intent, launch } = yield* admitSubmit(request);
+      // A relaunch onto other provider history becomes the thread's only if its turn runs; a
+      // failed one is unwound, or the next plain send would continue the child's history under
+      // the unmoved leaf.
+      const unwindLaunch =
+        launch.type === 'continue' || (launch.type === 'resume' && launch.historyId === undefined)
+          ? Effect.void
+          : abandonRelaunch(request.sessionId, intent.turn.runId);
       const dispatch = Effect.gen(function* () {
         if (launch.type !== 'continue') {
           const { runId } = intent.turn;
@@ -558,7 +566,8 @@ export class SessionLifecycleService {
               ),
             ),
           // Any post-persist failure resolves the operation; a retry replays this stored error.
-          onFailure: (error) => turns.resolveFailed(intent, toRequestFailure(error)),
+          onFailure: (error) =>
+            turns.resolveFailed(intent, toRequestFailure(error)).pipe(Effect.tap(unwindLaunch)),
         }),
         // Interrupts and defects bypass the typed match; the open operation must still resolve,
         // or the session wedges `busy` until the daemon restarts.
@@ -572,11 +581,28 @@ export class SessionLifecycleService {
                     error.cause,
                   ),
                 ),
-                Effect.asVoid,
+                Effect.andThen(unwindLaunch),
               )
             : Effect.void,
         ),
       );
+    });
+  }
+
+  /** Unwind a relaunch whose turn never ran: the run is marked first, so the thread's history
+   * resolves past it even if stopping the child adapter fails. */
+  private abandonRelaunch(sessionId: SessionId, runId: RunId): Effect.Effect<void> {
+    const { records, sessions } = this;
+    return Effect.suspend(() => {
+      records.abandonRun(sessionId, runId);
+      if (sessions.liveRunId(sessionId) !== runId) return Effect.void;
+      return sessions
+        .stop(sessionId)
+        .pipe(
+          Effect.catch((error) =>
+            Effect.logError('Failed to stop the abandoned relaunch', { sessionId }, error.cause),
+          ),
+        );
     });
   }
 
@@ -630,24 +656,30 @@ export class SessionLifecycleService {
               );
             }
             parentTurnId = null;
-            // Editing "the first prompt" starts fresh only when nothing can precede a root here;
-            // otherwise the active lineage's root names the hidden history the new root forks after.
+            // Editing "the first prompt" starts fresh only when nothing can precede a root here.
+            // The session's FIRST root answers that — a later root, relaunched fresh, would read
+            // the earlier runs as hidden history of its own — while the cut anchors on the active
+            // lineage's root, whose history holds whatever the hidden prefix is.
             const existingTurns = yield* turns.listTurns(request.sessionId);
-            const root = pathToLeaf(
-              new Map(existingTurns.map((turn) => [turn.turnId, turn])),
-              record.activeLeafTurnId,
-            ).at(0);
+            const firstRoot = existingTurns.find(
+              (turn) => turn.parentTurnId === null && turn.siblingOrdinal === 1,
+            );
+            const activeRoot =
+              pathToLeaf(
+                new Map(existingTurns.map((turn) => [turn.turnId, turn])),
+                record.activeLeafTurnId,
+              ).at(0) ?? firstRoot;
             const nothingPrecedes =
-              root === undefined
+              firstRoot === undefined
                 ? records.historyId(request.sessionId) === undefined
-                : !hasHiddenPrefix(record, root);
+                : !hasHiddenPrefix(record, firstRoot);
             if (nothingPrecedes) {
               launch = { type: 'fresh' };
             } else {
               const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
               const cut =
-                forkable && root !== undefined
-                  ? yield* checkpoints.forkCutBefore(record, root.turnId)
+                forkable && activeRoot !== undefined
+                  ? yield* checkpoints.forkCutBefore(record, activeRoot.turnId)
                   : undefined;
               if (cut === undefined) {
                 return yield* Effect.fail(

@@ -7,7 +7,9 @@ import type {
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentInput,
+  ConversationTurn,
   MessageId,
+  RunId,
   SessionId,
   StartOptions,
   TurnId,
@@ -101,6 +103,17 @@ class ForkingAdapter extends FakeAdapter {
     this.startedWith = startOpts;
     this.emit({ type: 'session-ref', historyId: asHistoryId('native-child') });
     return Promise.resolve();
+  }
+}
+
+/** The fork child binds its own history, then the provider refuses the prompt. */
+class ForkThenRejectAdapter extends ForkingAdapter {
+  override send(input: AgentInput): Promise<void> {
+    if (this.branchedFrom === null) return super.send(input);
+    this.sentInputs.push(input);
+    this.emit({ type: 'status', status: 'running' });
+    this.emit({ type: 'status', status: 'idle' });
+    return Promise.reject(new Error('provider refused the prompt'));
   }
 }
 
@@ -215,6 +228,19 @@ function submittedTurnId(sent: WirePayload[], replyTo: string): TurnId {
   );
   if (reply?.kind !== 'turn.submitted') throw new Error(`no turn.submitted for ${replyTo}`);
   return reply.turnId;
+}
+
+/** The history `session.list` reports for the harness session — what a relaunch would resume. */
+async function listedHistoryId(
+  h: Pick<ReturnType<typeof harness>, 'inject' | 'sent'> & { sessionId: SessionId },
+) {
+  const clientReqId = `ls-${h.sent.length}`;
+  await h.inject({ kind: 'session.list', clientReqId });
+  const reply = h.sent.find(
+    (payload) => payload.kind === 'session.listed' && payload.replyTo === clientReqId,
+  );
+  if (reply?.kind !== 'session.listed') throw new Error('no session.listed reply');
+  return nullthrow(reply.sessions.find((session) => session.sessionId === h.sessionId)).historyId;
 }
 
 function failure(sent: WirePayload[], replyTo: string) {
@@ -532,6 +558,97 @@ describe('turn.submit saga', () => {
     expect(h.adapters.every((adapter) => (adapter as ForkingAdapter).branchedFrom === null)).toBe(
       true,
     );
+  });
+
+  it('a fork whose dispatch fails leaves the thread on its own history, never on the fork child', async () => {
+    const h = await startedHarness(() => new ForkThenRejectAdapter());
+    const firstTurnId = await twoCheckpointedTurns(h);
+    const secondTurnId = submittedTurnId(h.sent, 's2');
+
+    await submitPrompt(h, 's3', 'edited second', {
+      parentTurnId: firstTurnId,
+      expectedGraphRevision: 2,
+    });
+    await vi.waitFor(() => failure(h.sent, 's3'));
+
+    const forked = forkedAdapter(h.adapters);
+    expect(forked.stopped).toBe(true);
+    expect(await listedHistoryId(h)).toBe('native-1');
+    const [record] = await h.store.load();
+    expect(record.activeLeafTurnId).toBe(secondTurnId);
+    expect(record.runs.at(-1)).toMatchObject({ historyId: 'native-child' });
+
+    // The next plain send resumes the thread's history under the old leaf; the child never sees it.
+    await submitPrompt(h, 's4', 'plain after the failure');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's4'));
+    expect(forked.sentInputs).toHaveLength(1);
+    expect(nullthrow(h.adapters.at(-1)).resumedFrom).toBe('native-1');
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === submittedTurnId(h.sent, 's4'))).toMatchObject({
+      parentTurnId: secondTurnId,
+      state: 'running',
+    });
+  });
+
+  it('boot recovery abandons a relaunch that died before its turn ran', async () => {
+    const store = new InMemorySessionStore();
+    const conversationStore = new InMemoryConversationStore();
+    const sessionId = 'sess-boot' as SessionId;
+    const sourceRunId = 'run-source' as RunId;
+    const childRunId = 'run-child' as RunId;
+    await store.save({
+      sessionId,
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 3,
+      runs: [
+        { runId: sourceRunId, historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 3 },
+        {
+          runId: childRunId,
+          baseTurnId: 'turn-a' as TurnId,
+          historyId: asHistoryId('native-child'),
+          startedAt: 3,
+        },
+      ],
+      activeLeafTurnId: 'turn-l' as TurnId,
+      graphRevision: 2,
+      eventEpoch: 2,
+    });
+    const turn = (
+      turnId: string,
+      parentTurnId: string | null,
+      siblingOrdinal: number,
+      runId: RunId,
+      state: 'completed' | 'dispatching',
+    ): ConversationTurn => ({
+      turnId: turnId as TurnId,
+      sessionId,
+      parentTurnId: parentTurnId as TurnId | null,
+      siblingOrdinal,
+      input: { type: 'shell-command', command: turnId },
+      runId,
+      state,
+      createdAt: siblingOrdinal,
+    });
+    await conversationStore.saveTurn(turn('turn-a', null, 1, sourceRunId, 'completed'));
+    await conversationStore.saveTurn(turn('turn-l', 'turn-a', 1, sourceRunId, 'completed'));
+    await conversationStore.saveTurn(turn('turn-x', 'turn-a', 2, childRunId, 'dispatching'));
+
+    const h = harness(store, undefined, undefined, undefined, undefined, undefined, {
+      conversationStore,
+    });
+    await h.engine.start();
+
+    const turns = await conversationStore.listTurns(sessionId);
+    expect(turns.find((candidate) => candidate.turnId === 'turn-x')).toMatchObject({
+      state: 'failed',
+    });
+    const [record] = await store.load();
+    expect(record.runs.find((run) => run.runId === childRunId)?.abandonedAt).toBeTypeOf('number');
+    expect(record.activeLeafTurnId).toBe('turn-l');
+    expect(await listedHistoryId({ ...h, sessionId })).toBe('native-1');
   });
 
   it('falls back to the parent’s binding on the current history when its own run’s history is dead', async () => {
@@ -995,6 +1112,35 @@ describe('turn.submit saga', () => {
       parentTurnId: null,
       siblingOrdinal: 2,
       state: 'running',
+    });
+  });
+
+  it('a second root edit on a created session still starts fresh', async () => {
+    const h = await startedHarness(() => new ForkingAdapter());
+    await submitPrompt(h, 's1', 'first');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await submitPrompt(h, 's2', 'new root', { parentTurnId: null, expectedGraphRevision: 1 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const second = nullthrow(h.adapters[1]);
+    second.emit({ type: 'session-ref', historyId: asHistoryId('native-2') });
+    second.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    // The first root's run decides: nothing preceded it, so nothing precedes any root here — the
+    // fresh second root's own history is not hidden history behind a third.
+    await submitPrompt(h, 's3', 'third root', { parentTurnId: null, expectedGraphRevision: 2 });
+    await vi.waitFor(() => submittedTurnId(h.sent, 's3'));
+
+    const third = nullthrow(h.adapters[2]) as ForkingAdapter;
+    expect(third.branchedFrom).toBeNull();
+    expect(third.resumedFrom).toBeNull();
+    expect(third.startedWith).not.toBeNull();
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    expect(turns.find((turn) => turn.turnId === submittedTurnId(h.sent, 's3'))).toMatchObject({
+      parentTurnId: null,
+      siblingOrdinal: 3,
     });
   });
 
