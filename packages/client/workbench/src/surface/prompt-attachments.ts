@@ -7,7 +7,12 @@ import type {
   PromptBlock,
   SessionId,
 } from '@linkcode/schema';
-import { AttachmentIdSchema, attachmentIdFromUri, attachmentUri } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  attachmentIdFromUri,
+  attachmentUri,
+  declaredMimeTypeMatches,
+} from '@linkcode/schema';
 import type { ComposerAttachment } from '@linkcode/ui';
 
 const objectUrls = new Map<string, string>();
@@ -81,11 +86,16 @@ function storedAttachmentResourceLink(
 }
 
 export async function stageStoreAttachment(
-  client: LinkCodeClient,
+  client: Pick<LinkCodeClient, 'putAttachment'>,
   file: File,
   pending: ComposerAttachment,
+  errors: { unsupportedType: string },
 ): Promise<ComposerAttachment> {
   const bytes = new Uint8Array(await file.arrayBuffer());
+  // The daemon sniffs at commit; refusing here saves the transfer of a mislabeled file.
+  if (!declaredMimeTypeMatches(file.type, bytes.subarray(0, 16))) {
+    throw new Error(errors.unsupportedType);
+  }
   const kind = pending.kind === 'image' ? 'image' : 'file';
   const { attachmentId } = await client.putAttachment({
     bytes,
@@ -102,7 +112,7 @@ export async function stageStoreAttachment(
 }
 
 export async function stageStoreAttachmentFromBase64(
-  client: LinkCodeClient,
+  client: Pick<LinkCodeClient, 'putAttachment'>,
   pending: ComposerAttachment,
   content: string,
   mimeType: string | undefined,
@@ -134,6 +144,17 @@ interface PendingUserRow {
 interface InflightUserAttachments {
   readonly blocks: readonly ContentBlock[];
   readonly startedAt: number;
+  /** The echo is text-only; matching its text keeps the refs off another author's row. */
+  readonly text: string;
+}
+
+function promptTextOf(blocks: readonly ContentBlock[]): string {
+  let text = '';
+  for (let i = 0, len = blocks.length; i < len; i++) {
+    const block = blocks[i];
+    if (block.type === 'text') text += block.text;
+  }
+  return text;
 }
 
 /** Replaced wholesale on every change: the render reads this snapshot, never the module maps. */
@@ -179,7 +200,7 @@ export function noteInflightUserAttachments(
   const refs = storedAttachmentBlocks(blocks);
   if (refs.length === 0) return;
   updatePending((_pending, inflight) => {
-    inflight.set(sessionId, { blocks: refs, startedAt: Date.now() });
+    inflight.set(sessionId, { blocks: refs, startedAt: Date.now(), text: promptTextOf(blocks) });
   });
 }
 
@@ -228,6 +249,7 @@ export function overlayPendingUserAttachments(
       const item = next[i];
       if (item.kind !== 'message' || item.role !== 'user') continue;
       if (item.receivedAt === undefined || item.receivedAt < live.startedAt) continue;
+      if (promptTextOf(item.blocks) !== live.text) continue;
       if (!item.blocks.some(isStoredAttachmentBlock)) {
         next[i] = { ...item, blocks: [...item.blocks, ...live.blocks] };
         changed = true;

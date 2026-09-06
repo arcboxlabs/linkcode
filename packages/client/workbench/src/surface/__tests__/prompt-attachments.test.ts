@@ -1,7 +1,8 @@
-import type { Conversation } from '@linkcode/client-core';
+import type { Conversation, LinkCodeClient } from '@linkcode/client-core';
 import type { ContentBlock, SessionId, TurnId } from '@linkcode/schema';
 import { AttachmentIdSchema, userRowMessageId } from '@linkcode/schema';
-import { describe, expect, it } from 'vitest';
+import type { ComposerAttachment } from '@linkcode/ui';
+import { describe, expect, it, vi } from 'vitest';
 import {
   clearInflightUserAttachments,
   isStoredAttachmentBlock,
@@ -10,6 +11,7 @@ import {
   overlayPendingUserAttachments,
   pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
+  stageStoreAttachment,
 } from '../prompt-attachments';
 
 const sessionId = 'sess-1' as SessionId;
@@ -59,6 +61,25 @@ describe('promptBlocksFromComposer', () => {
         { type: 'resource_link', uri: 'file:///tmp/a.ts', name: 'a.ts' },
       ]),
     ).toBeUndefined();
+  });
+});
+
+describe('stageStoreAttachment', () => {
+  it('refuses bytes that are not the declared image before any upload frame', async () => {
+    const putAttachment = vi.fn<LinkCodeClient['putAttachment']>();
+    const client = { putAttachment };
+    const pending: ComposerAttachment = {
+      id: 'chip-1',
+      kind: 'image',
+      name: 'shot.png',
+      status: 'pending',
+    };
+    const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
+    const file = new File([jpegBytes], 'shot.png', { type: 'image/png' });
+    await expect(
+      stageStoreAttachment(client, file, pending, { unsupportedType: 'not a png' }),
+    ).rejects.toThrow('not a png');
+    expect(putAttachment).not.toHaveBeenCalled();
   });
 });
 
@@ -118,7 +139,7 @@ describe('overlayPendingUserAttachments', () => {
       uri: 'attachment:att-2',
       name: 'later.png',
     };
-    noteInflightUserAttachments(inflightSession, [link]);
+    noteInflightUserAttachments(inflightSession, [{ type: 'text', text: 'look' }, link]);
     const started = Date.now();
     const conversation: Conversation = {
       ...EMPTY,
@@ -161,6 +182,35 @@ describe('overlayPendingUserAttachments', () => {
     ).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }],
     });
+  });
+
+  it('leaves a same-window user row alone when its text is not the sent prompt', () => {
+    const session = 'sess-author' as SessionId;
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-3',
+      name: 'mine.png',
+    };
+    noteInflightUserAttachments(session, [{ type: 'text', text: 'mine' }, link]);
+    const conversation: Conversation = {
+      ...EMPTY,
+      items: [
+        {
+          kind: 'message',
+          id: userRowMessageId('turn-9' as TurnId),
+          turnId: 'turn-9',
+          role: 'user',
+          blocks: [{ type: 'text', text: 'automation prompt' }],
+          isStreaming: false,
+          receivedAt: Date.now() + 1,
+        },
+      ],
+    };
+    expect(
+      overlayPendingUserAttachments(conversation, session, pendingUserAttachmentsSnapshot())
+        .items[0],
+    ).toMatchObject({ blocks: [{ type: 'text', text: 'automation prompt' }] });
+    clearInflightUserAttachments(session);
   });
 
   it('detects stored attachment links', () => {
