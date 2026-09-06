@@ -102,6 +102,7 @@ import type {
   ConversationReadClientOptions,
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  TurnSubmitTarget,
 } from './client/control-channel';
 import { ControlChannel } from './client/control-channel';
 import type { ConversationGraphChange } from './client/conversation-graph-changes';
@@ -139,6 +140,7 @@ export type {
   ConversationReadClientOptions,
   HistoryListClientOptions,
   HistoryReadClientOptions,
+  TurnSubmitTarget,
 } from './client/control-channel';
 export type { ConversationGraphChange } from './client/conversation-graph-changes';
 export type { AgentEventEnvelope, SequencedAgentEvent } from './client/event-buffer';
@@ -848,8 +850,12 @@ export class LinkCodeClient {
   }
 
   /** See {@link ControlChannel.submitTurn}. */
-  submitTurn(sessionId: SessionId, input: TurnSubmitInput): Promise<TurnSubmitResult> {
-    return this.control.submitTurn(sessionId, input);
+  submitTurn(
+    sessionId: SessionId,
+    input: TurnSubmitInput,
+    target?: TurnSubmitTarget,
+  ): Promise<TurnSubmitResult> {
+    return this.control.submitTurn(sessionId, input, target);
   }
 
   /** The newest `conversation.graph.changed` seen for the session on this connection. */

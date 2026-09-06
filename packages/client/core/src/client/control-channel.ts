@@ -102,6 +102,13 @@ export interface ConversationReadClientOptions {
   limit?: number;
 }
 
+/** Where an explicit-parent submit lands: `null` starts a new root lineage (editing the first
+ * prompt); a turn id submits a sibling under that turn (edit) or a child of a leaf (continue). */
+export interface TurnSubmitTarget {
+  parentTurnId: TurnId | null;
+  expectedGraphRevision: number;
+}
+
 /**
  * Correlated control-plane requests (sessions, history, config, git, workspaces); replies are
  * correlated via the shared {@link PendingRegistry} (see {@link sendCorrelated}).
@@ -186,16 +193,26 @@ export class ControlChannel {
   }
 
   /**
-   * Plain send onto the active leaf. `parentTurnId` is omitted on purpose — explicit-parent
-   * submit is a later client. Idempotency is a fresh `operationId` per call.
+   * Without `target`, a plain send onto the active leaf — no parent, no revision, so a device
+   * racing a turn another device just finished never conflicts on staleness. With `target`, the
+   * edit/continue path: the daemon validates the parent and the graph revision. Idempotency is a
+   * fresh `operationId` per call.
    */
-  submitTurn(sessionId: SessionId, input: TurnSubmitInput): Promise<TurnSubmitResult> {
+  submitTurn(
+    sessionId: SessionId,
+    input: TurnSubmitInput,
+    target?: TurnSubmitTarget,
+  ): Promise<TurnSubmitResult> {
     return this.sendCorrelated('turnSubmit', (clientReqId) => ({
       kind: 'turn.submit',
       clientReqId,
       sessionId,
       operationId: OperationIdSchema.parse(`op-${clientReqId}`),
       input,
+      ...(target !== undefined && {
+        parentTurnId: target.parentTurnId,
+        expectedGraphRevision: target.expectedGraphRevision,
+      }),
     }));
   }
 

@@ -102,6 +102,9 @@ export interface ConversationSeedSource {
   agentKind: AgentKind;
   cwd: string;
   historyId?: AgentHistoryId;
+  /** Read toward this leaf instead of the session's active one — a client browsing an earlier
+   * version. Only the projection path knows lineages; the transcript fallback ignores it. */
+  leafTurnId?: TurnId;
 }
 
 /** Transcript pages one history read follows before giving up on a buggy cursor. */
@@ -118,7 +121,11 @@ export async function readConversationSeed(
   source: ConversationSeedSource,
 ): Promise<ConversationProjectionSeed | ConversationSeed | undefined> {
   if (client.supportsConversationGraph) {
-    const projection = await readConversationProjection(client, source.sessionId);
+    const projection = await readConversationProjection(
+      client,
+      source.sessionId,
+      source.leafTurnId === undefined ? {} : { leafTurnId: source.leafTurnId },
+    );
     if (projection !== undefined) return projection;
   }
   if (source.historyId === undefined) return undefined;

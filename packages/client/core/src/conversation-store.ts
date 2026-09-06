@@ -21,6 +21,10 @@ export type ConversationResyncReason = 'epoch' | 'gap' | 'graph';
 export interface ConversationStoreOptions {
   /** Called at most once per store, never during a render, when the seed must be re-read. */
   onResync?: (reason: ConversationResyncReason) => void;
+  /** `false` freezes a projection store at its read: a client browsing an inactive lineage must
+   * not fold the active run's live stream, and a graph change is the owner's business (the
+   * "continued elsewhere" chip), not a re-read. Default `true`. */
+  followLive?: boolean;
 }
 
 const EMPTY_CONVERSATION: Conversation = {
@@ -58,7 +62,13 @@ export function createConversationStore(
     return { subscribe: () => noop, getSnapshot: () => EMPTY_CONVERSATION };
   }
   if (seed !== undefined && 'items' in seed) {
-    return createProjectionStore(client, sessionId, seed, options.onResync ?? noop);
+    return createProjectionStore(
+      client,
+      sessionId,
+      seed,
+      options.onResync ?? noop,
+      options.followLive ?? true,
+    );
   }
   return createHistoryStore(client, sessionId, seed, options.onResync ?? noop);
 }
@@ -86,6 +96,7 @@ function createProjectionStore(
   sessionId: SessionId,
   seed: ConversationProjectionSeed,
   onResync: (reason: ConversationResyncReason) => void,
+  followLive: boolean,
 ): ConversationStore {
   const builder = createConversationBuilder();
   const userMessageIds = new Set<string>();
@@ -141,7 +152,7 @@ function createProjectionStore(
       seeded = true;
       foldSeed();
     }
-    if (client.eventSeq(sessionId) <= consumedSeq) return;
+    if (!followLive || client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq), len = events.length; i < len; i += 1) {
       const entry = events[i];
@@ -167,6 +178,7 @@ function createProjectionStore(
   return {
     subscribe(onStoreChange) {
       sync();
+      if (!followLive) return noop;
       checkGraph(client.latestGraphChange(sessionId));
       const unsubscribeEvents = client.subscribe(sessionId, () => {
         sync();

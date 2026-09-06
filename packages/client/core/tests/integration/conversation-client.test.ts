@@ -140,6 +140,36 @@ describe('LinkCodeClient conversation graph API', () => {
     serverTransport.close();
   });
 
+  it('sends the parent and revision for an explicit-parent turn.submit', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const submitted: unknown[] = [];
+    serverTransport.onMessage((msg) => {
+      const p = msg.payload;
+      if (p.kind !== 'turn.submit') return;
+      submitted.push(p);
+      serverTransport.send(
+        createWireMessage({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: leafTurnId }),
+      );
+    });
+
+    await client.submitTurn(
+      sessionId,
+      { type: 'prompt', blocks: [{ type: 'text', text: 'again' }] },
+      { parentTurnId: null, expectedGraphRevision: 4 },
+    );
+    await client.submitTurn(
+      sessionId,
+      { type: 'prompt', blocks: [{ type: 'text', text: 'onward' }] },
+      { parentTurnId: leafTurnId, expectedGraphRevision: 5 },
+    );
+    expect(submitted).toEqual([
+      expect.objectContaining({ parentTurnId: null, expectedGraphRevision: 4 }),
+      expect.objectContaining({ parentTurnId: leafTurnId, expectedGraphRevision: 5 }),
+    ]);
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('resolves a plain-send turn.submit without parent or revision', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
     const submitted: unknown[] = [];

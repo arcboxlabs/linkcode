@@ -102,6 +102,26 @@ async function harness() {
 const tick = (): Promise<void> => wait(10);
 
 describe('projection conversation store', () => {
+  it('freezes a parked read: live events and graph changes never reach it', async () => {
+    const h = await harness();
+    const store = createConversationStore(
+      h.client,
+      sessionId,
+      seedOf([userRow(1, 'old version')], { epoch: 1, seq: 1 }),
+      { onResync: (reason) => h.resyncs.push(reason), followLive: false },
+    );
+    const unsubscribe = store.subscribe(noop);
+    h.send(echo(2, 'the active lineage moves on'), { epoch: 1, seq: 2 });
+    h.send(chunk('a2', 'streaming into the other version'), { epoch: 1, seq: 3 });
+    h.graphChanged(7, turn(2));
+    await tick();
+
+    expect(texts(store)).toEqual(['old version']);
+    expect(h.resyncs).toEqual([]);
+    unsubscribe();
+    h.close();
+  });
+
   it('folds the read and drops the live events it already covers', async () => {
     const h = await harness();
     h.send(echo(1, 'hello'), { epoch: 1, seq: 1 });
