@@ -356,20 +356,26 @@ export class ConversationTurnService {
       }
       // A failed turn keeps its ordinal and renders with a state badge, so every device must learn
       // the tree gained it — the default leaf did not move.
-      const graphRevision = this.records.commitGraphShape(sessionId);
-      const activeLeafTurnId = this.records.get(sessionId)?.activeLeafTurnId;
-      if (graphRevision !== undefined) {
-        this.transport.send(
-          createWireMessage({
-            kind: 'conversation.graph.changed',
-            sessionId,
-            graphRevision,
-            ...(activeLeafTurnId !== undefined && { activeLeafTurnId }),
-          }),
-        );
-      }
+      this.announceGraph(sessionId, true);
       return { ...operation, error };
     });
+  }
+
+  /** Every device refetches the tree. A node they did not have bumps the revision — the shape
+   * moved; a visible turn reaching its terminal state keeps it — only its badge changed, and a
+   * settle must not turn a peer's in-flight explicit-parent submit into a `conflict`. */
+  private announceGraph(sessionId: SessionId, gainedNode: boolean): void {
+    if (gainedNode) this.records.commitGraphShape(sessionId);
+    const record = this.records.get(sessionId);
+    if (record === undefined) return;
+    this.transport.send(
+      createWireMessage({
+        kind: 'conversation.graph.changed',
+        sessionId,
+        graphRevision: record.graphRevision,
+        ...(record.activeLeafTurnId !== undefined && { activeLeafTurnId: record.activeLeafTurnId }),
+      }),
+    );
   }
 
   /** {@link resolveFailed} for exit paths inside a session-scoped fiber: enqueued on the engine
@@ -554,6 +560,7 @@ export class ConversationTurnService {
     this.settledAt.set(turn.sessionId, Date.now());
     this.runTask(
       storeOperation('conversation.turn.save', () => this.store.saveTurn({ ...turn, state })).pipe(
+        Effect.tap(() => Effect.sync(() => this.announceGraph(turn.sessionId, false))),
         Effect.catch((error) =>
           Effect.logError(
             error.publicMessage,

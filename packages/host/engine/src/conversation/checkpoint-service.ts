@@ -15,7 +15,12 @@ import type { HistoryBranchCut, HistoryService } from '../session/history-servic
 import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { CorpusAttribution } from './lineage-attribution';
-import { attributeCorpus, hasHiddenPrefix, pathToLeaf } from './lineage-attribution';
+import {
+  attributeCorpus,
+  hasHiddenPrefix,
+  pathToLeaf,
+  settledWithProvider,
+} from './lineage-attribution';
 import type { ConversationTurnService } from './turn-service';
 import { TERMINAL_TURN_STATES } from './turn-service';
 
@@ -268,9 +273,4 @@ function toCut(binding: ProviderTurnBinding): AgentHistoryBranchOptions {
 
 function activePath(record: SessionRecord, turns: ConversationTurn[]): ConversationTurn[] {
   return pathToLeaf(new Map(turns.map((turn) => [turn.turnId, turn])), record.activeLeafTurnId);
-}
-
-/** The path turns that expect provider rows: settled, and not failed (nothing durable ran). */
-function settledWithProvider(path: readonly ConversationTurn[]): ConversationTurn[] {
-  return path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state) && turn.state !== 'failed');
 }
