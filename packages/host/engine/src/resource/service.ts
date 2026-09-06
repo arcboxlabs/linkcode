@@ -5,7 +5,6 @@ import { basename, extname, join, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionId, SessionResource, SessionResourceId } from '@linkcode/schema';
 import {
-  AttachmentIdSchema,
   blobIdFromSha256,
   declaredMimeTypeMatches,
   MAX_ATTACHMENT_BYTES,
@@ -15,9 +14,8 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
-import type { AttachmentStore } from '../attachment/attachment-store';
 import type { BlobStore } from '../attachment/blob-store';
-import { AttachmentIoMutex } from '../attachment/io-mutex';
+import type { AttachmentIngest } from '../attachment/ingest';
 import { OperationError, RequestError } from '../failure';
 import type { FileHostService } from '../preview/file-host-service';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
@@ -67,8 +65,7 @@ export class ResourceService {
     private readonly stateDir: string | undefined,
     private readonly fileHost: FileHostService,
     private readonly blobs: BlobStore,
-    private readonly attachments: AttachmentStore,
-    private readonly io: AttachmentIoMutex = new AttachmentIoMutex(),
+    private readonly ingest: AttachmentIngest,
   ) {}
 
   list(sessionId: SessionId): Effect.Effect<SessionResource[], OperationError> {
@@ -81,7 +78,7 @@ export class ResourceService {
     mimeType: string | undefined,
     data: string,
   ): Effect.Effect<SessionResource, OperationError | RequestError> {
-    const { attachments, blobs, io, records, transport } = this;
+    const { blobs, ingest, records, transport } = this;
     return Effect.gen({ self: this }, function* () {
       if (!records.has(sessionId)) {
         return yield* new RequestError({ code: 'not_found', message: 'Session not found' });
@@ -100,46 +97,29 @@ export class ResourceService {
         });
       }
       const resourceId = SessionResourceIdSchema.parse(`resource-${randomUUID()}`);
-      const attachmentId = AttachmentIdSchema.parse(`att-${randomUUID()}`);
       const sha256 = createHash('sha256').update(bytes).digest('hex');
-      const blobId = blobIdFromSha256(sha256);
       const now = Date.now();
       const kind = classify(name, mimeType);
-      const locator = { type: 'managed-file' as const, path: blobs.pathOf(blobId) };
-      const written = yield* Effect.tryPromise({
-        async try() {
-          await io.run(async () => {
-            const stage = await blobs.stage(resourceId);
-            try {
-              await stage.write(0, bytes);
-              await stage.commit({ sha256, sizeBytes: bytes.byteLength });
-              await attachments.commitAttachment({
-                blob: { blobId, sizeBytes: bytes.byteLength, createdAt: now },
-                attachment: {
-                  attachmentId,
-                  kind,
-                  name,
-                  mimeType: mimeType ?? 'application/octet-stream',
-                  sizeBytes: bytes.byteLength,
-                  metadata: {},
-                  createdAt: now,
-                },
-              });
-            } catch (error) {
-              await stage.abort().catch(noop);
-              // Content addressing means another attachment may already own a row for this blob;
-              // unlinking then would strand its bytes.
-              if (!(await attachments.getBlob(blobId))) await blobs.delete(blobId);
-              throw error;
-            }
-          });
-        },
+      const locator = {
+        type: 'managed-file' as const,
+        path: blobs.pathOf(blobIdFromSha256(sha256)),
+      };
+      const attachmentId = yield* Effect.tryPromise({
+        try: () =>
+          ingest.store(
+            bytes,
+            { kind, name, mimeType: mimeType ?? 'application/octet-stream' },
+            now,
+          ),
         catch: (cause) => cause,
       }).pipe(
-        Effect.as(true),
-        Effect.catch(() => Effect.succeed(false)),
+        Effect.catch((error) =>
+          Effect.logWarning('Failed to persist uploaded resource', error).pipe(
+            Effect.as(undefined),
+          ),
+        ),
       );
-      if (!written) {
+      if (attachmentId === undefined) {
         return {
           resourceId,
           sessionId,

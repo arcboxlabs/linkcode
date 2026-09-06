@@ -8,8 +8,9 @@ import {
 import { Cause, Effect, Exit } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import { assertInlineAttachmentsSupported } from '../attachment/admit';
+import type { AttachmentIngest } from '../attachment/ingest';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
-import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
+import { mintOperationId } from '../conversation/turn-service';
 import { causeToRequestFailure, OperationError, RequestError } from '../failure';
 import type { ResourceService } from '../resource/service';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
@@ -25,6 +26,7 @@ export class SessionInputDispatcher {
     private readonly events: SessionEventProcessor,
     private readonly resources: ResourceService,
     private readonly turns: ConversationTurnService,
+    private readonly ingest: AttachmentIngest,
   ) {}
 
   /** `prepared` is a submit-saga intent already persisted for this dispatch; without one, a
@@ -69,7 +71,7 @@ export class SessionInputDispatcher {
       this.events.rejectInput(sessionId, session, error.message);
       return Effect.fail(error);
     }
-    const { events, records, resources, turns } = this;
+    const { events, ingest, records, resources, turns } = this;
     // Set synchronously, before the first await, so a same-tick second turn input cannot slip
     // past the gate above while this one is still validating; every failure exit releases it.
     if (startsTurn) session.turnInputActive = true;
@@ -127,7 +129,7 @@ export class SessionInputDispatcher {
           parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
           input:
             input.type === 'prompt'
-              ? { type: 'prompt', blocks: promptBlocksFromContent(input.content) }
+              ? { type: 'prompt', blocks: yield* ingest.promptBlocks(input.content) }
               : input,
         });
       }

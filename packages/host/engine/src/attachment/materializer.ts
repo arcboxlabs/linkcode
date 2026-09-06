@@ -237,8 +237,8 @@ export class PromptMaterializer {
       try() {
         return io.run(async () => {
           await mkdir(destDir, { recursive: true });
-          // The destination is content-addressed, so an existing link is already the same bytes —
-          // a prompt may reference one attachment more than once within a run.
+          // The destination is keyed by the immutable attachment id, so an existing link is already
+          // the same bytes — a prompt may reference one attachment more than once within a run.
           await link(source, dest).catch((error: NodeJS.ErrnoException) => {
             if (error.code !== 'EEXIST') throw error;
           });

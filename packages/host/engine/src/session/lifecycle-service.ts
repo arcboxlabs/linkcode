@@ -27,6 +27,7 @@ import {
   uniqueAttachmentIds,
 } from '../attachment/admit';
 import type { AttachmentStore } from '../attachment/attachment-store';
+import type { AttachmentIngest } from '../attachment/ingest';
 import type { PromptMaterializer } from '../attachment/materializer';
 import type { SessionDriver } from '../automation';
 import type { ConversationCheckpointService, ForkCut } from '../conversation/checkpoint-service';
@@ -36,7 +37,7 @@ import type {
   PersistedTurnIntent,
   TerminalOperation,
 } from '../conversation/turn-service';
-import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
+import { mintOperationId } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import {
   causeToRequestFailure,
@@ -130,6 +131,7 @@ export class SessionLifecycleService {
     private readonly checkpoints: ConversationCheckpointService,
     private readonly attachments: AttachmentStore,
     private readonly materializer: PromptMaterializer,
+    private readonly ingest: AttachmentIngest,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -342,7 +344,7 @@ export class SessionLifecycleService {
           );
         }
 
-        const { checkpoints, history, sessions, turns } = this;
+        const { checkpoints, history, ingest, sessions, turns } = this;
         const resolveForRecord = this.resolveForRecord.bind(this);
         const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
@@ -415,7 +417,7 @@ export class SessionLifecycleService {
             operationId: mintOperationId(),
             runId,
             parentTurnId,
-            input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
+            input: { type: 'prompt', blocks: yield* ingest.promptBlocks(content) },
           });
           yield* Effect.gen(function* () {
             yield* sessions.stopForReplacement(sourceSessionId);
@@ -752,9 +754,21 @@ export class SessionLifecycleService {
     kind: AgentKind,
     blocks: Extract<TurnSubmitInput, { type: 'prompt' }>['blocks'],
   ): Effect.Effect<void, EngineFailure> {
-    const ids = uniqueAttachmentIds(attachmentIdsFromBlocks(blocks));
+    const occurrences = attachmentIdsFromBlocks(blocks);
+    const ids = uniqueAttachmentIds(occurrences);
     if (ids.length === 0) return Effect.void;
     const capability = effectiveAttachmentCapability(kind);
+    // Bound the ref count before the store load: `admitPromptAttachments` charges per occurrence,
+    // and an unbounded id list would otherwise reach SQLite as one oversized `IN (...)`.
+    if (capability !== undefined) {
+      const maxCount =
+        (capability.kinds.image?.maxCount ?? 0) + (capability.kinds.file?.maxCount ?? 0);
+      if (occurrences.length > maxCount) {
+        return Effect.fail(
+          new RequestError({ code: 'limit_exceeded', message: 'Too many attachments' }),
+        );
+      }
+    }
     return Effect.tryPromise({
       try: () => this.attachments.listAttachments(ids),
       catch: (cause) =>
