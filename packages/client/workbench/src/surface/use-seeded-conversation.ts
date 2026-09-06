@@ -9,7 +9,9 @@ import type { SessionInfo } from '@linkcode/schema';
 import type { Options, RequestResult } from '@linkcode/sdk';
 import { resolveClient } from '@linkcode/sdk';
 import { noop } from 'foxact/noop';
+import { useEffect } from 'react';
 import { useData } from '../runtime/tayori';
+import { useLineageStore } from './lineage-store';
 import {
   loadPersistedProjection,
   loadPersistedSeed,
@@ -28,8 +30,13 @@ type SeedData = ConversationProjectionSeed | ConversationSeed | null;
 async function fetchConversationSeed(
   options: Options<ConversationSeedSource>,
 ): RequestResult<SeedData> {
-  const seed = await readConversationSeed(resolveClient(options).raw, options);
+  // The parked leaf is read at fetch time, not keyed: switching versions revalidates in place
+  // instead of flashing an empty timeline behind a new SWR key.
+  const leafTurnId = useLineageStore.getState().parkedBySession[options.sessionId]?.leafTurnId;
+  const seed = await readConversationSeed(resolveClient(options).raw, { ...options, leafTurnId });
   if (seed === undefined) return { data: null };
+  // Only the host default is worth the reopen cache; a parked read is one version of many.
+  if (leafTurnId !== undefined) return { data: seed };
   if ('items' in seed) persistProjection(options.sessionId, seed);
   else if (options.historyId !== undefined) persistSeed(options.agentKind, options.historyId, seed);
   return { data: seed };
@@ -40,11 +47,14 @@ async function fetchConversationSeed(
  * where the host serves one, the provider transcript otherwise (the live `agent.event`
  * subscription only covers this connection). The last persisted snapshot serves as
  * `fallbackData` — reopening the app paints history immediately while the fresh read revalidates
- * behind it — and a projection store's resync request is answered by re-running the read.
+ * behind it — and a projection store's resync request is answered by re-running the read. A
+ * change of the session's parked version (the lineage store) re-runs it too; `followLive` false
+ * freezes the store at that read (see `ConversationStoreOptions`).
  */
 export function useSeededConversation(
   active: SessionInfo | null,
   onError: (err: unknown) => void,
+  followLive = true,
 ): Conversation {
   const { data: seed, mutate } = useData(
     fetchConversationSeed,
@@ -66,7 +76,21 @@ export function useSeededConversation(
       // on a switch it would serve the previous transcript — forever, with no historyId yet.
     },
   );
-  return useConversation(active?.sessionId ?? null, seed ?? undefined, () => {
-    void mutate().catch(noop);
-  });
+  const sessionId = active?.sessionId ?? null;
+  useEffect(() => {
+    if (sessionId === null) return;
+    return useLineageStore.subscribe((state, previous) => {
+      if (state.parkedBySession[sessionId] !== previous.parkedBySession[sessionId]) {
+        void mutate().catch(noop);
+      }
+    });
+  }, [sessionId, mutate]);
+  return useConversation(
+    sessionId,
+    seed ?? undefined,
+    () => {
+      void mutate().catch(noop);
+    },
+    followLive,
+  );
 }

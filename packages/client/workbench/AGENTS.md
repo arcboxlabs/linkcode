@@ -35,7 +35,14 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   seeds the active thread through client-core's `readConversationSeed` (the turn-graph projection
   where the host serves one, the provider transcript otherwise — rules in
   `packages/client/core/AGENTS.md`), answers a store's resync request with SWR `mutate()`, and
-  persists both seed shapes through `seed-cache.ts` for the instant repaint on reopen.
+  persists both seed shapes through `seed-cache.ts` for the instant repaint on reopen. Version
+  browsing (`‹ 1/N ›`) is `lineage-store.ts` (non-persisted zustand: the parked leaf per session,
+  remembered descent per parent) + the pure helpers in `lineage.ts` + `use-conversation-graph.ts`
+  (the turn tree, revalidated on `conversation.graph.changed`). The seed hook keeps a stable SWR
+  key and reads the parked leaf at fetch time — a version switch revalidates in place instead of
+  flashing an empty timeline — and freezes the store (`followLive: false`) while parked; a parked
+  view's sends, edits, and `/`/`$` inputs are explicit-parent `turn.submit`s, and the store
+  releases the view once the host default runs through the parked leaf.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
   session registry that retains/detaches (rather than kills) a PTY across remounts, viewer
   attachment containers, and the transport-backed `TerminalSession`. Only the current controller

@@ -1,6 +1,7 @@
 import type {
   Accounts,
   AgentEvent,
+  AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistorySession,
   AgentInput,
@@ -134,6 +135,14 @@ const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = 
   'claude-code': 'high',
   codex: 'high',
   'grok-build': 'high',
+};
+
+/** What each adapter class declares; grok-build declares nothing. */
+const MOCK_HISTORY_CAPABILITIES: Readonly<Partial<Record<AgentKind, AgentHistoryCapabilities>>> = {
+  'claude-code': { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
+  codex: { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
+  opencode: { list: true, read: true, resume: true, forkAfterTurn: false, branch: true },
+  pi: { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
 };
 
 interface MockSession extends SessionInfo {
@@ -2434,6 +2443,9 @@ function toSessionInfo(session: MockSession): SessionInfo {
     updatedAt: session.updatedAt,
     title: session.title,
     origin: session.origin,
+    ...(MOCK_HISTORY_CAPABILITIES[session.kind] !== undefined && {
+      historyCapabilities: MOCK_HISTORY_CAPABILITIES[session.kind],
+    }),
   };
 }
 
