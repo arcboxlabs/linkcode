@@ -6,7 +6,7 @@ import { CommandCatalogProvider } from '../chat/command-brand';
 import type { PermissionDecision } from '../chat/conversation-prompts';
 import { selectPendingPromptItems } from '../chat/conversation-prompts';
 import { ConversationView } from '../chat/conversation-view';
-import type { ConversationViewModel, PromptEditState } from '../chat/types';
+import type { ConversationLineage, ConversationViewModel, PromptEditState } from '../chat/types';
 import { cn } from '../lib/cn';
 import type { ModelOption } from './agent-models';
 import type { AgentRuntimeCues } from './agent-onboarding-card';
@@ -19,6 +19,7 @@ import type { ComposerDirectiveControls, ComposerHandle, MentionItem } from './c
 import { Composer } from './composer';
 import type { ComposerAttachment } from './composer-attachments';
 import { ConversationPromptDock } from './conversation-prompt-dock';
+import { LineageNotice } from './lineage-notice';
 import { UsageReportCard } from './usage-report-card';
 
 /** Composer behavior that every app shell must carry as one unit. Keeping the complete controller
@@ -64,9 +65,11 @@ export interface ConversationSurfaceProps {
   promptEditState?: PromptEditState;
   onEditPrompt?: (
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ) => Promise<void>;
+  /** Turn-graph affordances (versions, parked notice); its edit state wins over `promptEditState`. */
+  lineage?: ConversationLineage;
   /** Entries for the composer's `@` menu (workspace files, sourced by the app). */
   mentionItems?: MentionItem[];
   /** Reports the live `@` query so the app can fetch `mentionItems` for it. */
@@ -114,6 +117,7 @@ export function ConversationSurface({
   TerminalBlockComponent,
   promptEditState = 'unsupported',
   onEditPrompt,
+  lineage,
   mentionItems,
   onMentionQueryChange,
   showPlanInPromptDock = true,
@@ -165,8 +169,10 @@ export function ConversationSurface({
               modelName={modelName ?? conversation.currentModel ?? undefined}
               scrollContextRef={conversationScrollRef}
               TerminalBlockComponent={TerminalBlockComponent}
-              promptEditState={promptEditState}
+              promptEditState={lineage?.promptEditState ?? promptEditState}
               onEditPrompt={onEditPrompt}
+              versions={lineage?.versions}
+              onSelectVersion={lineage?.onSelectVersion}
               onReviewChanges={onReviewChanges}
               onOpenBilling={onOpenBilling}
             />
@@ -174,6 +180,13 @@ export function ConversationSurface({
         </ArtifactHostActionsProvider>
       </div>
       {conversation.usageReport && <UsageReportCard report={conversation.usageReport} />}
+      {lineage?.notice ? (
+        <div className="px-4 pb-3">
+          <div className="mx-auto max-w-3xl">
+            <LineageNotice notice={lineage.notice} />
+          </div>
+        </div>
+      ) : null}
       <ConversationPromptDock
         conversation={conversation}
         showPlan={showPlanInPromptDock}

@@ -92,6 +92,7 @@ export function DesktopShell({
   onOpenBilling,
   conversation,
   onEditPrompt,
+  lineage,
   respondingRequestIds,
   responseErrors,
   resourcesPanel,
@@ -465,6 +466,7 @@ export function DesktopShell({
               : 'unsupported'
           }
           onEditPrompt={onEditPrompt}
+          lineage={lineage}
           disabled={!active || active.status === 'stopped'}
           isRunning={isRunning}
           mentionItems={mentionItems}

@@ -394,10 +394,10 @@ function WorkbenchSessionSurface({
 
   async function handleEditPrompt(
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ): Promise<void> {
-    if (active?.historyCapabilities?.branch !== true) {
+    if (branchCursor === undefined || active?.historyCapabilities?.branch !== true) {
       throw new Error('Prompt editing is unavailable for this session');
     }
     const stripped = content.filter((block) => !isStoredAttachmentBlock(block));

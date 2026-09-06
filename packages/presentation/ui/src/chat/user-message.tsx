@@ -16,7 +16,8 @@ import { positionalBlockEntries } from './content-derived-keys';
 import { contentBlocksText } from './conversation-text';
 import { Chip } from './link-chip';
 import { Message, MessageAction, MessageActions, MessageContent } from './message';
-import type { ConversationItem, PromptEditState } from './types';
+import { TurnVersionNav } from './turn-version-nav';
+import type { ConversationItem, PromptEditState, TurnVersion } from './types';
 import { useCopyButton } from './use-copy-button';
 
 /** Long pastes collapse past this many source lines. */
@@ -38,19 +39,25 @@ function commandEcho(text: string): { name: string; args: string } | undefined {
 
 type MessageItem = Extract<ConversationItem, { kind: 'message' }>;
 
-/** A user bubble: collapses long messages, with copy/edit and the send time revealed on hover. */
+/** A user bubble: collapses long messages, with copy/edit and the send time revealed on hover.
+ * With `version`, the turn is a known graph node: its `‹ 1/N ›` control stays visible and an edit
+ * needs no legacy branch cursor. */
 export function UserMessage({
   item,
   promptEditState = 'unsupported',
   onEditPrompt,
+  version,
+  onSelectVersion,
 }: {
   item: MessageItem;
   promptEditState?: PromptEditState;
   onEditPrompt?: (
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ) => Promise<void>;
+  version?: TurnVersion;
+  onSelectVersion?: (direction: -1 | 1) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.message');
   const format = useFormatter();
@@ -66,14 +73,12 @@ export function UserMessage({
   const hasPromptAttachment = item.blocks.some(
     (block) => block.type === 'resource_link' && attachmentIdFromUri(block.uri) !== undefined,
   );
+  const editable = item.branchCursor !== undefined || version !== undefined;
   const canEdit =
-    promptEditState === 'enabled' &&
-    item.branchCursor !== undefined &&
-    onEditPrompt !== undefined &&
-    !hasPromptAttachment;
+    promptEditState === 'enabled' && editable && onEditPrompt !== undefined && !hasPromptAttachment;
   const editTooltip = hasPromptAttachment
     ? t('editAttachmentsUnsupported')
-    : item.branchCursor === undefined
+    : !editable
       ? t('editUnavailable')
       : promptEditState === 'busy'
         ? t('editBusy')
@@ -98,7 +103,7 @@ export function UserMessage({
     event: React.SyntheticEvent<HTMLFormElement, SubmitEvent>,
   ): Promise<void> {
     event.preventDefault();
-    if (!canEdit || draft.trim().length === 0 || item.branchCursor === undefined) return;
+    if (!canEdit || draft.trim().length === 0) return;
     setPending(true);
     setError(null);
     const retainedBlocks = item.blocks.filter(
@@ -214,9 +219,20 @@ export function UserMessage({
           </>
         )}
       </MessageContent>
-      {/* Meta row under the bubble; revealed by hovering the message. */}
+      {/* Meta row under the bubble; revealed by hovering the message, always shown when the turn
+          has sibling versions or a state to report. */}
       {editing ? null : (
-        <MessageActions className="opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
+        <MessageActions
+          className={cn(
+            'transition-opacity',
+            version !== undefined && (version.count > 1 || version.state !== null)
+              ? undefined
+              : 'opacity-0 group-focus-within:opacity-100 group-hover:opacity-100',
+          )}
+        >
+          {version === undefined ? null : (
+            <TurnVersionNav version={version} onSelect={onSelectVersion} />
+          )}
           {item.receivedAt === undefined ? null : (
             <span className="text-muted-foreground text-xs mr-1">
               {format.dateTime(new Date(item.receivedAt), { timeStyle: 'short' })}
