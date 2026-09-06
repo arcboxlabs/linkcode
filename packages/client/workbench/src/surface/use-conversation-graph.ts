@@ -6,6 +6,7 @@ import { noop } from 'foxact/noop';
 import { useEffect } from 'react';
 import { useWorkbenchSdkClient } from '../runtime/provider';
 import { useData } from '../runtime/tayori';
+import { useLineageStore } from './lineage-store';
 
 async function fetchConversationGraph(
   options: Options<{ sessionId: SessionId }>,
@@ -30,9 +31,19 @@ export function useConversationGraph(
   });
   useEffect(() => {
     if (!enabled) return;
-    return client.subscribeGraphChanges(sessionId, () => {
+    const revalidate = (): void => {
       void mutate().catch(noop);
+    };
+    const unsubscribeChanges = client.subscribeGraphChanges(sessionId, revalidate);
+    // Parking at a just-submitted turn must see it in the tree before any `graph.changed` lands:
+    // its state decides whether the view follows the live stream.
+    const unsubscribeParked = useLineageStore.subscribe((state, previous) => {
+      if (state.parkedBySession[sessionId] !== previous.parkedBySession[sessionId]) revalidate();
     });
+    return () => {
+      unsubscribeChanges();
+      unsubscribeParked();
+    };
   }, [client, enabled, sessionId, mutate]);
   return data;
 }

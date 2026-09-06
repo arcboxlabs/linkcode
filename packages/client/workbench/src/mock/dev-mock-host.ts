@@ -1501,10 +1501,23 @@ export class DevMockHost {
     if (p.input.type === 'prompt') {
       const result = await this.streamMockReply(session, content);
       settleTurn(session, turn, result.ok ? 'completed' : 'failed');
+      if (!result.ok) this.announceGraphShape(session);
       return;
     }
     // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
     settleTurn(session, turn, 'completed');
+  }
+
+  /** A turn failed after it began: the tree changed shape but the default leaf stays — the daemon
+   * announces the same way from `resolveFailed`. */
+  private announceGraphShape(session: MockSession): void {
+    session.graphRevision += 1;
+    this.send({
+      kind: 'conversation.graph.changed',
+      sessionId: session.sessionId,
+      graphRevision: session.graphRevision,
+      ...(session.activeLeafTurnId !== undefined && { activeLeafTurnId: session.activeLeafTurnId }),
+    });
   }
 
   /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
@@ -1576,6 +1589,7 @@ export class DevMockHost {
     turn.readContent = await this.ingestInlineImages(session.sessionId, content);
     const result = await this.streamMockReply(session, content);
     settleTurn(session, turn, result.ok ? 'completed' : 'failed');
+    if (!result.ok) this.announceGraphShape(session);
     if (result.ok) this.sendSuccess(replyTo);
     else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
   }

@@ -1,7 +1,7 @@
 import { LinkCodeClient } from '@linkcode/client-core';
 import type { ConversationReadItem, TurnId } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
 
 function userTexts(events: readonly ConversationReadItem[]): string[] {
@@ -97,6 +97,31 @@ describe('dev mock turn lineages', () => {
       ),
     ).rejects.toMatchObject({ code: 'busy' });
     await client.send(sessionId, { type: 'cancel' });
+    client.dispose();
+  });
+
+  it('announces a sibling that failed after it began, keeping its ordinal and the leaf', async () => {
+    const client = new LinkCodeClient(createDevMockTransport());
+    await client.connect();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    client.attachSession(sessionId);
+    await client.submitTurn(sessionId, { type: 'shell-command', command: 'a' });
+    const failing = await client.submitTurn(sessionId, {
+      type: 'prompt',
+      blocks: [{ type: 'text', text: 'fail' }],
+    });
+    const begun = nullthrow(client.latestGraphChange(sessionId));
+    const graph = await vi.waitFor(async () => {
+      const snapshot = await client.getConversationGraph(sessionId);
+      const turn = snapshot.turns.find((candidate) => candidate.turnId === failing.turnId);
+      if (turn?.state !== 'failed') throw new Error('not failed yet');
+      return snapshot;
+    });
+    expect(graph.turns.find((turn) => turn.turnId === failing.turnId)?.siblingOrdinal).toBe(1);
+    expect(client.latestGraphChange(sessionId)).toEqual({
+      graphRevision: begun.graphRevision + 1,
+      activeLeafTurnId: begun.activeLeafTurnId,
+    });
     client.dispose();
   });
 

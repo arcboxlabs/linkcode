@@ -211,6 +211,16 @@ export class SessionRecordRegistry {
     return record.graphRevision;
   }
 
+  /** The graph changed shape without moving the default leaf (a sibling failed before it ran):
+   * bump the revision so every device's `‹ 1/N ›` re-reads the tree. Returns the new revision. */
+  commitGraphShape(sessionId: SessionId): number | undefined {
+    const record = this.records.get(sessionId);
+    if (!record) return undefined;
+    record.graphRevision += 1;
+    this.persist(record);
+    return record.graphRevision;
+  }
+
   /** The single writer for a relaunch's run entry. `historyId` is known up front only when the
    * relaunch resumes a transcript; a fresh one gets it later via {@link bindHistoryId}. Returns
    * the run's identity (caller-supplied or minted here) even when the record is gone, so a
