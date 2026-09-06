@@ -758,16 +758,22 @@ export class SessionLifecycleService {
     const ids = uniqueAttachmentIds(occurrences);
     if (ids.length === 0) return Effect.void;
     const capability = effectiveAttachmentCapability(kind);
-    // Bound the ref count before the store load: `admitPromptAttachments` charges per occurrence,
-    // and an unbounded id list would otherwise reach SQLite as one oversized `IN (...)`.
-    if (capability !== undefined) {
-      const maxCount =
-        (capability.kinds.image?.maxCount ?? 0) + (capability.kinds.file?.maxCount ?? 0);
-      if (occurrences.length > maxCount) {
-        return Effect.fail(
-          new RequestError({ code: 'limit_exceeded', message: 'Too many attachments' }),
-        );
-      }
+    // Refuse before the store load: the same answers `admitPromptAttachments` gives, without an
+    // unbounded id list reaching SQLite as one oversized `IN (...)`.
+    if (capability === undefined) {
+      return Effect.fail(
+        new RequestError({
+          code: 'unsupported_attachment',
+          message: 'Prompt attachments are not supported by this harness',
+        }),
+      );
+    }
+    const maxCount =
+      (capability.kinds.image?.maxCount ?? 0) + (capability.kinds.file?.maxCount ?? 0);
+    if (occurrences.length > maxCount) {
+      return Effect.fail(
+        new RequestError({ code: 'limit_exceeded', message: 'Too many attachments' }),
+      );
     }
     return Effect.tryPromise({
       try: () => this.attachments.listAttachments(ids),

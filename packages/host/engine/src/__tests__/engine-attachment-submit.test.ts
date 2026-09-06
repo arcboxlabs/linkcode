@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { asHistoryId } from '@linkcode/agent-adapter';
@@ -81,6 +81,7 @@ async function started(kind: 'claude-code' | 'grok-build' = 'claude-code') {
     conversationStore,
     attachmentStore,
     blobStore,
+    stateDir,
     sessionId: startedId(h.sent, 'r1'),
     adapter: nullthrow(h.adapters[0]),
   };
@@ -125,9 +126,10 @@ describe('turn.submit attachment admit and materialize', () => {
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
   });
 
-  it('refuses an image on grok-build at admit', async () => {
+  it('refuses an image on grok-build at admit without touching the store', async () => {
     const h = await started('grok-build');
     const attachmentId = await readyPng(h);
+    const list = vi.spyOn(h.attachmentStore, 'listAttachments');
     await h.inject({
       kind: 'turn.submit',
       clientReqId: 's-grok',
@@ -146,6 +148,7 @@ describe('turn.submit attachment admit and materialize', () => {
     });
     expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
     expect(h.adapter.sentInputs).toEqual([]);
+    expect(list).not.toHaveBeenCalled();
   });
 
   it('materializes a declared image to the adapter without putting bytes on the echo or prompt row', async () => {
@@ -294,14 +297,15 @@ describe('turn.submit attachment admit and materialize', () => {
 });
 
 describe('legacy agent.input inline images', () => {
+  const image = {
+    type: 'image' as const,
+    data: PNG_1X1.toString('base64'),
+    mimeType: 'image/png',
+    name: 'shot.png',
+  };
+
   it('stores the image as a ref on the durable row while the adapter and echo keep it inline', async () => {
     const h = await started();
-    const image = {
-      type: 'image' as const,
-      data: PNG_1X1.toString('base64'),
-      mimeType: 'image/png',
-      name: 'shot.png',
-    };
     await h.inject({
       kind: 'agent.input',
       clientReqId: 'legacy',
@@ -375,5 +379,70 @@ describe('legacy agent.input inline images', () => {
     );
     if (page?.kind !== 'attachment.read.result') throw new Error('no attachment.read.result');
     expect(page.data).toBe(image.data);
+  });
+
+  it('refuses an image whose bytes are not the declared type before any echo or row', async () => {
+    const h = await started();
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'lie',
+      sessionId: h.sessionId,
+      input: {
+        type: 'prompt',
+        content: [
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'),
+          },
+        ],
+      },
+    });
+    expect(failure(h.sent, 'lie')).toMatchObject({
+      code: 'invalid_request',
+      message: 'File contents are not image/png',
+    });
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
+    expect(h.adapter.sentInputs).toEqual([]);
+    expect(h.sent.some((p) => p.kind === 'agent.event' && p.event.type === 'user-message')).toBe(
+      false,
+    );
+  });
+
+  it('fails typed when the store cannot take the bytes and leaves the session usable', async () => {
+    const h = await started();
+    const blobsDir = join(h.stateDir, 'blobs');
+    await mkdir(blobsDir, { recursive: true });
+    await chmod(blobsDir, 0o500);
+    try {
+      await h.inject({
+        kind: 'agent.input',
+        clientReqId: 'ro',
+        sessionId: h.sessionId,
+        input: { type: 'prompt', content: [{ type: 'text', text: 'look' }, image] },
+      });
+      await vi.waitFor(() => {
+        expect(failure(h.sent, 'ro')).toMatchObject({
+          code: 'operation_failed',
+          message: 'Failed to store a prompt attachment',
+        });
+      });
+    } finally {
+      await chmod(blobsDir, 0o700);
+    }
+    expect(await h.conversationStore.listTurns(h.sessionId)).toHaveLength(0);
+    expect(h.adapter.sentInputs).toEqual([]);
+
+    await h.inject({
+      kind: 'agent.input',
+      clientReqId: 'after',
+      sessionId: h.sessionId,
+      input: { type: 'prompt', content: [{ type: 'text', text: 'still here' }] },
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'request.succeeded', replyTo: 'after' }),
+      );
+    });
   });
 });

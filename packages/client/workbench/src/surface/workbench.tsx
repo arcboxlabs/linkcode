@@ -515,7 +515,7 @@ function WorkbenchSessionSurface({
     pending: ComposerAttachment,
   ): Promise<ComposerAttachment> {
     return stageStoreAttachment(client, file, pending, {
-      unsupportedType: tComposer('attachmentUnsupportedType'),
+      contentMismatch: tComposer('attachmentContentMismatch', { type: file.type }),
     });
   }
 

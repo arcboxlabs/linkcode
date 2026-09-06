@@ -360,6 +360,7 @@ export const zhCN = {
       attachmentsTotalTooLarge: '附件总大小超过 12MB 上限',
       attachmentLimit: '最多添加 {count} 个图片附件',
       attachmentUnsupportedType: '仅支持 JPEG / PNG / GIF / WEBP 图片',
+      attachmentContentMismatch: '文件内容与 {type} 不符',
       attachmentUnsupportedAgent: '当前 agent 暂不支持图片附件',
       attachmentReadFailed: '读取文件失败',
       approvalTitle: '如何审批 {agent} 的操作？',

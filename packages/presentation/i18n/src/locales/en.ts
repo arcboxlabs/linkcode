@@ -370,6 +370,7 @@ export const en = {
       attachmentsTotalTooLarge: 'Attachments exceed the 12MB total limit',
       attachmentLimit: 'You can attach at most {count} images',
       attachmentUnsupportedType: 'Only JPEG / PNG / GIF / WEBP images are supported',
+      attachmentContentMismatch: 'File contents are not {type}',
       attachmentUnsupportedAgent: "This agent doesn't support image attachments yet",
       attachmentReadFailed: 'Failed to read the file',
       approvalTitle: 'How should {agent} actions be approved?',

@@ -77,7 +77,7 @@ describe('stageStoreAttachment', () => {
     const jpegBytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0]);
     const file = new File([jpegBytes], 'shot.png', { type: 'image/png' });
     await expect(
-      stageStoreAttachment(client, file, pending, { unsupportedType: 'not a png' }),
+      stageStoreAttachment(client, file, pending, { contentMismatch: 'not a png' }),
     ).rejects.toThrow('not a png');
     expect(putAttachment).not.toHaveBeenCalled();
   });
@@ -182,6 +182,35 @@ describe('overlayPendingUserAttachments', () => {
     ).toMatchObject({
       blocks: [{ type: 'text', text: 'look' }],
     });
+  });
+
+  it('paints an attachment-only prompt onto its empty echo', () => {
+    const session = 'sess-only-attachment' as SessionId;
+    const link: ContentBlock = {
+      type: 'resource_link',
+      uri: 'attachment:att-4',
+      name: 'only.png',
+    };
+    noteInflightUserAttachments(session, [link]);
+    const conversation: Conversation = {
+      ...EMPTY,
+      items: [
+        {
+          kind: 'message',
+          id: userRowMessageId('turn-4' as TurnId),
+          turnId: 'turn-4',
+          role: 'user',
+          blocks: [],
+          isStreaming: false,
+          receivedAt: Date.now() + 1,
+        },
+      ],
+    };
+    expect(
+      overlayPendingUserAttachments(conversation, session, pendingUserAttachmentsSnapshot())
+        .items[0],
+    ).toMatchObject({ blocks: [link] });
+    clearInflightUserAttachments(session);
   });
 
   it('leaves a same-window user row alone when its text is not the sent prompt', () => {
