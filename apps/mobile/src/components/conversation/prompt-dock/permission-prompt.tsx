@@ -6,9 +6,9 @@ import {
   detailRows,
 } from '@mobile/components/conversation/prompt-dock/permission-prompt.shared';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { NativeIconButton } from '@mobile/components/form/icon-button';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { XIcon } from 'lucide-react-native';
-import { Pressable, Text as RNText, View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /**
@@ -38,14 +38,12 @@ export function PermissionPrompt({
         >
           {t('allowTitle', { title: toolCall.title ?? '' })}
         </RNText>
-        <Pressable
-          accessibilityRole="button"
-          hitSlop={8}
+        <NativeIconButton
+          icon="close"
+          label={t('skip')}
           disabled={responding}
           onPress={() => onRespond({ outcome: 'cancelled' })}
-        >
-          <XIcon size={14} color={colors.onSurfaceVariant} />
-        </Pressable>
+        />
       </View>
       {detailRows(toolCall).map((row) => (
         <RNText

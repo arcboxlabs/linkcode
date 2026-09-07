@@ -14,7 +14,6 @@ import type {
   ApprovalChipProps,
 } from '@mobile/components/host/new-thread/draft-tools.types';
 import { clearable, DEFAULT_TAG } from '@mobile/components/host/new-thread/draft-tools.types';
-import { ShieldIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -33,7 +32,6 @@ export function ApprovalChip({
   return (
     <>
       <ToolChip
-        icon={ShieldIcon}
         label={t('approvalLabel')}
         value={policyValue}
         iconOnly

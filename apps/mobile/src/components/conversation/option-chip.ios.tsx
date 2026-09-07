@@ -49,6 +49,7 @@ export function OptionChip({
           modifiers={[
             accessibilityLabel(`${label}: ${value}`),
             padding({ horizontal: 6, vertical: 8 }),
+            frame({ minWidth: 44, minHeight: 44 }),
           ]}
         >
           {sf ? <Image systemName={sf} size={15} modifiers={[SECONDARY]} /> : null}

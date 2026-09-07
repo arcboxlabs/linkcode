@@ -10,9 +10,9 @@ import {
 } from '@expo/ui/jetpack-compose';
 import { clickable, fillMaxWidth, weight } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { NativeIconButton } from '@mobile/components/form/icon-button';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { XIcon } from 'lucide-react-native';
-import { Pressable, Text as RNText, View } from 'react-native';
+import { Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import type { QuestionPageProps } from './question-page.types';
 
@@ -72,9 +72,12 @@ export function QuestionPage({
             {t('questionProgress', { current, total })}
           </RNText>
         ) : null}
-        <Pressable accessibilityRole="button" hitSlop={8} disabled={responding} onPress={onCancel}>
-          <XIcon size={14} color={colors.onSurfaceVariant} />
-        </Pressable>
+        <NativeIconButton
+          icon="close"
+          label={t('cancel')}
+          disabled={responding}
+          onPress={onCancel}
+        />
       </View>
       <ThemedHost matchContents={{ vertical: true }}>
         <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>

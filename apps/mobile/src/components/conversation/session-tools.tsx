@@ -12,7 +12,6 @@ import type {
 } from '@mobile/components/form/selector-sheet.types';
 import { modelAxisGroups } from '@mobile/components/form/selector-sheet.types';
 import { SheetPicker } from '@mobile/components/form/sheet-picker.android';
-import { ShieldIcon } from 'lucide-react-native';
 import { useState } from 'react';
 import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
@@ -36,7 +35,6 @@ export function SessionApprovalChip({
   return (
     <>
       <ToolChip
-        icon={ShieldIcon}
         label={t('approvalLabel')}
         value={current?.name ?? approvalPolicy.currentPolicyId}
         iconOnly

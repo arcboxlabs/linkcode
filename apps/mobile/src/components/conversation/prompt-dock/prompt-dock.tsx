@@ -1,9 +1,9 @@
 import type { PermissionOutcome, QuestionOutcome } from '@linkcode/schema';
 import type { CurrentPlan, PromptConversationItem } from '@linkcode/ui/native';
+import { NativeIconButton } from '@mobile/components/form/icon-button';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
-import { ChevronLeftIcon, ChevronRightIcon } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { PermissionPrompt } from './permission-prompt';
 import { PlanTracker } from './plan-tracker';
@@ -69,6 +69,7 @@ function PermissionPager({
   onRespond: (requestId: string, outcome: PermissionOutcome) => void;
 }): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const tPermission = useTranslations('workbench.prompt');
   const [page, setPage] = useState(0);
   const palette = useNativePalette();
   const pageIndex = Math.min(page, approvals.length - 1);
@@ -78,25 +79,21 @@ function PermissionPager({
     <View className="gap-1">
       {approvals.length > 1 ? (
         <View className="flex-row items-center justify-end gap-1">
-          <Pressable
-            accessibilityRole="button"
+          <NativeIconButton
+            icon="previous"
+            label={tPermission('previous')}
             disabled={pageIndex === 0}
             onPress={() => setPage(pageIndex - 1)}
-            className="size-8 items-center justify-center"
-          >
-            <ChevronLeftIcon size={14} color={palette.textSecondary} />
-          </Pressable>
+          />
           <Text className="text-footnote" style={{ color: palette.textSecondary }}>
             {t('questionProgress', { current: pageIndex + 1, total: approvals.length })}
           </Text>
-          <Pressable
-            accessibilityRole="button"
+          <NativeIconButton
+            icon="next"
+            label={tPermission('next')}
             disabled={pageIndex >= approvals.length - 1}
             onPress={() => setPage(pageIndex + 1)}
-            className="size-8 items-center justify-center"
-          >
-            <ChevronRightIcon size={14} color={palette.textSecondary} />
-          </Pressable>
+          />
         </View>
       ) : null}
       <PermissionPrompt

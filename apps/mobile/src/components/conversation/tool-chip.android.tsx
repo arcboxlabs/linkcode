@@ -1,19 +1,17 @@
+import { Text, TextButton } from '@expo/ui/jetpack-compose';
+import { defaultMinSize, fillMaxWidth } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
-import type { LucideIcon } from 'lucide-react-native';
-import { Pressable, Text } from 'react-native';
+import { NativeIconButton } from '@mobile/components/form/icon-button';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 
-/** One composer tool on Android: a ghost chip that opens a bottom-sheet picker — the RN twin of
- * the iOS `OptionChip` UIMenu trigger, styled to match the composer footer it sits in. */
+/** Native Material controls open the composer's model and approval sheets. */
 export function ToolChip({
-  icon: Icon,
   label,
   value,
   iconOnly = false,
   maxValueWidth,
   onPress,
 }: {
-  /** Optional leading glyph; omit when an RN brand icon sits beside the chip instead. */
-  icon?: LucideIcon;
   /** Accessibility name of the chip ("Model"); not rendered. */
   label: string;
   /** Resolved current value — rendered unless `iconOnly`, always spoken. */
@@ -26,23 +24,24 @@ export function ToolChip({
 }): React.ReactNode {
   const colors = useAppMaterialColors();
 
+  if (iconOnly) {
+    return <NativeIconButton icon="shield" label={`${label}: ${value}`} onPress={onPress} />;
+  }
+
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`${label}: ${value}`}
-      onPress={onPress}
-      className="flex-row items-center gap-1 px-1.5 py-2"
+    <ThemedHost
+      style={{ width: maxValueWidth }}
+      matchContents={maxValueWidth ? { vertical: true } : true}
     >
-      {Icon ? <Icon size={15} color={colors.onSurfaceVariant} /> : null}
-      {iconOnly ? null : (
-        <Text
-          className="text-footnote"
-          numberOfLines={1}
-          style={{ color: colors.onSurfaceVariant, maxWidth: maxValueWidth }}
-        >
+      <TextButton
+        onClick={onPress}
+        colors={{ contentColor: colors.onSurfaceVariant }}
+        modifiers={[defaultMinSize({ minHeight: 48 }), ...(maxValueWidth ? [fillMaxWidth()] : [])]}
+      >
+        <Text style={{ typography: 'labelMedium' }} maxLines={1} overflow="ellipsis">
           {value}
         </Text>
-      )}
-    </Pressable>
+      </TextButton>
+    </ThemedHost>
   );
 }
