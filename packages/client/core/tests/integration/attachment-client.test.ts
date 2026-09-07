@@ -259,6 +259,39 @@ describe('LinkCodeClient attachment store API', () => {
     serverTransport.close();
   });
 
+  it('fails the read walk when a later page names another blob', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const bytes = new Uint8Array(ATTACHMENT_UPLOAD_CHUNK_BYTES + 8).fill(5);
+    const attachmentId = AttachmentIdSchema.parse('att-5');
+    const sessionId = SessionIdSchema.parse('session-1');
+
+    serverTransport.onMessage((message) => {
+      const p = message.payload;
+      if (p.kind !== 'attachment.read') return;
+      const slice = bytes.subarray(p.offset, p.offset + p.length);
+      serverTransport.send(
+        createWireMessage({
+          kind: 'attachment.read.result',
+          replyTo: p.clientReqId,
+          sessionId: p.sessionId,
+          attachmentId: p.attachmentId,
+          // The second page answers from another record: its bytes must not be spliced in and
+          // cached under the first page's blob.
+          blobId: BlobIdSchema.parse(`sha256:${(p.offset === 0 ? 'f' : '0').repeat(64)}`),
+          offset: p.offset,
+          data: bytesToBase64(slice),
+          sizeBytes: bytes.byteLength,
+          eof: p.offset + slice.byteLength >= bytes.byteLength,
+        }),
+      );
+    });
+
+    await expect(client.getAttachmentBytes(sessionId, attachmentId)).rejects.toThrow('att-5');
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('aborts the upload when a chunk is rejected', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
     const bytes = new Uint8Array(ATTACHMENT_UPLOAD_CHUNK_BYTES * 2).fill(5);

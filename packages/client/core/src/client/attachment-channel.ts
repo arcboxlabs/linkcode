@@ -144,10 +144,13 @@ export class AttachmentChannel {
     let offset = 0;
     while (offset < first.sizeBytes) {
       const slice = base64ToBytes(page.data);
-      // A page that repeats an offset, returns nothing, or overruns the recorded size cannot be
-      // assembled — without this the walk never advances and zero-fills what it could not read.
+      // A page that repeats an offset, returns nothing, overruns the recorded size, or names another
+      // blob or size cannot be assembled — without this the walk never advances, zero-fills what it
+      // could not read, or caches spliced bytes under the first page's blob id.
       if (
         page.offset !== offset ||
+        page.blobId !== first.blobId ||
+        page.sizeBytes !== first.sizeBytes ||
         slice.byteLength === 0 ||
         offset + slice.byteLength > bytes.byteLength
       ) {

@@ -3,6 +3,7 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
   attachmentIdFromUri,
+  OperationIdSchema,
 } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it, vi } from 'vitest';
@@ -29,6 +30,24 @@ describe('dev mock attachment store', () => {
     const second = await client.putAttachment({ bytes, name: 'copy.bin', attachmentKind: 'file' });
     expect(second.blobId).toBe(first.blobId);
     expect(second.attachmentId).not.toBe(first.attachmentId);
+    client.dispose();
+  });
+
+  it('refuses a replayed begin whose declared fields differ, the way the daemon does', async () => {
+    const client = await connectedClient();
+    const declared = {
+      operationId: OperationIdSchema.parse('op-mock-shared'),
+      declaredSha256: 'a'.repeat(64),
+      declaredSize: 5,
+      name: 'draft.bin',
+      attachmentKind: 'file',
+    };
+    const first = await client.beginAttachmentUpload(declared);
+    await expect(
+      client.beginAttachmentUpload({ ...declared, declaredSha256: 'b'.repeat(64) }),
+    ).rejects.toThrow('The operation id belongs to another upload');
+    const replayed = await client.beginAttachmentUpload(declared);
+    expect(replayed.uploadId).toBe(first.uploadId);
     client.dispose();
   });
 
