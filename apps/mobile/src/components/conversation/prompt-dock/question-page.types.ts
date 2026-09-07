@@ -14,5 +14,7 @@ export interface QuestionPageProps {
   responding: boolean;
   onDraftChange: (draft: QuestionDraft) => void;
   onAdvance: (draft: QuestionDraft) => void;
+  onPrevious: (draft: QuestionDraft) => void;
+  onSelectOption: (optionId: string) => void;
   onCancel: () => void;
 }

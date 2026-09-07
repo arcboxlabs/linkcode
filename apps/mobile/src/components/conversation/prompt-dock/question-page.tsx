@@ -8,7 +8,14 @@ import {
   Text,
   useNativeState,
 } from '@expo/ui/jetpack-compose';
-import { clickable, fillMaxWidth, weight } from '@expo/ui/jetpack-compose/modifiers';
+import {
+  defaultMinSize,
+  fillMaxWidth,
+  selectable,
+  selectableGroup,
+  toggleable,
+  weight,
+} from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { NativeIconButton } from '@mobile/components/form/icon-button';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
@@ -28,25 +35,16 @@ export function QuestionPage({
   responding,
   onDraftChange,
   onAdvance,
+  onPrevious,
+  onSelectOption,
   onCancel,
 }: QuestionPageProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const tQuestion = useTranslations('workbench.question');
   const colors = useAppMaterialColors();
   // Each page owns a distinct native state; the orchestrator remounts pages by key so a stale
   // native write from the previous question cannot leak here.
   const customText = useNativeState(draft.customText);
-
-  const toggleOption = (optionId: string): void => {
-    if (responding) return;
-    const selected = question.multiSelect
-      ? draft.selected.includes(optionId)
-        ? draft.selected.filter((id) => id !== optionId)
-        : [...draft.selected, optionId]
-      : [optionId];
-    const next = { selected, customText: '' };
-    onDraftChange(next);
-    if (!question.multiSelect) onAdvance(next);
-  };
 
   const advance = (): void => {
     const text = customText.get().trim();
@@ -59,6 +57,14 @@ export function QuestionPage({
       style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
     >
       <View className="flex-row items-center gap-2">
+        {current > 1 ? (
+          <NativeIconButton
+            icon="previous"
+            label={tQuestion('previous')}
+            disabled={responding}
+            onPress={() => onPrevious({ ...draft, customText: customText.get() })}
+          />
+        ) : null}
         {question.header ? (
           <RNText className="font-semibold text-caption" style={{ color: colors.onSurfaceVariant }}>
             {question.header}
@@ -81,7 +87,10 @@ export function QuestionPage({
       </View>
       <ThemedHost matchContents={{ vertical: true }}>
         <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>
-          <Column verticalArrangement={{ spacedBy: 2 }}>
+          <Column
+            verticalArrangement={{ spacedBy: 2 }}
+            modifiers={question.multiSelect ? [] : [selectableGroup()]}
+          >
             {question.options.map((option) => {
               const selected = draft.selected.includes(option.optionId);
               return (
@@ -89,10 +98,26 @@ export function QuestionPage({
                   key={option.optionId}
                   verticalAlignment="center"
                   horizontalArrangement={{ spacedBy: 8 }}
-                  modifiers={[clickable(() => toggleOption(option.optionId)), fillMaxWidth()]}
+                  modifiers={[
+                    fillMaxWidth(),
+                    defaultMinSize({ minHeight: 48 }),
+                    ...(responding
+                      ? []
+                      : [
+                          question.multiSelect
+                            ? toggleable(selected, () => onSelectOption(option.optionId), {
+                                role: 'checkbox',
+                              })
+                            : selectable(
+                                selected,
+                                () => onSelectOption(option.optionId),
+                                'radioButton',
+                              ),
+                        ]),
+                  ]}
                 >
                   {question.multiSelect ? (
-                    <Checkbox value={selected} />
+                    <Checkbox value={selected} enabled={!responding} />
                   ) : (
                     <RadioButton selected={selected} />
                   )}
@@ -110,6 +135,7 @@ export function QuestionPage({
           </Column>
           <OutlinedTextField
             value={customText}
+            enabled={!responding}
             singleLine
             onValueChange={(text) => {
               if (text.trim() && draft.selected.length > 0) {

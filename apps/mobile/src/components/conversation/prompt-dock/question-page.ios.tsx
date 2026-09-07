@@ -10,12 +10,14 @@ import {
   VStack,
 } from '@expo/ui/swift-ui';
 import {
+  accessibilityLabel,
   buttonStyle,
   contentShape,
   disabled,
   font,
   foregroundStyle,
-  onTapGesture,
+  frame,
+  labelStyle,
   shapes,
 } from '@expo/ui/swift-ui/modifiers';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
@@ -38,25 +40,16 @@ export function QuestionPage({
   responding,
   onDraftChange,
   onAdvance,
+  onPrevious,
+  onSelectOption,
   onCancel,
 }: QuestionPageProps): React.ReactNode {
   const t = useTranslations('mobile.chat');
+  const tQuestion = useTranslations('workbench.question');
   const palette = useNativePalette();
   // Each page owns a distinct native state. Remounting after a structured selection guarantees
   // that an asynchronous native write from the previous question/answer mode cannot leak here.
   const customText = useNativeState(draft.customText);
-
-  const toggleOption = (optionId: string): void => {
-    if (responding) return;
-    const selected = question.multiSelect
-      ? draft.selected.includes(optionId)
-        ? draft.selected.filter((id) => id !== optionId)
-        : [...draft.selected, optionId]
-      : [optionId];
-    const next = { selected, customText: '' };
-    onDraftChange(next);
-    if (!question.multiSelect) onAdvance(next);
-  };
 
   const advance = (): void => {
     const text = customText.get().trim();
@@ -71,6 +64,19 @@ export function QuestionPage({
       <Host matchContents>
         <VStack alignment="leading" spacing={10}>
           <HStack spacing={8}>
+            {current > 1 ? (
+              <Button
+                label={tQuestion('previous')}
+                systemImage="chevron.left"
+                onPress={() => onPrevious({ ...draft, customText: customText.get() })}
+                modifiers={[
+                  labelStyle('iconOnly'),
+                  buttonStyle('borderless'),
+                  disabled(responding),
+                  frame({ minWidth: 44, minHeight: 44 }),
+                ]}
+              />
+            ) : null}
             {question.header ? (
               <Text modifiers={[font({ textStyle: 'caption', weight: 'semibold' }), SECONDARY]}>
                 {question.header}
@@ -85,15 +91,15 @@ export function QuestionPage({
                 {t('questionProgress', { current, total })}
               </Text>
             ) : null}
-            <Image
-              systemName="xmark"
-              size={13}
+            <Button
+              label={t('cancel')}
+              systemImage="xmark"
+              onPress={onCancel}
               modifiers={[
-                TERTIARY,
-                WHOLE_ROW,
-                onTapGesture(() => {
-                  if (!responding) onCancel();
-                }),
+                labelStyle('iconOnly'),
+                buttonStyle('borderless'),
+                disabled(responding),
+                frame({ minWidth: 44, minHeight: 44 }),
               ]}
             />
           </HStack>
@@ -101,31 +107,38 @@ export function QuestionPage({
             {question.options.map((option) => {
               const selected = draft.selected.includes(option.optionId);
               return (
-                <HStack
+                <Button
                   key={option.optionId}
-                  spacing={8}
-                  modifiers={[WHOLE_ROW, onTapGesture(() => toggleOption(option.optionId))]}
+                  onPress={() => onSelectOption(option.optionId)}
+                  modifiers={[
+                    buttonStyle('plain'),
+                    disabled(responding),
+                    accessibilityLabel(option.label),
+                  ]}
                 >
-                  <Image
-                    systemName={selected ? 'checkmark.circle.fill' : 'circle'}
-                    size={16}
-                    modifiers={selected ? [] : [TERTIARY]}
-                  />
-                  <VStack alignment="leading" spacing={1}>
-                    <Text modifiers={[font({ textStyle: 'subheadline' })]}>{option.label}</Text>
-                    {option.description ? (
-                      <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>
-                        {option.description}
-                      </Text>
-                    ) : null}
-                  </VStack>
-                  <Spacer />
-                </HStack>
+                  <HStack spacing={8} modifiers={[WHOLE_ROW, frame({ minHeight: 44 })]}>
+                    <Image
+                      systemName={selected ? 'checkmark.circle.fill' : 'circle'}
+                      size={16}
+                      modifiers={selected ? [] : [TERTIARY]}
+                    />
+                    <VStack alignment="leading" spacing={1}>
+                      <Text modifiers={[font({ textStyle: 'subheadline' })]}>{option.label}</Text>
+                      {option.description ? (
+                        <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>
+                          {option.description}
+                        </Text>
+                      ) : null}
+                    </VStack>
+                    <Spacer />
+                  </HStack>
+                </Button>
               );
             })}
           </VStack>
           <TextField
             text={customText}
+            modifiers={[disabled(responding)]}
             placeholder={t('customAnswerPlaceholder')}
             onTextChange={(text) => {
               if (text.trim() && draft.selected.length > 0) {
