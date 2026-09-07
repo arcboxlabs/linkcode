@@ -2085,6 +2085,20 @@ export class DevMockHost {
     if (payload.operationId !== undefined) {
       const replayed = this.attachmentBegins.get(payload.operationId);
       if (replayed) {
+        // The daemon's rule: one operation id names one begin, so other declared fields are refused.
+        const upload = this.attachmentUploads.get(replayed.uploadId);
+        if (
+          upload?.declaredSha256 !== payload.declaredSha256 ||
+          upload.declaredSize !== payload.declaredSize ||
+          upload.name !== payload.name ||
+          upload.mimeType !== payload.mimeType ||
+          upload.attachmentKind !== payload.attachmentKind
+        ) {
+          this.sendFailure(payload.clientReqId, 'The operation id belongs to another upload', {
+            code: 'invalid_request',
+          });
+          return;
+        }
         this.send({
           kind: 'attachment.upload.begun',
           replyTo: payload.clientReqId,
