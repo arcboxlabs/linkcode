@@ -1344,6 +1344,41 @@ describe('turn.submit saga', () => {
     expect(run?.baseTurnId).toBe(firstTurnId);
   });
 
+  it('binds a preceding checkpoint under the parent’s own run when its successor runs elsewhere', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'first');
+    const firstTurnId = submittedTurnId(h.sent, 's1');
+    h.adapter.emit({ type: 'session-ref', historyId: asHistoryId('native-1') });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
+
+    await submitPrompt(h, 's2', 'second');
+    await vi.waitFor(() => submittedTurnId(h.sent, 's2'));
+    const resumed = nullthrow(h.adapters[1]);
+    // The opencode shape: the successor's own prompt id is the cut that forks after its parent.
+    resumed.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'msg-second',
+      turn: 'preceding',
+    });
+    await settleEngineTasks();
+
+    const turns = await h.conversationStore.listTurns(h.sessionId);
+    const first = nullthrow(turns.find((turn) => turn.turnId === firstTurnId));
+    const second = nullthrow(turns.find((turn) => turn.turnId === submittedTurnId(h.sent, 's2')));
+    expect(second.runId).not.toBe(first.runId);
+    expect(await h.conversationStore.listBindings(firstTurnId)).toEqual([
+      {
+        turnId: firstTurnId,
+        runId: first.runId,
+        historyId: 'native-1',
+        checkpoint: 'msg-second',
+        capturedFrom: 'live',
+      },
+    ]);
+  });
+
   it('refuses unknown sessions, unknown parents, and attachment blocks', async () => {
     const h = await startedHarness();
 
