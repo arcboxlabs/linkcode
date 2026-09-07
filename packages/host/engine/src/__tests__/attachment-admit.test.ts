@@ -187,6 +187,28 @@ describe('assertInlineAttachmentsSupported', () => {
     }
     expect.fail('expected a typed refusal');
   });
+
+  it('counts inline images against the harness maxCount, the way a ref submit is counted', () => {
+    const capability = nullthrow(effectiveAttachmentCapability('claude-code'));
+    const maxCount = nullthrow(capability.kinds.image).maxCount;
+    const image = { type: 'image' as const, mimeType: 'image/png', data: 'AA==' };
+    expect(() =>
+      assertInlineAttachmentsSupported(
+        createFixedArray(maxCount).map(() => image),
+        capability,
+      ),
+    ).not.toThrow();
+    try {
+      assertInlineAttachmentsSupported(
+        createFixedArray(maxCount + 1).map(() => image),
+        capability,
+      );
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'limit_exceeded', message: 'Too many attachments' });
+      return;
+    }
+    expect.fail('expected a typed refusal');
+  });
 });
 
 describe('admitPromptAttachments with a file kind declared', () => {
