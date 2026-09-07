@@ -63,7 +63,9 @@ const INPUT_SUMMARY_MAX_LENGTH = 140;
 const VISIBLE_TURN_STATES = new Set<ConversationTurnState>(['running', ...TERMINAL_TURN_STATES]);
 const WHITESPACE_RUN_RE = /\s+/g;
 /** One page = one logical tunnel message; oversized reassembly is silently dropped by the tunnel
- * (the history-util.ts byte-budget rationale applies verbatim). */
+ * (the history-util.ts byte-budget rationale applies verbatim). The live journal's byte cap
+ * (10 MiB) sits under this, so a retained tail never trims in production; `trimTailToBudget`
+ * backs the invariant for the smaller budgets tests use. */
 const READ_PAGE_BYTE_BUDGET = MAX_ATTACHMENT_TOTAL_BASE64_LENGTH;
 
 /**
@@ -146,13 +148,19 @@ export class ConversationProjectionService {
       // leaf moves, garbage restarts silently): the cursor pins the exact projection shape it
       // paged, and any drift or undecodable cursor is a typed conflict — never a silent splice.
       const settled = path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state)).length;
+      const activePath =
+        leafTurnId === record.activeLeafTurnId ? path : pathToLeaf(byId, record.activeLeafTurnId);
+      const durable = yield* composeDurable(record, path, activePath);
       let offset = 0;
       if (request.cursor !== undefined) {
         const decoded = decodeReadCursor(request.cursor);
         if (
           decoded?.graphRevision !== record.graphRevision ||
           decoded.leafTurnId !== leafTurnId ||
-          decoded.settled !== settled
+          decoded.settled !== settled ||
+          // The item count pins the provider corpus too: rows gained or compacted between pages
+          // (a cache refresh) would shift offsets without moving the graph.
+          decoded.durable !== durable.length
         ) {
           return yield* Effect.fail(
             new RequestError({
@@ -163,9 +171,6 @@ export class ConversationProjectionService {
         }
         offset = decoded.offset;
       }
-      const activePath =
-        leafTurnId === record.activeLeafTurnId ? path : pathToLeaf(byId, record.activeLeafTurnId);
-      const durable = yield* composeDurable(record, path, activePath);
       const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
       const { events, nextOffset } = pageReadItems(
         durable,
@@ -179,6 +184,7 @@ export class ConversationProjectionService {
               graphRevision: record.graphRevision,
               leafTurnId,
               settled,
+              durable: durable.length,
               offset: nextOffset,
             })
           : undefined;
@@ -306,6 +312,7 @@ export class ConversationProjectionService {
     const liveTurn = path.find((turn) => !TERMINAL_TURN_STATES.has(turn.state));
     const tail: ConversationReadItem[] = [];
     const seenRequestIds = new Set<string>();
+    const seenStatusIds = new Set<string>();
     // Journal-less sessions (cold, or a launch whose first event hasn't flowed) cut every prior
     // epoch and NOTHING in the current one: seqs start at 1, so the run's own events all compare
     // above {epoch, 0} — a client adopting this during the launch window drops nothing.
@@ -338,6 +345,8 @@ export class ConversationProjectionService {
         if (chunkKey !== undefined && journal.isChunkCleared(chunkKey)) continue;
         if (event.type === 'permission-request' || event.type === 'question-request') {
           seenRequestIds.add(event.requestId);
+        } else if (event.type === 'prompt-response-status') {
+          seenStatusIds.add(event.requestId);
         }
         tail.push({
           ...(entry.turnId !== undefined && { turnId: entry.turnId }),
@@ -358,13 +367,19 @@ export class ConversationProjectionService {
       }
       if (journal.watermark !== undefined) watermark = journal.watermark;
     }
-    // CODE-35 backstop: open interactive requests reach the reader even when their original
-    // events were evicted or fell below the durable cut.
+    // CODE-35 backstop: open interactive requests — and the responding status of one being
+    // answered — reach the reader even when their original events were evicted or fell below the
+    // durable cut.
     const openRequests = this.openRequests(sessionId);
     for (let i = 0, len = openRequests.length; i < len; i++) {
       const request = openRequests[i];
-      if (request.type !== 'permission-request' && request.type !== 'question-request') continue;
-      if (seenRequestIds.has(request.requestId)) continue;
+      if (request.type === 'prompt-response-status') {
+        if (seenStatusIds.has(request.requestId)) continue;
+      } else if (request.type === 'permission-request' || request.type === 'question-request') {
+        if (seenRequestIds.has(request.requestId)) continue;
+      } else {
+        continue;
+      }
       tail.push({
         ...(liveTurn !== undefined && { turnId: liveTurn.turnId, runId: liveTurn.runId }),
         event: request,
@@ -429,6 +444,7 @@ interface ReadCursor {
   readonly graphRevision: number;
   readonly leafTurnId: TurnId;
   readonly settled: number;
+  readonly durable: number;
   readonly offset: number;
 }
 
@@ -446,6 +462,8 @@ function decodeReadCursor(raw: string): ReadCursor | undefined {
     typeof parsed.graphRevision !== 'number' ||
     !('settled' in parsed) ||
     typeof parsed.settled !== 'number' ||
+    !('durable' in parsed) ||
+    typeof parsed.durable !== 'number' ||
     !('offset' in parsed) ||
     typeof parsed.offset !== 'number' ||
     !Number.isSafeInteger(parsed.offset) ||
@@ -460,6 +478,7 @@ function decodeReadCursor(raw: string): ReadCursor | undefined {
     graphRevision: parsed.graphRevision,
     leafTurnId: leaf.data,
     settled: parsed.settled,
+    durable: parsed.durable,
     offset: parsed.offset,
   };
 }

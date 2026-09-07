@@ -40,6 +40,11 @@ const OPEN_ASK: AgentEvent = {
   subject: { type: 'tool-call', toolCallId: 't1' },
   options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
 };
+const RESPONDING: AgentEvent = {
+  type: 'prompt-response-status',
+  requestId: 'perm-open',
+  status: 'responding',
+};
 
 function chunk(messageId: string, text: string): AgentEvent {
   return {
@@ -146,7 +151,7 @@ describe('conversation projection live tail (CODE-35)', () => {
     const { service, store } = await makeService({
       journals,
       record: makeRecord(liveTurnId),
-      openRequests: [OPEN_ASK],
+      openRequests: [OPEN_ASK, RESPONDING],
     });
     await store.saveTurn({
       turnId: liveTurnId,
@@ -179,9 +184,11 @@ describe('conversation projection live tail (CODE-35)', () => {
       turnId: liveTurnId,
       runId,
     });
-    // The open ask reaches the reader even though its request event never survived the journal.
+    // The open ask reaches the reader even though its request event never survived the journal,
+    // and so does the status of the answer in flight — the UI keeps its "responding" state.
     const ask = result.events.find((item) => 'event' in item && item.event === OPEN_ASK);
     expect(ask).toMatchObject({ turnId: liveTurnId, runId });
+    expect(result.events.some((item) => 'event' in item && item.event === RESPONDING)).toBe(true);
   });
 
   it('surfaces truncation when a full-state event above the cut was evicted', async () => {
@@ -1091,6 +1098,20 @@ describe('conversation read cursor integrity', () => {
           graphRevision: 999,
           leafTurnId: 'turn-live',
           settled: 1,
+          durable: 2,
+          offset: 1,
+        }),
+      }),
+    );
+    // Right graph shape, wrong durable item count: the provider corpus moved between pages.
+    await expectConflict(
+      service.read({
+        sessionId,
+        cursor: JSON.stringify({
+          graphRevision: 1,
+          leafTurnId: 'turn-live',
+          settled: 1,
+          durable: 999,
           offset: 1,
         }),
       }),

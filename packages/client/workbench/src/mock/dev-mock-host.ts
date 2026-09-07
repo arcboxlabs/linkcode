@@ -2420,7 +2420,9 @@ function turnSubmitContent(input: TurnSubmitInput): ContentBlock[] {
         block.type === 'text' ? [textBlock(block.text)] : [],
       );
     case 'command':
-      return [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)];
+      return [
+        textBlock(`/${input.name}${input.arguments === undefined ? '' : ` ${input.arguments}`}`),
+      ];
     case 'shell-command':
       return [textBlock(`$ ${input.command}`)];
     default:

@@ -34,6 +34,9 @@ import type { SessionRecordRegistry } from './session-record-registry';
 
 export class SessionOrchestrator {
   private readonly sessions = new Map<SessionId, LiveSession>();
+  /** Sessions mid-`delete`: a launch admitted during the delete's own store waits must not install
+   * a live run whose record is about to vanish (and whose journal the final drop would take). */
+  private readonly deleting = new Set<SessionId>();
   private readonly events: SessionEventProcessor;
   private readonly inputs: SessionInputDispatcher;
 
@@ -119,14 +122,20 @@ export class SessionOrchestrator {
     if (session) this.events.broadcast(sessionId, session, session.replay());
   }
 
-  /** Authoritative open/responding interactive requests — the CODE-35 backstop: a conversation
-   * read must carry them even when the journal evicted or cut their original events. */
+  /** Authoritative open interactive requests and their responding statuses — the CODE-35
+   * backstop: a conversation read must carry them even when the journal evicted or cut their
+   * original events. */
   openInteractiveRequests(sessionId: SessionId): AgentEvent[] {
     const session = this.sessions.get(sessionId);
     if (!session) return [];
     return session.interactions
       .replay()
-      .filter((event) => event.type === 'permission-request' || event.type === 'question-request');
+      .filter(
+        (event) =>
+          event.type === 'permission-request' ||
+          event.type === 'question-request' ||
+          event.type === 'prompt-response-status',
+      );
   }
 
   sendInput(
@@ -158,8 +167,9 @@ export class SessionOrchestrator {
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { resources } = this;
+    const { deleting, resources } = this;
     return Effect.gen({ self: this }, function* () {
+      deleting.add(sessionId);
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
@@ -168,7 +178,13 @@ export class SessionOrchestrator {
       yield* this.turns.deleteSession(sessionId);
       yield* this.records.delete(sessionId);
       this.journals.drop(sessionId);
-    });
+    }).pipe(
+      Effect.ensuring(
+        Effect.sync(() => {
+          deleting.delete(sessionId);
+        }),
+      ),
+    );
   }
 
   stopIfLive(sessionId: SessionId): Effect.Effect<void> {
@@ -294,6 +310,7 @@ export class SessionOrchestrator {
     } = {},
   ): Effect.Effect<void, EngineFailure> {
     const {
+      deleting,
       events,
       factory,
       inputs,
@@ -311,6 +328,11 @@ export class SessionOrchestrator {
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
+        if (deleting.has(sessionId)) {
+          return yield* Effect.fail(
+            new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+          );
+        }
         const adapter = factory(record.kind);
         if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);
