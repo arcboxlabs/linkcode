@@ -10,6 +10,7 @@ export {
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '../chat/conversation-prompts';
+export { answerText } from '../chat/question-answer';
 export { diffLines, patchLines } from '../diff-utils';
 export { repositoryLabel } from '../repository-label';
 export * from '../thread-groups';

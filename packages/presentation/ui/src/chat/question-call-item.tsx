@@ -1,7 +1,8 @@
-import type { Question, QuestionAnswer, ToolCall } from '@linkcode/schema';
+import type { ToolCall } from '@linkcode/schema';
 import { MessageCircleQuestionMarkIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
 import type { QuestionConversationItem } from './conversation-prompts';
+import { answerText } from './question-answer';
 import { Tool, ToolContent, ToolHeader } from './tool';
 
 /** Timeline record of an agent question ask. The dock's QuestionPrompt is the actionable
@@ -65,12 +66,4 @@ export function QuestionCallItem({
       </ToolContent>
     </Tool>
   );
-}
-
-/** Chosen option labels plus any custom text; undefined when the question was skipped. */
-function answerText(question: Question, answer: QuestionAnswer): string | undefined {
-  const labelByOption = new Map(question.options.map((option) => [option.optionId, option.label]));
-  const parts = answer.selectedOptionIds.map((optionId) => labelByOption.get(optionId) ?? optionId);
-  if (answer.customText) parts.push(answer.customText);
-  return parts.length > 0 ? parts.join(', ') : undefined;
 }

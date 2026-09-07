@@ -1,10 +1,11 @@
 import type { ConversationItem } from '@linkcode/client-core';
 import type { ContentBlock, ToolCall } from '@linkcode/schema';
-import { NativeMarkdown } from '@linkcode/ui/native';
+import { answerText, NativeMarkdown } from '@linkcode/ui/native';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import { ReasoningRow, ToolRow } from './activity-row';
+import { TranscriptRecord } from './transcript-record';
 
 function blocksToText(blocks: ContentBlock[]): string {
   return blocks
@@ -30,6 +31,7 @@ export function TimelineItem({
   onPressTool?: (toolCall: ToolCall) => void;
 }): React.ReactNode {
   const t = useTranslations('mobile.conversation');
+  const tq = useTranslations('workbench.question');
   const palette = useNativePalette();
 
   switch (item.kind) {
@@ -40,7 +42,7 @@ export function TimelineItem({
             className="max-w-[85%] rounded-2xl px-4 py-2.5"
             style={{ backgroundColor: palette.surface }}
           >
-            <Text className="text-body" style={{ color: palette.text }}>
+            <Text selectable className="text-body" style={{ color: palette.text }}>
               {blocksToText(item.blocks)}
             </Text>
           </View>
@@ -76,33 +78,57 @@ export function TimelineItem({
       );
     case 'plan':
       return null;
-    case 'approval':
+    case 'approval': {
       // Pending asks are answered from the prompt dock; the timeline records only resolved ones.
       if (!item.resolution) return null;
+      const outcome = item.resolution.outcome;
+      const optionNames = new Map(item.options.map((option) => [option.optionId, option.name]));
       return (
-        <View className="gap-1 rounded-lg border border-warning/40 bg-warning/10 px-3 py-2.5">
-          <Text className="font-semibold text-caption text-warning">{t('approval')}</Text>
-          <Text className="text-foreground text-subhead">{item.toolCall.title ?? ''}</Text>
-        </View>
+        <TranscriptRecord
+          title={t('approval')}
+          entries={[
+            {
+              id: item.id,
+              label: item.title ?? item.toolCall.title ?? '',
+              value:
+                outcome.outcome === 'selected'
+                  ? optionNames.get(outcome.optionId)
+                  : tq('dismissed'),
+            },
+          ]}
+        />
       );
-    case 'question':
+    }
+    case 'question': {
       if (!item.resolution) return null;
-      return (
-        <View className="gap-1 rounded-lg border border-accent/40 bg-accent/10 px-3 py-2.5">
-          <Text className="font-semibold text-accent text-caption">{t('question')}</Text>
-          {item.questions.map((question) => (
-            <Text key={question.questionId} className="text-foreground text-subhead">
-              {question.prompt}
-            </Text>
-          ))}
-        </View>
+      const outcome = item.resolution.outcome;
+      const answers = new Map(
+        (outcome.outcome === 'answered' ? outcome.answers : []).map((answer) => [
+          answer.questionId,
+          answer,
+        ]),
       );
+      return (
+        <TranscriptRecord
+          title={outcome.outcome === 'cancelled' ? tq('dismissed') : t('question')}
+          entries={item.questions.map((question) => {
+            const answer = answers.get(question.questionId);
+            return {
+              id: question.questionId,
+              label: question.prompt,
+              value: answer ? (answerText(question, answer) ?? tq('skipped')) : undefined,
+            };
+          })}
+        />
+      );
+    }
     case 'error':
       return (
-        <View className="gap-1 rounded-lg border border-danger/40 bg-danger/10 px-3 py-2.5">
-          <Text className="font-semibold text-caption text-danger">{t('error')}</Text>
-          <Text className="text-foreground text-subhead">{item.message}</Text>
-        </View>
+        <TranscriptRecord
+          title={t('error')}
+          error
+          entries={[{ id: item.id, label: item.message }]}
+        />
       );
     case 'compaction':
       if (item.status === 'in_progress') {

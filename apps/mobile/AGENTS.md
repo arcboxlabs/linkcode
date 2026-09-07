@@ -97,8 +97,9 @@ only by driving the simulator:
 RN→SwiftUI is the supported direction; going back needs `RNHostView`, whose bidirectional nesting is
 the very thing 57.0.5 had to fix. So anything whose indispensable part is an RN view cannot cross
 over: **sign-in** (`AppleAuthenticationButton` is an RN view and `@expo/ui` has no Sign in with
-Apple), the **conversation surface** — timeline, composer, and the screen holding them (excluded by
-the redesign decision; the composer also rides `react-native-keyboard-controller`), the **terminal
+Apple), the **conversation layout** — virtualized Markdown timeline and controlled multiline input
+with `react-native-keyboard-controller` (its controls, disclosures, prompts, and transcript records
+use SwiftUI / Compose), the **terminal
 canvas** (`expo-libghostty`), the **startup splash** (`BrandMark` is a bundled RN image), and the
 **navigation header** (react-navigation). One smaller loss is accepted rather than worked
 around: `Image` takes SF Symbols, asset-catalog names, and local file URIs but **never a remote
