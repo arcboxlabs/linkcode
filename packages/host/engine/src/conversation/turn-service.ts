@@ -444,22 +444,37 @@ export class ConversationTurnService {
   }
 
   /** Persist a live fork checkpoint as the binding of the turn it describes: `ending` → the turn
-   * `runId` is executing, `preceding` → that turn's parent (a root has none). A checkpoint from a
-   * run that is neither dispatching nor running a turn (a replaced adapter) binds nothing. */
+   * `runId` is executing, `preceding` → that turn's parent (a root has none), filed under the
+   * parent's own run — a binding names the run that executed its turn, and a successor may run in
+   * another. A checkpoint from a run that is neither dispatching nor running a turn (a replaced
+   * adapter) binds nothing. */
   bindLiveCheckpoint(sessionId: SessionId, runId: RunId, checkpoint: HistoryCheckpoint): void {
     const dispatching = this.dispatching.get(sessionId)?.turn;
     const turn =
       dispatching?.runId === runId ? dispatching : this.runningFor(sessionId, runId)?.turn;
     if (!turn) return;
-    const turnId = checkpoint.turn === 'ending' ? turn.turnId : turn.parentTurnId;
-    if (turnId === null) return;
-    this.saveBinding({
-      turnId,
-      runId,
+    const cut = {
       historyId: checkpoint.historyId,
       checkpoint: checkpoint.cursor,
-      capturedFrom: 'live',
-    });
+      capturedFrom: 'live' as const,
+    };
+    if (checkpoint.turn === 'ending') {
+      this.saveBinding(turn.turnId, Effect.succeed({ ...cut, turnId: turn.turnId, runId }));
+      return;
+    }
+    const { parentTurnId } = turn;
+    if (parentTurnId === null) return;
+    this.saveBinding(
+      parentTurnId,
+      this.listTurns(sessionId).pipe(
+        Effect.map((turns) => {
+          const parent = turns.find((candidate) => candidate.turnId === parentTurnId);
+          return parent === undefined
+            ? undefined
+            : { ...cut, turnId: parentTurnId, runId: parent.runId };
+        }),
+      ),
+    );
   }
 
   /** An adapter `error` while the run's turn is live; decides `failed` on a stop-less settle. */
@@ -540,15 +555,19 @@ export class ConversationTurnService {
   }
 
   /** Bindings are written off synchronous adapter callbacks, best-effort like turn settles. */
-  private saveBinding(binding: ProviderTurnBinding): void {
+  private saveBinding(
+    turnId: TurnId,
+    binding: Effect.Effect<ProviderTurnBinding | undefined, OperationError>,
+  ): void {
     this.runTask(
-      storeOperation('conversation.binding.save', () => this.store.saveBinding(binding)).pipe(
+      binding.pipe(
+        Effect.flatMap((resolved) =>
+          resolved === undefined
+            ? Effect.void
+            : storeOperation('conversation.binding.save', () => this.store.saveBinding(resolved)),
+        ),
         Effect.catch((error) =>
-          Effect.logError(
-            error.publicMessage,
-            { operation: error.operation, turnId: binding.turnId },
-            error.cause,
-          ),
+          Effect.logError(error.publicMessage, { operation: error.operation, turnId }, error.cause),
         ),
       ),
     );
