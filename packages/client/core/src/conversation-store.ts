@@ -163,7 +163,8 @@ function createProjectionStore(
 
   /** A revision past this read means a lineage moved. A plain continuation is already covered
    * live — its new leaf's own user row has arrived — so only a leaf this store has never seen
-   * (an edit or rewrite from any device, a stale read) needs the re-read. */
+   * (an edit or rewrite from any device, a stale read) needs the re-read. A fork's row cannot
+   * pass: it relaunches under a new epoch, which `admit` flags first, and reads carry no echoes. */
   const checkGraph = (change: ConversationGraphChange | undefined): void => {
     if (change === undefined || change.graphRevision <= seed.graphRevision) return;
     if (
