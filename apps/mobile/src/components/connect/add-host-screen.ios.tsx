@@ -7,7 +7,7 @@ import {
   textContentType,
   textInputAutocapitalization,
 } from '@expo/ui/swift-ui/modifiers';
-import { useAddHost } from '@mobile/components/connect/use-add-host';
+import { useAddHost } from '@mobile/runtime/use-add-host';
 import { Stack, useRouter } from 'expo-router';
 import { useTranslations } from 'use-intl';
 

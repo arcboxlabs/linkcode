@@ -1,8 +1,8 @@
 import { HStack, ProgressView, Section, Text } from '@expo/ui/swift-ui';
 import { accessibilityLabel, controlSize, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
 import { ManualHostRow } from '@mobile/components/connect/manual-host-row';
-import { useDiscoveredHosts } from '@mobile/components/connect/use-discovered-hosts';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
+import { useDiscoveredHosts } from '@mobile/runtime/use-discovered-hosts';
 import { useTranslations } from 'use-intl';
 
 export function DiscoveredHostsSection(): React.ReactNode {

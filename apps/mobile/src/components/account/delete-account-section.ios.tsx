@@ -1,6 +1,6 @@
 import { Button, Section } from '@expo/ui/swift-ui';
 import { disabled } from '@expo/ui/swift-ui/modifiers';
-import { useDeleteAccount } from '@mobile/components/account/use-delete-account';
+import { useDeleteAccount } from '@mobile/runtime/use-delete-account';
 import { useTranslations } from 'use-intl';
 
 /**

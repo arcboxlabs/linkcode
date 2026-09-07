@@ -1,6 +1,6 @@
 # apps/mobile — Expo / React Native client
 
-Expo + React Native. List/form screens render **`@expo/ui`** (real SwiftUI); **HeroUI Native**
+Expo + React Native. List/form screens render **`@expo/ui`** (SwiftUI on iOS, Jetpack Compose on Android); **HeroUI Native**
 covers the RN surfaces that cannot cross over ("What deliberately stays React Native" below).
 Reaches the host through the `server` tunnel; business data still travels over `transport` +
 `@linkcode/schema`, the same contract as every other client.
@@ -45,6 +45,15 @@ Native. Mobile consumes `@linkcode/ui` only through its **native** components
   documentation.
 
 ## `@expo/ui` (SwiftUI) — its layout rules are not RN's
+
+Platform views share `runtime/` hooks for data and actions. Keep `.ios.tsx` responsible for
+SwiftUI and the Android implementation responsible for Compose; shared routes and runtime must
+not import either platform's UI package. Android hosts use `ThemedHost` so Material colors follow
+the app's appearance preference. Each visible list row must be a direct `LazyColumn` child.
+
+Expo's Compose `Switch` always receives a native callback, even without a JS handler. Wire
+`onCheckedChange` alongside a toggleable row; a tap on the thumb is consumed by the switch.
+Single-choice rows use `selectable` and their parent uses `selectableGroup` for TalkBack.
 
 Settings, terminal appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}`
 + `useViewportSizeMeasurement`, or the Form collapses to its content). Each trap below was found

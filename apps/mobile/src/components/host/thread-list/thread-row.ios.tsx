@@ -11,9 +11,9 @@ import { AgentIcon } from '@linkcode/ui/native';
 import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles.ios';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
+import { threadTitle } from '@mobile/utils/thread-title';
 import { View } from 'react-native';
 import type { ThreadRowProps } from './thread-row.types';
-import { threadTitle } from './thread-title';
 
 /** SwiftUI's semantic colours standing in for the `bg-*` tokens the RN dot used. */
 const STATUS_COLOR = {

@@ -1,8 +1,8 @@
 import { Button, Column, OutlinedTextField, Text, useNativeState } from '@expo/ui/jetpack-compose';
 import { fillMaxWidth, padding, testID } from '@expo/ui/jetpack-compose/modifiers';
-import { useAddHost } from '@mobile/components/connect/use-add-host';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
+import { useAddHost } from '@mobile/runtime/use-add-host';
 import { Stack } from 'expo-router';
 import { useTranslations } from 'use-intl';
 

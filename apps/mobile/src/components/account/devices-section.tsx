@@ -1,8 +1,8 @@
 import { ListItem, Text, TextButton } from '@expo/ui/jetpack-compose';
-import { useDevicesSection } from '@mobile/components/account/use-devices-section';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
+import { useDevicesSection } from '@mobile/runtime/use-devices-section';
 import { useTranslations } from 'use-intl';
 
 /** Android device registry; the view model lives in `use-devices-section`. Compose has no

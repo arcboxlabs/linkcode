@@ -9,9 +9,10 @@ import {
 } from '@expo/ui/jetpack-compose';
 import {
   animateContentSize,
-  clickable,
   fillMaxWidth,
   padding,
+  selectable,
+  selectableGroup,
   verticalScroll,
 } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
@@ -109,7 +110,7 @@ export function SelectorSheet({
         <Column modifiers={[verticalScroll(), padding(0, 0, 0, 16), animateContentSize()]}>
           {harness === undefined ? null : <ChipAxisSection axis={harness} />}
           {model === undefined ? null : (
-            <Column>
+            <Column modifiers={[selectableGroup()]}>
               <AxisTitle>{model.title}</AxisTitle>
               {model.groups.map((group) => (
                 <Column key={group.label ?? ''}>
@@ -127,10 +128,14 @@ export function SelectorSheet({
                       key={option.id}
                       colors={{ containerColor: '#00000000' }}
                       modifiers={[
-                        clickable(() => {
-                          model.onSelect(option.id);
-                          onClose();
-                        }),
+                        selectable(
+                          model.selection === option.id,
+                          () => {
+                            model.onSelect(option.id);
+                            onClose();
+                          },
+                          'radioButton',
+                        ),
                       ]}
                     >
                       <ListItem.HeadlineContent>

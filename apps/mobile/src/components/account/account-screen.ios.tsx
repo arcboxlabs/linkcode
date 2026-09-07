@@ -16,9 +16,7 @@ export function AccountScreen(): React.ReactNode {
   return (
     // Form needs the viewport as its proposed size, otherwise it collapses to its content.
     <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-      {account.status !== 'signed-in' ? (
-        <LoadingView />
-      ) : (
+      {account.status === 'signed-in' ? (
         <Form>
           <Section>
             <ProfileRow user={account.user} />
@@ -35,6 +33,8 @@ export function AccountScreen(): React.ReactNode {
           </Section>
           <DeleteAccountSection />
         </Form>
+      ) : (
+        <LoadingView />
       )}
     </Host>
   );

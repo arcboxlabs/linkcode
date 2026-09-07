@@ -5,8 +5,8 @@ import {
   repositoryLabel,
   withoutAutomationSessions,
 } from '@linkcode/ui/native';
-import { threadTitle } from '@mobile/components/host/thread-list/thread-title';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
+import { threadTitle } from '@mobile/utils/thread-title';
 import { useTranslations } from 'use-intl';
 
 /** The threads inbox view model: sessions grouped by workspace, filtered by the search query.

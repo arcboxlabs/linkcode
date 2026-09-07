@@ -4,11 +4,11 @@ import type { AgentKind, SessionStatus } from '@linkcode/schema';
 import { AGENT_INITIALS } from '@linkcode/ui/native';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
+import { threadTitle } from '@mobile/utils/thread-title';
 import agentClaudeCodeGlyph from '../../../../assets/icons/agent-claude-code.xml';
 import agentCodexGlyph from '../../../../assets/icons/agent-codex.xml';
 import agentOpencodeGlyph from '../../../../assets/icons/agent-opencode.xml';
 import type { ThreadRowProps } from './thread-row.types';
-import { threadTitle } from './thread-title';
 
 /** Brand marks vendored as vector drawables from `@proj-airi/lobe-icons` (the web glyph set);
  * kinds without a lobe glyph fall back to initials, matching the web sidebar. */

@@ -1,5 +1,11 @@
 import { Column, ListItem, ModalBottomSheet, RadioButton, Text } from '@expo/ui/jetpack-compose';
-import { clickable, padding, verticalScroll } from '@expo/ui/jetpack-compose/modifiers';
+import {
+  clickable,
+  padding,
+  selectable,
+  selectableGroup,
+  verticalScroll,
+} from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
 
@@ -49,7 +55,7 @@ export function SheetPicker({
       <ModalBottomSheet onDismissRequest={onClose}>
         <Column modifiers={[verticalScroll(), padding(0, 0, 0, 16)]}>
           {sections.map((section) => (
-            <Column key={section.id}>
+            <Column key={section.id} modifiers={[selectableGroup()]}>
               {section.title === undefined ? null : (
                 <Text
                   style={{ typography: 'titleSmall' }}
@@ -64,10 +70,14 @@ export function SheetPicker({
                   key={option.id}
                   colors={{ containerColor: '#00000000' }}
                   modifiers={[
-                    clickable(() => {
-                      section.onSelect(option.id);
-                      onClose();
-                    }),
+                    selectable(
+                      section.selection === option.id,
+                      () => {
+                        section.onSelect(option.id);
+                        onClose();
+                      },
+                      'radioButton',
+                    ),
                   ]}
                 >
                   <ListItem.LeadingContent>

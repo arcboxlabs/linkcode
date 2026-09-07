@@ -1,10 +1,10 @@
 import { LoadingIndicator } from '@expo/ui/jetpack-compose';
 import { size } from '@expo/ui/jetpack-compose/modifiers';
 import { ManualHostRow } from '@mobile/components/connect/manual-host-row';
-import { useDiscoveredHosts } from '@mobile/components/connect/use-discovered-hosts';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { FormHint } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
+import { useDiscoveredHosts } from '@mobile/runtime/use-discovered-hosts';
 import { useTranslations } from 'use-intl';
 
 export function DiscoveredHostsSection(): React.ReactNode {

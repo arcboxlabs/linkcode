@@ -24,7 +24,7 @@ const GLASS = [
 /** The message composer card, shaped like the web composer: the editor on top and a footer row
  * below it — optional tool slots left and trailing, then the circular send/stop action. Chat
  * screens pass no tools; the new-thread draft fills the slots with its start-option chips.
- * Send and stop are wired by the screen; this owns nothing but the draft text. */
+ * Draft state and send/stop behavior belong to the screen's runtime hook. */
 export function Composer({
   onSend,
   onStop,

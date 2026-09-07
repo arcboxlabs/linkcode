@@ -5,7 +5,7 @@ import { LoadingView } from '@mobile/components/form/loading-view.android';
 import { FormHint } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
-import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
+import { useThreadInbox } from '@mobile/runtime/use-thread-inbox';
 import { useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'react';

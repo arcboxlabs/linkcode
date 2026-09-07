@@ -7,7 +7,7 @@ import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { FormHint } from '@mobile/components/form/rows.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
-import { useTerminalInbox } from '@mobile/components/terminal/use-terminal-inbox';
+import { useTerminalInbox } from '@mobile/runtime/use-terminal-inbox';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 

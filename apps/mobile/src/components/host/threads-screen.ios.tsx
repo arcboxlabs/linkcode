@@ -2,7 +2,7 @@ import { Form, Host, Section, Button as UIButton, Text as UIText } from '@expo/u
 import { LoadingView } from '@mobile/components/form/loading-view.ios';
 import { SECONDARY } from '@mobile/components/form/styles.ios';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
-import { useThreadInbox } from '@mobile/components/host/use-thread-inbox';
+import { useThreadInbox } from '@mobile/runtime/use-thread-inbox';
 import { Stack, useRouter } from 'expo-router';
 import { noop } from 'foxact/noop';
 import { useCallback } from 'react';

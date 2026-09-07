@@ -1,8 +1,8 @@
 import { Button, HStack, Section, Spacer, SwipeActions, Text, VStack } from '@expo/ui/swift-ui';
 import { badge, buttonStyle, disabled, foregroundStyle } from '@expo/ui/swift-ui/modifiers';
-import { useDevicesSection } from '@mobile/components/account/use-devices-section';
 import { FormLoadingRow } from '@mobile/components/form/loading-view.ios';
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles.ios';
+import { useDevicesSection } from '@mobile/runtime/use-devices-section';
 import { useTranslations } from 'use-intl';
 
 /** The account's registered devices; the view model lives in `use-devices-section`. */

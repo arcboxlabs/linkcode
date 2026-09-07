@@ -1,5 +1,5 @@
 import { ContainedLoadingIndicator, ListItem, Row, Switch, Text } from '@expo/ui/jetpack-compose';
-import { fillMaxWidth, padding, toggleable } from '@expo/ui/jetpack-compose/modifiers';
+import { alpha, fillMaxWidth, padding, toggleable } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 
 /** Quiet in-section message row: empty states, hints, and errors. */
@@ -38,24 +38,29 @@ export function FormLoadingRow(): React.ReactNode {
   );
 }
 
-/** Labeled switch row. The row owns the tap (`toggleable`), the Switch only displays the state —
- * giving it its own handler would double-toggle a tap that lands on the thumb. */
+// Expo always installs the native Switch callback, so thumb taps do not reach the row handler.
 export function ToggleRow({
   label,
   value,
   onValueChange,
+  enabled = true,
 }: {
   label: string;
   value: boolean;
   onValueChange: (value: boolean) => void;
+  enabled?: boolean;
 }): React.ReactNode {
   return (
-    <ListItem modifiers={[toggleable(value, () => onValueChange(!value), { role: 'switch' })]}>
+    <ListItem
+      modifiers={
+        enabled ? [toggleable(value, () => onValueChange(!value), { role: 'switch' })] : []
+      }
+    >
       <ListItem.HeadlineContent>
-        <Text>{label}</Text>
+        <Text modifiers={enabled ? [] : [alpha(0.38)]}>{label}</Text>
       </ListItem.HeadlineContent>
       <ListItem.TrailingContent>
-        <Switch value={value} />
+        <Switch value={value} enabled={enabled} onCheckedChange={onValueChange} />
       </ListItem.TrailingContent>
     </ListItem>
   );

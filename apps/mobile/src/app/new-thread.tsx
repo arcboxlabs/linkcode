@@ -1,14 +1,9 @@
-import { Composer } from '@mobile/components/conversation/composer';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
-import { AgentSelectorChip, ApprovalChip } from '@mobile/components/host/new-thread/draft-tools';
-import { ProjectRow } from '@mobile/components/host/new-thread/project-row';
+import { NewThreadScreen } from '@mobile/components/host/new-thread/new-thread-screen';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
-import { useNewThreadDraft } from '@mobile/runtime/use-new-thread-draft';
-import { Stack, useRouter } from 'expo-router';
-import { noop } from 'foxact/noop';
+import { Stack } from 'expo-router';
 import { View } from 'react-native';
-import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 /** Composer-first new-thread page, the mobile shape of the desktop draft surface: the start
@@ -30,34 +25,5 @@ export default function NewThreadRoute(): React.ReactNode {
         <NewThreadScreen />
       </HostClientGate>
     </View>
-  );
-}
-
-function NewThreadScreen(): React.ReactNode {
-  const router = useRouter();
-  const { text, setText, start, creating, sendBlocked, error, project, approval, selector } =
-    useNewThreadDraft((sessionId) => router.replace(`/session/${sessionId}`));
-
-  return (
-    <>
-      <View className="flex-1" />
-      <KeyboardStickyView>
-        <ProjectRow {...project} />
-        <Composer
-          text={text}
-          onTextChange={setText}
-          onSend={(text) => {
-            void start(text);
-          }}
-          onStop={noop}
-          isRunning={false}
-          disabled={creating}
-          sendBlocked={sendBlocked}
-          error={error}
-          tools={<ApprovalChip {...approval} />}
-          trailing={<AgentSelectorChip {...selector} />}
-        />
-      </KeyboardStickyView>
-    </>
   );
 }

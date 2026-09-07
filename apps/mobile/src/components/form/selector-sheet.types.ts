@@ -32,7 +32,8 @@ export function modelAxisGroups(models: ModelOption[]): SelectorModelGroup[] {
   if (providerGroups.ungrouped.length > 0) {
     groups.push({ label: null, options: providerGroups.ungrouped.map(toOption) });
   }
-  for (const group of providerGroups.groups) {
+  for (let i = 0, len = providerGroups.groups.length; i < len; i++) {
+    const group = providerGroups.groups[i];
     groups.push({ label: group.label, options: group.options.map(toOption) });
   }
   return groups;

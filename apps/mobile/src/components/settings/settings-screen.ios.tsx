@@ -11,16 +11,12 @@ import {
 } from '@mobile/components/settings/settings-screen.shared';
 import { LARGE_TITLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
-import {
-  disableDeviceNotifications,
-  enableDeviceNotifications,
-} from '@mobile/runtime/notifications';
 import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
+import { useNotificationSettings } from '@mobile/runtime/use-notification-settings';
 import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
-import { useRef, useState } from 'react';
-import { Alert, Linking, View } from 'react-native';
+import { View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
@@ -35,39 +31,14 @@ export function SettingsScreen(): React.ReactNode {
   const account = useCloudAccount();
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const themePreference = useSettingsStore((state) => state.themePreference);
-  const notificationsEnabled = useSettingsStore((state) => state.notificationsEnabled);
+  const {
+    enabled: notificationsEnabled,
+    canUpdate: notificationsToggleEnabled,
+    update: updateNotifications,
+  } = useNotificationSettings();
   const setThemePreference = useSettingsStore((state) => state.setThemePreference);
   const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
   const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
-  const [notificationUpdatePending, setNotificationUpdatePending] = useState(false);
-  const notificationUpdatePendingRef = useRef(false);
-
-  const updateNotifications = async (enabled: boolean) => {
-    if (account.status !== 'signed-in' || notificationUpdatePendingRef.current) return;
-    notificationUpdatePendingRef.current = true;
-    setNotificationUpdatePending(true);
-    try {
-      if (!enabled) {
-        await disableDeviceNotifications();
-        return;
-      }
-      if (await enableDeviceNotifications(account.user.id)) return;
-      Alert.alert(t('notificationsDeniedTitle'), t('notificationsDenied'), [
-        { text: t('cancel'), style: 'cancel' },
-        {
-          text: t('openSettings'),
-          onPress() {
-            void Linking.openSettings();
-          },
-        },
-      ]);
-    } catch {
-      Alert.alert(t('notificationsErrorTitle'), t('notificationsError'));
-    } finally {
-      notificationUpdatePendingRef.current = false;
-      setNotificationUpdatePending(false);
-    }
-  };
 
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
   // proposed the whole window and paints straight over the large title.
@@ -143,7 +114,7 @@ export function SettingsScreen(): React.ReactNode {
               isOn={notificationsEnabled}
               onIsOnChange={updateNotifications}
               label={t('notifications')}
-              modifiers={[disabled(account.status !== 'signed-in' || notificationUpdatePending)]}
+              modifiers={[disabled(!notificationsToggleEnabled)]}
             />
           </Section>
 

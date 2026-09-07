@@ -1,8 +1,8 @@
 import { Text, TextButton } from '@expo/ui/jetpack-compose';
-import { useMyMachines } from '@mobile/components/connect/use-my-machines';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
+import { useMyMachines } from '@mobile/runtime/use-my-machines';
 import { useTranslations } from 'use-intl';
 
 /** Android online machines; the view model lives in `use-my-machines`. */
