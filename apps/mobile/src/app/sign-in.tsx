@@ -1,3 +1,5 @@
+import { ActionButton } from '@mobile/components/form/action-button';
+import { AppLoadingScreen } from '@mobile/components/shell/app-loading-screen';
 import { BrandMark } from '@mobile/components/shell/brand-mark';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { signInToCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
@@ -5,11 +7,11 @@ import { isAppleSignInCancel, signInWithApple } from '@mobile/runtime/cloud/idp'
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { Redirect, useRouter } from 'expo-router';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { Button } from 'heroui-native';
 import { useState } from 'react';
 import {
   AccessibilityInfo,
   ActivityIndicator,
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -36,13 +38,13 @@ const styles = StyleSheet.create({
     gap: 12,
   },
   title: {
-    fontSize: 34,
-    fontWeight: '700',
-    lineHeight: 41,
+    fontSize: Platform.OS === 'ios' ? 34 : 32,
+    fontWeight: Platform.OS === 'ios' ? '700' : '400',
+    lineHeight: Platform.OS === 'ios' ? 41 : 40,
   },
   tagline: {
-    fontSize: 17,
-    lineHeight: 22,
+    fontSize: Platform.OS === 'ios' ? 17 : 16,
+    lineHeight: Platform.OS === 'ios' ? 22 : 24,
     maxWidth: 320,
   },
   actions: {
@@ -54,30 +56,12 @@ const styles = StyleSheet.create({
     minHeight: 18,
   },
   error: {
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: Platform.OS === 'ios' ? 13 : 12,
+    lineHeight: Platform.OS === 'ios' ? 18 : 16,
   },
   appleButton: {
     height: 50,
     width: '100%',
-  },
-  authButton: {
-    borderRadius: 13,
-    height: 'auto',
-    minHeight: 50,
-    paddingHorizontal: 16,
-    paddingVertical: 13,
-  },
-  manualButton: {
-    borderRadius: 13,
-    height: 'auto',
-    minHeight: 44,
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-  },
-  buttonLabel: {
-    fontSize: 17,
-    lineHeight: 22,
   },
   disabled: {
     opacity: 0.5,
@@ -111,15 +95,7 @@ export default function SignInScreen() {
 
   if (account.status === 'signed-in') return <Redirect href="/connect" />;
   if (appleAvailable === null || account.status === 'loading') {
-    return (
-      <View
-        className="flex-1 items-center justify-center gap-6"
-        style={{ backgroundColor: palette.background }}
-      >
-        <BrandMark size={80} />
-        <ActivityIndicator accessibilityRole="progressbar" color={palette.tint} />
-      </View>
-    );
+    return <AppLoadingScreen />;
   }
 
   const run = async (flow: () => Promise<void>) => {
@@ -155,7 +131,6 @@ export default function SignInScreen() {
           <BrandMark size={80} />
           <Text
             accessibilityRole="header"
-            className="font-bold"
             dynamicTypeRamp="largeTitle"
             style={[styles.title, { color: palette.text }]}
           >
@@ -208,42 +183,22 @@ export default function SignInScreen() {
               }}
             />
           ) : null}
-          <Button
-            animation={{ scale: false }}
-            isDisabled={busy}
-            size="md"
-            style={[
-              styles.authButton,
-              { backgroundColor: appleAvailable ? palette.surface : palette.tint },
-            ]}
+          <ActionButton
+            fullWidth
+            disabled={busy}
             variant={appleAvailable ? 'secondary' : 'primary'}
+            label={appleAvailable ? t('other') : t('signIn')}
             onPress={() => {
               void run(signInToCloud);
             }}
-          >
-            <Button.Label
-              dynamicTypeRamp="body"
-              style={[
-                styles.buttonLabel,
-                { color: appleAvailable ? palette.text : palette.onTint },
-              ]}
-            >
-              {appleAvailable ? t('other') : t('signIn')}
-            </Button.Label>
-          </Button>
-          <Button
-            animation={{ scale: false }}
-            style={styles.manualButton}
-            variant="ghost"
+          />
+          <ActionButton
+            fullWidth
+            disabled={busy}
+            variant="text"
+            label={t('skip')}
             onPress={() => router.push('/connect')}
-          >
-            <Button.Label
-              dynamicTypeRamp="body"
-              style={[styles.buttonLabel, { color: palette.tint }]}
-            >
-              {t('skip')}
-            </Button.Label>
-          </Button>
+          />
         </View>
       </View>
     </ScrollView>

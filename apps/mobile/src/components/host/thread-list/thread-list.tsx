@@ -1,29 +1,21 @@
+import { Icon, LazyColumn, PullToRefreshBox, Row, Text } from '@expo/ui/jetpack-compose';
 import {
-  AnimatedVisibility,
-  Column,
-  EnterTransition,
-  ExitTransition,
-  Icon,
-  LazyColumn,
-  PullToRefreshBox,
-  Row,
-  Spacer,
-  Text,
-} from '@expo/ui/jetpack-compose';
-import { clickable, fillMaxWidth, padding, weight } from '@expo/ui/jetpack-compose/modifiers';
+  clickable,
+  defaultMinSize,
+  fillMaxWidth,
+  padding,
+  weight,
+} from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { Fragment, useState } from 'react';
+import { useState } from 'react';
 import expandLessGlyph from '../../../../assets/icons/expand-less.xml';
 import expandMoreGlyph from '../../../../assets/icons/expand-more.xml';
 import type { ThreadListProps } from './thread-list.types';
 import { ThreadRow } from './thread-row';
 import { useThreadListState } from './use-thread-list-state';
 
-/** Android thread inbox body. Compose has no collapsible Section: each group renders a clickable
- * MD3 subheader row with an expand chevron, and its rows collapse through `AnimatedVisibility`
- * (the M3 expand/shrink motion; rows stay mounted). PullToRefreshBox takes a controlled flag
- * instead of awaiting the promise, so the spinner state is adapted here. */
+// Each visible thread must be a direct LazyColumn child; grouping rows in a Column defeats laziness.
 export function ThreadList({
   groups,
   labelFor,
@@ -45,48 +37,45 @@ export function ThreadList({
        * fillMaxWidth child is unaffected. */}
       <PullToRefreshBox contentAlignment="topCenter" isRefreshing={refreshing} onRefresh={refresh}>
         <LazyColumn contentPadding={{ top: 4, bottom: 24 }} modifiers={[fillMaxWidth()]}>
-          {groups.map((group) => {
+          {groups.flatMap((group) => {
             const expanded = !collapsed.has(group.key);
-            return (
-              <Fragment key={group.key}>
-                <Row
-                  verticalAlignment="center"
-                  modifiers={[
-                    clickable(() => setGroupExpanded(group.key, !expanded)),
-                    fillMaxWidth(),
-                    padding(16, 14, 16, 4),
-                  ]}
+            return [
+              <Row
+                key={`group:${group.key}`}
+                verticalAlignment="center"
+                modifiers={[
+                  clickable(() => setGroupExpanded(group.key, !expanded)),
+                  fillMaxWidth(),
+                  defaultMinSize({ minHeight: 48 }),
+                  padding(16, 14, 16, 4),
+                ]}
+              >
+                <Text
+                  style={{ typography: 'titleSmall' }}
+                  color={colors.primary}
+                  modifiers={[weight(1)]}
+                  maxLines={1}
+                  overflow="ellipsis"
                 >
-                  <Text style={{ typography: 'titleSmall' }} color={colors.primary}>
-                    {labelFor(group)}
-                  </Text>
-                  <Spacer modifiers={[weight(1)]} />
-                  <Icon
-                    source={expanded ? expandLessGlyph : expandMoreGlyph}
-                    size={20}
-                    tint={colors.onSurfaceVariant}
-                  />
-                </Row>
-                <AnimatedVisibility
-                  visible={expanded}
-                  enterTransition={EnterTransition.expandVertically().plus(
-                    EnterTransition.fadeIn(),
-                  )}
-                  exitTransition={ExitTransition.shrinkVertically().plus(ExitTransition.fadeOut())}
-                >
-                  <Column modifiers={[fillMaxWidth()]}>
-                    {group.sessions.map((session) => (
-                      <ThreadRow
-                        key={session.sessionId}
-                        session={session}
-                        now={now}
-                        onPress={() => onOpenThread(session.sessionId)}
-                      />
-                    ))}
-                  </Column>
-                </AnimatedVisibility>
-              </Fragment>
-            );
+                  {labelFor(group)}
+                </Text>
+                <Icon
+                  source={expanded ? expandLessGlyph : expandMoreGlyph}
+                  size={20}
+                  tint={colors.onSurfaceVariant}
+                />
+              </Row>,
+              ...(expanded
+                ? group.sessions.map((session) => (
+                    <ThreadRow
+                      key={`session:${session.sessionId}`}
+                      session={session}
+                      now={now}
+                      onPress={() => onOpenThread(session.sessionId)}
+                    />
+                  ))
+                : []),
+            ];
           })}
         </LazyColumn>
       </PullToRefreshBox>

@@ -1,3 +1,4 @@
+import { AppLoadingScreen } from '@mobile/components/shell/app-loading-screen';
 import { HostConnectionScope } from '@mobile/components/shell/host-connection-scope';
 import {
   useStackScreenOptions,
@@ -11,7 +12,7 @@ import { Stack } from 'expo-router';
 export function RootNavigator(): React.ReactNode {
   const configurationReady = useMobileConfiguration();
   const screenOptions = useStackScreenOptions();
-  if (!configurationReady) return null;
+  if (!configurationReady) return <AppLoadingScreen />;
   return (
     <HostConnectionScope>
       <Stack screenOptions={screenOptions}>

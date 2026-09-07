@@ -44,7 +44,7 @@ Native. Mobile consumes `@linkcode/ui` only through its **native** components
   under Node, suspect this class first and probe the runtime rather than reasoning from the API's
   documentation.
 
-## `@expo/ui` (SwiftUI) — its layout rules are not RN's
+## Native UI boundaries
 
 Platform views share `runtime/` hooks for data and actions. Keep `.ios.tsx` responsible for
 SwiftUI and the Android implementation responsible for Compose; shared routes and runtime must
@@ -54,6 +54,8 @@ the app's appearance preference. Each visible list row must be a direct `LazyCol
 Expo's Compose `Switch` always receives a native callback, even without a JS handler. Wire
 `onCheckedChange` alongside a toggleable row; a tap on the thumb is consumed by the switch.
 Single-choice rows use `selectable` and their parent uses `selectableGroup` for TalkBack.
+
+## `@expo/ui` (SwiftUI) — its layout rules are not RN's
 
 Settings, terminal appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}`
 + `useViewportSizeMeasurement`, or the Form collapses to its content). Each trap below was found

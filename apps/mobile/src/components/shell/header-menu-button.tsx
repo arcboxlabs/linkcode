@@ -16,7 +16,7 @@ export function HeaderMenuButton({ label, actions }: HeaderMenuButtonProps): Rea
     <ThemedHost matchContents>
       <DropdownMenu expanded={expanded} onDismissRequest={() => setExpanded(false)}>
         <IconButton onClick={() => setExpanded(true)}>
-          <Icon source={moreVertGlyph} contentDescription={label} />
+          <Icon source={moreVertGlyph} contentDescription={label} tint={colors.onSurface} />
         </IconButton>
         <DropdownMenu.Items>
           {actions.map((action) => (

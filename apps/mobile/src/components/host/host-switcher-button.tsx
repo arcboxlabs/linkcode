@@ -28,10 +28,10 @@ export function HostSwitcherButton(): React.ReactNode {
         accessibilityRole="button"
         accessibilityLabel={selected.name}
         onPress={() => setOpen(true)}
-        className="flex-row items-center gap-1 py-1 pr-3"
+        className="min-h-12 min-w-12 max-w-52 flex-row items-center gap-1 pr-3"
       >
         <Text
-          className="font-semibold text-headline"
+          className="shrink font-medium text-xl"
           style={{ color: palette.text }}
           numberOfLines={1}
         >
