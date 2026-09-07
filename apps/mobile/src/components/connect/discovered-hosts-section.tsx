@@ -15,7 +15,8 @@ export function DiscoveredHostsSection(): React.ReactNode {
   const savedHosts = useHostRegistryStore((state) => state.hosts);
   const addHost = useHostRegistryStore((state) => state.addHost);
   const savedUrls = new Set<string>();
-  for (const host of savedHosts) {
+  for (let i = 0, len = savedHosts.length; i < len; i++) {
+    const host = savedHosts[i];
     if ('url' in host) savedUrls.add(canonicalDirectHostUrl(host.url));
   }
   const discoveredHosts = hosts.filter((host) => !savedUrls.has(canonicalDirectHostUrl(host.url)));

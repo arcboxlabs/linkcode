@@ -1,6 +1,7 @@
 import type { DiscoveredDaemon } from '@mobile/runtime/daemon-discovery';
 import { toDiscoveredDaemon } from '@mobile/runtime/daemon-discovery';
-import { useEvent } from 'expo';
+import { useFocusEffect } from 'expo-router';
+import { useCallback, useState } from 'react';
 import type {
   DaemonDiscoveryError,
   DaemonDiscoverySnapshot,
@@ -20,9 +21,17 @@ export interface DaemonDiscoveryState {
 }
 
 export function useDaemonDiscovery(): DaemonDiscoveryState {
-  const snapshot = useEvent(LinkCodeDaemonDiscovery, 'onHostsChanged', INITIAL_SNAPSHOT);
+  const [snapshot, setSnapshot] = useState(INITIAL_SNAPSHOT);
+  useFocusEffect(
+    useCallback(() => {
+      setSnapshot(INITIAL_SNAPSHOT);
+      const subscription = LinkCodeDaemonDiscovery.addListener('onHostsChanged', setSnapshot);
+      return () => subscription.remove();
+    }, []),
+  );
   const hosts: DiscoveredDaemon[] = [];
-  for (const nativeHost of snapshot.hosts) {
+  for (let i = 0, len = snapshot.hosts.length; i < len; i++) {
+    const nativeHost = snapshot.hosts[i];
     const host = toDiscoveredDaemon(nativeHost);
     if (host) hosts.push(host);
   }

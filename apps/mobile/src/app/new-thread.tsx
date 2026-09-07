@@ -14,6 +14,7 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { AgentSelectorChip, ApprovalChip } from '@mobile/components/host/new-thread/draft-tools';
 import { ProjectRow } from '@mobile/components/host/new-thread/project-row';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { queueInitialSessionPrompt } from '@mobile/runtime/initial-session-prompt';
 import { buildStartOptions } from '@mobile/runtime/new-thread-start-options';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useAccountModels } from '@mobile/runtime/use-account-models';
@@ -61,7 +62,8 @@ function NewThreadScreen(): React.ReactNode {
   const router = useRouter();
   const client = useLinkCodeClient();
   const { create } = useSessions();
-  const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
+  const { workspaces } = useWorkspaces();
+  const [text, setText] = useState('');
 
   const [kind, setKind] = useState<AgentKind>(AgentKindSchema.options[0]);
   const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
@@ -76,12 +78,13 @@ function NewThreadScreen(): React.ReactNode {
 
   // Recency order mirrors the thread groups; the most recent project is the default pick.
   const ordered = [...workspaces].sort((a, b) => b.lastUsedAt - a.lastUsedAt);
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- one lookup against a short workspace list; the Map the rule asks for costs the same walk to build each render
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- one lookup against a short workspace list; the Map the rule asks for costs the same walk to build each render
   const pickedWorkspace = ordered.find((workspace) => workspace.cwd === selectedCwd);
   const selectedWorkspace = pickedWorkspace ?? ordered.at(0);
   const cwd = selectedWorkspace?.cwd ?? null;
 
-  const catalog = useAgentStartCatalog(kind, cwd);
+  const target = cwd ?? customPath.trim();
+  const catalog = useAgentStartCatalog(kind, target || null);
   const models = useAccountModels(kind);
 
   // Desktop draft rules apply throughout: every catalog default is a display value; only an
@@ -126,7 +129,7 @@ function NewThreadScreen(): React.ReactNode {
       : null;
   const displayedPolicyId =
     pickedPolicyId ?? catalog?.defaultPolicyId ?? policies.at(0)?.policyId ?? null;
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- one lookup against a handful of policies per render
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- one lookup against a handful of policies per render
   const displayedPolicy = policies.find((policy) => policy.policyId === displayedPolicyId);
   const policyValue = displayedPolicy?.name ?? t('defaultOption');
 
@@ -151,7 +154,6 @@ function NewThreadScreen(): React.ReactNode {
   };
 
   const start = async (text: string) => {
-    const target = cwd ?? customPath.trim();
     if (!target || creating) return;
     const startedAt = Date.now();
     setCreating(true);
@@ -177,10 +179,7 @@ function NewThreadScreen(): React.ReactNode {
         });
         throw error;
       }
-      // The first prompt rides behind the started session; the conversation stream on the next
-      // screen is the source of truth for whether it landed.
-      client.promptText(sessionId, text).catch(noop);
-      await refreshWorkspaces().catch(noop);
+      queueInitialSessionPrompt(client, sessionId, text);
       router.replace(`/session/${sessionId}`);
     } catch (error) {
       setCreateError(extractErrorMessage(error, false) ?? 'Unknown error');
@@ -214,8 +213,9 @@ function NewThreadScreen(): React.ReactNode {
           onStop={noop}
           isRunning={false}
           disabled={creating}
-          sendBlocked={(cwd ?? customPath.trim()).length === 0}
-          clearOnSend={false}
+          sendBlocked={target.length === 0}
+          text={text}
+          onTextChange={setText}
           error={createError ? t('createError', { error: createError }) : undefined}
           tools={
             <ApprovalChip

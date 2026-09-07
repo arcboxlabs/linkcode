@@ -3,7 +3,6 @@ import { frame, glassEffect } from '@expo/ui/swift-ui/modifiers';
 import { SendButton } from '@mobile/components/conversation/send-button';
 import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import { useThemeColor } from 'heroui-native';
-import { useState } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
@@ -33,7 +32,8 @@ export function Composer({
   disabled,
   error,
   sendBlocked = false,
-  clearOnSend = true,
+  text,
+  onTextChange,
   tools,
   trailing,
 }: {
@@ -44,15 +44,14 @@ export function Composer({
   error?: string;
   /** Typing stays possible while send is off (e.g. no working directory resolved yet). */
   sendBlocked?: boolean;
-  /** Off for one-shot surfaces where a failed submit must not eat the draft. */
-  clearOnSend?: boolean;
+  text: string;
+  onTextChange: (text: string) => void;
   /** Footer-left tool cluster (the draft's approval chip). */
   tools?: React.ReactNode;
   /** Footer-right cluster before send (the draft's harness/model/effort selector). */
   trailing?: React.ReactNode;
 }): React.ReactNode {
   const t = useTranslations('mobile.conversation');
-  const [text, setText] = useState('');
   const muted = useThemeColor('muted');
 
   const trimmed = text.trim();
@@ -62,7 +61,6 @@ export function Composer({
   const submit = (): void => {
     if (!canSend) return;
     onSend(trimmed);
-    if (clearOnSend) setText('');
   };
 
   return (
@@ -93,7 +91,7 @@ export function Composer({
           placeholder={t('composerPlaceholder')}
           placeholderTextColor={muted}
           value={text}
-          onChangeText={setText}
+          onChangeText={onTextChange}
           editable={!disabled}
           multiline
         />

@@ -7,7 +7,8 @@ import type {
   SessionStatus,
 } from '@linkcode/schema';
 import { useSet } from 'foxact/use-set';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
+import { readInitialSessionPrompt, takeInitialSessionPrompt } from './initial-session-prompt';
 
 /** Which composer action failed. Failures carry no message: the daemon's reasons are not
  * user-actionable here, and the caller owns the copy. */
@@ -19,6 +20,9 @@ export interface SessionActions {
   /** False when there is no live session to prompt — a cold or stopped thread. */
   readonly canCompose: boolean;
   readonly failure: SessionActionFailure | null;
+  readonly text: string;
+  readonly setText: (text: string) => void;
+  readonly sending: boolean;
   /** Ask ids with a response in flight. */
   readonly respondingIds: ReadonlySet<string>;
   /** Ask ids whose last response failed. */
@@ -46,15 +50,42 @@ export function useSessionActions(
   const [respondingIds, addResponding, removeResponding] = useSet<string>();
   const [failedResponseIds, addFailedResponse, removeFailedResponse] = useSet<string>();
   const [failure, setFailure] = useState<SessionActionFailure | null>(null);
+  const [text, setText] = useState(() =>
+    sessionId ? readInitialSessionPrompt(client, sessionId) : '',
+  );
+  const [sending, setSending] = useState(() =>
+    Boolean(sessionId && readInitialSessionPrompt(client, sessionId)),
+  );
+
+  const dispatch = useCallback(
+    (text: string) => {
+      if (!sessionId) return;
+      client
+        .promptText(sessionId, text)
+        .then(() => setText((current) => (current.trim() === text ? '' : current)))
+        .catch(() => setFailure('send'))
+        .finally(() => setSending(false));
+    },
+    [client, sessionId],
+  );
 
   const send = useCallback(
     (text: string) => {
       if (!sessionId) return;
       setFailure(null);
-      client.promptText(sessionId, text).catch(() => setFailure('send'));
+      setSending(true);
+      dispatch(text);
     },
-    [client, sessionId],
+    [dispatch, sessionId],
   );
+
+  // The screen calls useSeededConversation first, so its attach effect precedes this dispatch.
+  // Taking the handoff in an effect prevents Strict Mode's render/replay from sending it twice.
+  useEffect(() => {
+    if (!sessionId) return;
+    const initial = takeInitialSessionPrompt(client, sessionId);
+    if (initial) dispatch(initial);
+  }, [client, dispatch, sessionId]);
 
   const stop = useCallback(() => {
     if (!sessionId) return;
@@ -119,6 +150,9 @@ export function useSessionActions(
     isRunning: status === 'running' || status === 'starting',
     canCompose: sessionId !== null && status !== null && status !== 'stopped',
     failure,
+    text,
+    setText,
+    sending,
     respondingIds,
     failedResponseIds,
     send,

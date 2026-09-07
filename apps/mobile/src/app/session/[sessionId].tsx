@@ -244,6 +244,9 @@ function SessionScreen(): React.ReactNode {
             onRespondQuestion={actions.respondQuestion}
           />
           <Composer
+            text={actions.text}
+            onTextChange={actions.setText}
+            sendBlocked={actions.sending}
             onSend={actions.send}
             onStop={actions.stop}
             isRunning={actions.isRunning}

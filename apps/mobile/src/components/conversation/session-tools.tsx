@@ -21,7 +21,7 @@ export function SessionApprovalChip({
   const t = useTranslations('mobile.sessions');
   if (!approvalPolicy || approvalPolicy.availablePolicies.length === 0) return null;
 
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- one lookup against a handful of policies per render
+  // eslint-disable-next-line vibe-proof/react-no-performance-impacting-array-find -- one lookup against a handful of policies per render
   const current = approvalPolicy.availablePolicies.find(
     (policy) => policy.policyId === approvalPolicy.currentPolicyId,
   );
