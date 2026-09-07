@@ -1,13 +1,11 @@
 import { ListItem, Text, TextButton } from '@expo/ui/jetpack-compose';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { RowActions } from '@mobile/components/form/row-actions.android';
 import { FormHint, FormLoadingRow } from '@mobile/components/form/rows.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { useDevicesSection } from '@mobile/runtime/use-devices-section';
 import { useTranslations } from 'use-intl';
 
-/** Android device registry; the view model lives in `use-devices-section`. Compose has no
- * SwipeActions, so revoke is a visible trailing text button — the MD3-discoverable shape for a
- * destructive-only row action. */
 export function DevicesSection(): React.ReactNode {
   const t = useTranslations('mobile.account');
   const colors = useAppMaterialColors();
@@ -31,27 +29,30 @@ export function DevicesSection(): React.ReactNode {
         <FormHint>{t('devicesEmpty')}</FormHint>
       ) : (
         devices.map((device) => (
-          <ListItem key={device.id}>
-            <ListItem.HeadlineContent>
-              <Text>{device.name}</Text>
-            </ListItem.HeadlineContent>
-            <ListItem.SupportingContent>
-              <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
-                {device.id === enrolledId
-                  ? `${describeDevice(device)} · ${t('thisDevice')}`
-                  : describeDevice(device)}
-              </Text>
-            </ListItem.SupportingContent>
-            <ListItem.TrailingContent>
-              <TextButton
-                enabled={busyId === null}
-                colors={{ contentColor: colors.error }}
-                onClick={() => confirmRevoke(device)}
-              >
-                <Text>{t('revoke')}</Text>
-              </TextButton>
-            </ListItem.TrailingContent>
-          </ListItem>
+          <RowActions
+            key={device.id}
+            actions={[
+              {
+                label: t('revoke'),
+                destructive: true,
+                disabled: busyId !== null,
+                onPress: () => confirmRevoke(device),
+              },
+            ]}
+          >
+            <ListItem>
+              <ListItem.HeadlineContent>
+                <Text>{device.name}</Text>
+              </ListItem.HeadlineContent>
+              <ListItem.SupportingContent>
+                <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+                  {device.id === enrolledId
+                    ? `${describeDevice(device)} · ${t('thisDevice')}`
+                    : describeDevice(device)}
+                </Text>
+              </ListItem.SupportingContent>
+            </ListItem>
+          </RowActions>
         ))
       )}
     </FormSection>

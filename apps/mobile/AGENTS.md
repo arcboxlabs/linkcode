@@ -55,6 +55,12 @@ Expo's Compose `Switch` always receives a native callback, even without a JS han
 `onCheckedChange` alongside a toggleable row; a tap on the thumb is consumed by the switch.
 Single-choice rows use `selectable` and their parent uses `selectableGroup` for TalkBack.
 
+List-item management actions use SwiftUI `SwipeActions` on iOS (horizontal row swipes) and
+`RowActions` on Android (Compose long-press dropdown menus under `MaterialExpressiveTheme`).
+Keep a row's normal tap for navigation; rows without a primary action may also open the menu on
+tap. Destructive actions belong in these native action surfaces, not permanent trailing buttons.
+Children of `RowActions` must not add their own click handler, which would consume the gesture.
+
 ## `@expo/ui` (SwiftUI) — its layout rules are not RN's
 
 Settings, terminal appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}`
