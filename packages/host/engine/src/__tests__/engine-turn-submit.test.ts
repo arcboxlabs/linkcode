@@ -289,8 +289,17 @@ describe('turn.submit saga', () => {
     expect(stored.code).toBe('operation_failed');
     const [turn] = await h.conversationStore.listTurns(h.sessionId);
     expect(turn.state).toBe('failed');
+    // The dispatcher broadcast the rejection into the conversation, and the reply says so — the
+    // client must not raise the failure a second time.
+    expect(
+      h.sent.some(
+        (p) => p.kind === 'agent.event' && p.sessionId === h.sessionId && p.event.type === 'error',
+      ),
+    ).toBe(true);
+    expect(stored.reportedInConversation).toBe(true);
 
-    // Same operationId as s1 replays the stored error without touching the adapter again.
+    // Same operationId as s1 replays the stored error without touching the adapter again. A replay
+    // has no live event behind it, so it does not claim the conversation reported it.
     await h.inject({
       kind: 'turn.submit',
       clientReqId: 's1-replay',
@@ -301,6 +310,33 @@ describe('turn.submit saga', () => {
     const replayed = failure(h.sent, 's1-replay');
     expect(replayed.code).toBe(stored.code);
     expect(replayed.message).toBe(stored.message);
+    expect(replayed.reportedInConversation).toBeUndefined();
+    expect(h.adapter.sentInputs).toHaveLength(1);
+  });
+
+  it('refuses a replay whose operation id belongs to another session', async () => {
+    const h = await startedHarness();
+    await submitPrompt(h, 's1', 'hello');
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r2',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const otherSessionId = startedId(h.sent, 'r2');
+
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's1-elsewhere',
+      sessionId: otherSessionId,
+      operationId: OperationIdSchema.parse('op-s1'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'hello' }] },
+    });
+
+    expect(failure(h.sent, 's1-elsewhere')).toMatchObject({ code: 'invalid_request' });
+    expect(await h.conversationStore.listTurns(otherSessionId)).toHaveLength(0);
+    expect(
+      (await h.conversationStore.getOperation(OperationIdSchema.parse('op-s1')))?.sessionId,
+    ).toBe(h.sessionId);
   });
 
   it('keeps ordinals stable across failed siblings', async () => {

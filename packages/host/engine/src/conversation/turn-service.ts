@@ -60,7 +60,20 @@ export interface PersistedTurnIntent {
   readonly operation: Extract<ConversationOperation, { state: 'open' }>;
 }
 
-export type TerminalOperation = Extract<ConversationOperation, { state: 'succeeded' | 'failed' }>;
+/** A dispatch failure as the saga reports it. The stored row keeps `code`/`message` only; the flag
+ * says the rejection was also broadcast into the conversation live, which only the immediate reply
+ * can lean on — a replay after a disconnect has no live event behind it. */
+export interface TurnFailure {
+  readonly code: string;
+  readonly message: string;
+  readonly reportedInConversation?: true;
+}
+
+export type TerminalOperation =
+  | Extract<ConversationOperation, { state: 'succeeded' }>
+  | (Omit<Extract<ConversationOperation, { state: 'failed' }>, 'error'> & {
+      readonly error: TurnFailure;
+    });
 
 const TERMINAL_TURN_STATES = new Set<ConversationTurnState>(['completed', 'failed', 'cancelled']);
 
@@ -216,7 +229,7 @@ export class ConversationTurnService {
    * operationId will replay. */
   resolveFailed(
     intent: PersistedTurnIntent,
-    error: { readonly code: string; readonly message: string },
+    error: TurnFailure,
   ): Effect.Effect<TerminalOperation, OperationError> {
     return Effect.gen({ self: this }, function* () {
       const operation = {
@@ -244,16 +257,13 @@ export class ConversationTurnService {
       }
       const running = this.running.get(intent.turn.sessionId);
       if (running?.turn.turnId === intent.turn.turnId) this.running.delete(intent.turn.sessionId);
-      return operation;
+      return { ...operation, error };
     });
   }
 
   /** {@link resolveFailed} for exit paths inside a session-scoped fiber: enqueued on the engine
    * task runner so an interrupting teardown never waits behind the store write. */
-  resolveFailedDetached(
-    intent: PersistedTurnIntent,
-    error: { readonly code: string; readonly message: string },
-  ): void {
+  resolveFailedDetached(intent: PersistedTurnIntent, error: TurnFailure): void {
     this.runTask(
       this.resolveFailed(intent, error).pipe(
         Effect.catch((resolveError) =>

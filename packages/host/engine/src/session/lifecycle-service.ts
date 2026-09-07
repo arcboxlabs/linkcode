@@ -392,6 +392,16 @@ export class SessionLifecycleService {
       // Replay before any validation: a reply lost to a disconnect must not duplicate a sibling.
       const existing = yield* turns.getOperation(request.operationId);
       if (existing !== undefined) {
+        // An operation id names one submit on one session; the same id from another session is a
+        // client defect, never a replay — answering would hand it that session's turn.
+        if (existing.sessionId !== request.sessionId) {
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'invalid_request',
+              message: 'The operation id belongs to another session',
+            }),
+          );
+        }
         if (existing.state !== 'open') return existing;
         return yield* Effect.fail(
           new RequestError({ code: 'busy', message: 'The operation is still in flight' }),

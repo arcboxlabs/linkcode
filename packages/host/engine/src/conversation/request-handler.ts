@@ -51,6 +51,9 @@ export class ConversationRequestHandler {
                       replyTo: payload.clientReqId,
                       code: operation.error.code,
                       message: operation.error.message,
+                      ...(operation.error.reportedInConversation && {
+                        reportedInConversation: true,
+                      }),
                     },
               ),
             );
