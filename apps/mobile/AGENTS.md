@@ -180,6 +180,9 @@ but the new-thread picker and selector sheets still name the agent in text.
 
 ## Build & run
 
+- Expo SDK 57 requires Xcode 26.4 or newer. Older Xcode can fail while compiling
+  `expo-modules-jsi`'s Swift/C++ bridging annotations before app code is built.
+
 - **Dev builds, not Expo Go.** Cloud sign-in needs the real `linkcode://` scheme: production HQ
   trusts only `https://linkcode.ai,linkcode://` (`TRUSTED_ORIGINS`), and the `@better-auth/expo`
   server plugin auto-trusts `exp://` only under `NODE_ENV=development`, so "Sign in" from Expo Go
@@ -201,6 +204,8 @@ but the new-thread picker and selector sheets still name the agent in text.
   `scripts.mobile` in `devenv.nix` unsets both groups (and sets `SENTRY_DISABLE_AUTO_UPLOAD`, since
   the Sentry Xcode phase otherwise fails the build without org/project credentials). Outside devenv
   the shell is already clean and `pnpm -F @linkcode/mobile ios` works as-is.
+  CocoaPods comes from devenv with its own Ruby runtime; a user-installed `pod` using env Ruby
+  breaks when this runner puts `/usr/bin` first and resolves Apple's older system Ruby.
 
   Symptoms are misleading: the first thing to fail is usually the `[RNDeps] Replace React Native
   Dependencies` script phase, which is collateral — that script runs fine on its own.
