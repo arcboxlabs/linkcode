@@ -5,7 +5,11 @@ export type { ModelOption } from '../agent-models';
 export { groupModelsByProvider, modelChoiceKey, resolveModel } from '../agent-models';
 export { stripAnsi } from '../ansi';
 export type { CurrentPlan, PromptConversationItem } from '../chat/conversation-prompts';
-export { selectCurrentPlan, selectPendingPromptItems } from '../chat/conversation-prompts';
+export {
+  conversationFlowItems,
+  selectCurrentPlan,
+  selectPendingPromptItems,
+} from '../chat/conversation-prompts';
 export { diffLines, patchLines } from '../diff-utils';
 export { repositoryLabel } from '../repository-label';
 export * from '../thread-groups';

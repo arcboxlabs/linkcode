@@ -2,11 +2,9 @@ import type { ConversationItem } from '@linkcode/client-core';
 import type { ContentBlock, ToolCall } from '@linkcode/schema';
 import { NativeMarkdown } from '@linkcode/ui/native';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
-import { Spinner } from 'heroui-native';
-import { ChevronDownIcon, ChevronRightIcon, CircleAlertIcon } from 'lucide-react-native';
-import { useState } from 'react';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
+import { ReasoningRow, ToolRow } from './activity-row';
 
 function blocksToText(blocks: ContentBlock[]): string {
   return blocks
@@ -14,13 +12,6 @@ function blocksToText(blocks: ContentBlock[]): string {
     .join('')
     .trim();
 }
-
-const PLAN_STATUS_MARK = {
-  pending: '○',
-  in_progress: '◐',
-  completed: '●',
-  cancelled: '×',
-} as const;
 
 /** Compact token counts ("193437" → "193.4k") — mirrors the web CompactionMarker's format. */
 function formatTokens(count: number): string {
@@ -84,34 +75,7 @@ export function TimelineItem({
         />
       );
     case 'plan':
-      return (
-        <View
-          className="gap-1.5 rounded-lg px-3 py-2.5"
-          style={{ backgroundColor: palette.surface }}
-        >
-          <Text
-            className="font-semibold text-caption uppercase"
-            style={{ color: palette.textSecondary }}
-          >
-            {t('plan')}
-          </Text>
-          {item.plan.entries.map((entry, index) => (
-            <Text
-              // eslint-disable-next-line @eslint-react/no-array-index-key -- plan entries carry no id; index is stable because plans are replaced wholesale
-              key={index}
-              className="text-subhead"
-              style={{
-                color:
-                  entry.status === 'completed' || entry.status === 'cancelled'
-                    ? palette.textSecondary
-                    : palette.text,
-              }}
-            >
-              {PLAN_STATUS_MARK[entry.status]} {entry.content}
-            </Text>
-          ))}
-        </View>
-      );
+      return null;
     case 'approval':
       // Pending asks are answered from the prompt dock; the timeline records only resolved ones.
       if (!item.resolution) return null;
@@ -168,70 +132,4 @@ export function TimelineItem({
     default:
       return null;
   }
-}
-
-function ReasoningRow({ text, streaming }: { text: string; streaming: boolean }): React.ReactNode {
-  const t = useTranslations('mobile.conversation');
-  const palette = useNativePalette();
-  const [open, setOpen] = useState(false);
-  const Chevron = open ? ChevronDownIcon : ChevronRightIcon;
-
-  return (
-    <View className="gap-1">
-      <Pressable
-        accessibilityRole="button"
-        className="flex-row items-center gap-1.5"
-        onPress={() => setOpen((current) => !current)}
-      >
-        <Text className="text-subhead" style={{ color: palette.textSecondary }}>
-          {t('reasoning')}
-        </Text>
-        {streaming ? <Spinner size="sm" /> : <Chevron size={14} color={palette.textSecondary} />}
-      </Pressable>
-      {open ? (
-        <Text className="text-subhead" style={{ color: palette.textSecondary }}>
-          {text}
-        </Text>
-      ) : null}
-    </View>
-  );
-}
-
-/** A quiet, collapsed summary line — the chevron sits against the label rather than at the
- *  row's trailing edge, so the row reads as one phrase. A failed call is common and often
- *  expected here, so it stays in the muted voice and is marked by an icon rather than by
- *  colouring the whole line; the icon is also what keeps the status off colour alone. */
-function ToolRow({
-  title,
-  status,
-  onPress,
-}: {
-  title: string;
-  status: 'pending' | 'in_progress' | 'completed' | 'failed';
-  onPress?: () => void;
-}): React.ReactNode {
-  const palette = useNativePalette();
-
-  return (
-    <Pressable
-      accessibilityRole={onPress ? 'button' : undefined}
-      disabled={!onPress}
-      onPress={onPress}
-      className="flex-row items-center gap-1"
-    >
-      <Text
-        className="shrink text-subhead"
-        style={{ color: palette.textSecondary }}
-        numberOfLines={1}
-      >
-        {title}
-      </Text>
-      {status === 'failed' ? <CircleAlertIcon size={13} color={palette.danger} /> : null}
-      {status === 'in_progress' ? (
-        <Spinner size="sm" />
-      ) : (
-        <ChevronRightIcon size={14} color={palette.textSecondary} />
-      )}
-    </Pressable>
-  );
 }

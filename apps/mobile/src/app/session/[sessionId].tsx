@@ -3,6 +3,7 @@ import type { SessionId, ToolCall } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import {
   AGENT_LABELS,
+  conversationFlowItems,
   EFFORT_OPTIONS_BY_ID,
   EmptyState,
   effortOptionsForModel,
@@ -134,7 +135,7 @@ function SessionScreen(): React.ReactNode {
   };
 
   // Inverted list: index 0 renders at the visual bottom, so newest items pin there.
-  const reversed = [...conversation.items].reverse();
+  const reversed = conversationFlowItems(conversation.items).reverse();
 
   return (
     <View
