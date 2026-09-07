@@ -1,5 +1,6 @@
 import { ListItem, Text } from '@expo/ui/jetpack-compose';
 import { clickable } from '@expo/ui/jetpack-compose/modifiers';
+import { DeleteAccountSection } from '@mobile/components/account/delete-account-section';
 import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
@@ -7,6 +8,7 @@ import { FormList } from '@mobile/components/form/list.android';
 import { LoadingView } from '@mobile/components/form/loading-view.android';
 import { FormSection } from '@mobile/components/form/section.android';
 import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
+import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /** Android account body, mirroring `account-screen.ios.tsx`. Sign-out is a plain error-colored
@@ -28,7 +30,7 @@ export function AccountScreen(): React.ReactNode {
         <ListItem
           modifiers={[
             clickable(() => {
-              void signOutOfCloud();
+              void signOutOfCloud().catch(() => Alert.alert(t('signOutError')));
             }),
           ]}
         >
@@ -37,6 +39,7 @@ export function AccountScreen(): React.ReactNode {
           </ListItem.HeadlineContent>
         </ListItem>
       </FormSection>
+      <DeleteAccountSection />
     </FormList>
   );
 }

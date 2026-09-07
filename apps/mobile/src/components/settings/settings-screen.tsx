@@ -53,8 +53,7 @@ export function SettingsScreen(): React.ReactNode {
   const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
   const [notificationUpdatePending, setNotificationUpdatePending] = useState(false);
   const notificationUpdatePendingRef = useRef(false);
-  const notificationsToggleEnabled =
-    account.status === 'signed-in' && !notificationUpdatePending;
+  const notificationsToggleEnabled = account.status === 'signed-in' && !notificationUpdatePending;
 
   const updateNotifications = async (enabled: boolean) => {
     if (account.status !== 'signed-in' || notificationUpdatePendingRef.current) return;

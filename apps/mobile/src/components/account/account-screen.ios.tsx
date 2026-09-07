@@ -1,8 +1,10 @@
 import { Button, Form, Host, Section } from '@expo/ui/swift-ui';
+import { DeleteAccountSection } from '@mobile/components/account/delete-account-section';
 import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
 import { LoadingView } from '@mobile/components/form/loading-view.ios';
 import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
+import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /** Account body: profile, the account's device registry, and sign-out. The route shell owns the
@@ -27,10 +29,11 @@ export function AccountScreen(): React.ReactNode {
               role="destructive"
               label={t('signOut')}
               onPress={() => {
-                void signOutOfCloud();
+                void signOutOfCloud().catch(() => Alert.alert(t('signOutError')));
               }}
             />
           </Section>
+          <DeleteAccountSection />
         </Form>
       )}
     </Host>
