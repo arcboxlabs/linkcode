@@ -18,12 +18,14 @@ import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { ConversationCheckpointService } from '../conversation/checkpoint-service';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { attributeCorpus } from '../conversation/lineage-attribution';
 import type { JournaledEvent } from '../conversation/live-journal';
 import { ConversationLiveJournals } from '../conversation/live-journal';
 import { ConversationProjectionService, pageReadItems } from '../conversation/projection-service';
 import { ConversationTurnService } from '../conversation/turn-service';
 import { RequestError } from '../failure';
 import { HistoryService } from '../session/history-service';
+import { promptContentFingerprint } from '../session/live-session';
 import { SessionRecordRegistry } from '../session/session-record-registry';
 import { InMemorySessionStore } from '../session/session-store';
 import { FakeAdapter } from './fixtures/session-harness';
@@ -512,6 +514,106 @@ describe('conversation projection attribution gate', () => {
         'event' in item && item.event.type === 'user-message' ? [item.turnId] : [],
       ),
     ).toEqual(['turn-a', 'turn-l2']);
+  });
+
+  it('attributes a failed turn’s own provider rows and continues past it', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
+      // The provider persisted the failed turn's prompt and its partial answer before the error.
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f'),
+        providerAnswer('ans-f', 'partial f'),
+        providerUser('u-b', 'b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-f', 'turn-a', 'f', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f', 'b', 'completed'));
+
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-f', 'turn-f'],
+      ['ans-b', 'turn-b'],
+    ]);
+    expect(placeholderTurnIds(read.events)).toEqual([]);
+  });
+
+  it('cuts a fork after a turn at the failed turn’s row that follows it', () => {
+    const fingerprint = (command: string) =>
+      promptContentFingerprint([{ type: 'text', text: `$ ${command}` }]);
+    const attribution = attributeCorpus(
+      [
+        providerUser('u-a', 'a', 'cut-a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f', 'cut-f'),
+        providerUser('u-b', 'b', 'cut-b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+      [
+        { fingerprint: fingerprint('a'), failed: false },
+        { fingerprint: fingerprint('f'), failed: true },
+        { fingerprint: fingerprint('b'), failed: false },
+      ],
+      undefined,
+    );
+    expect(attribution.attributed.map((partition) => partition.userRow.itemId)).toEqual([
+      'u-a',
+      'u-b',
+    ]);
+    expect(attribution.failed.map((partition) => partition?.userRow.itemId)).toEqual(['u-f']);
+    // "After a" is before the failed attempt's row, not before b's.
+    expect(attribution.successors.map((row) => row?.itemId)).toEqual(['u-f', undefined]);
+  });
+
+  it('consumes no partition for a failed turn that left no provider rows', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-b', 'b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-f', 'turn-a', 'f', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f', 'b', 'completed'));
+
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b', 'turn-b'],
+    ]);
+    expect(placeholderTurnIds(read.events)).toEqual([]);
+  });
+
+  it('keeps the prefix before a failed turn when the provider footprint is ambiguous', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
+      // Two failed turns, one extra partition: which of them left rows is unknowable.
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f1'),
+        providerUser('u-b', 'b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-f1', 'turn-a', 'f1', 'failed'));
+    await store.saveTurn(shellTurn('turn-f2', 'turn-f1', 'f2', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f2', 'b', 'completed'));
+
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([['ans-a', 'turn-a']]);
+    expect(placeholderTurnIds(read.events)).toEqual(['turn-b']);
   });
 
   it('attributes nothing when the trailing extra partition is not the in-flight prompt', async () => {

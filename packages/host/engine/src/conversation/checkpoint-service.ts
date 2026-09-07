@@ -14,7 +14,7 @@ import { OperationError } from '../failure';
 import type { HistoryBranchCut, HistoryService } from '../session/history-service';
 import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
-import type { CorpusAttribution } from './lineage-attribution';
+import type { CorpusAttribution, HostTurnFingerprint } from './lineage-attribution';
 import {
   attributeCorpus,
   hasHiddenPrefix,
@@ -102,23 +102,24 @@ export class ConversationCheckpointService {
       if (historyId === undefined || expectsProvider.length === 0) return;
       const corpus = yield* readCorpus(record, historyId);
       if (corpus === undefined) return;
-      const hostFingerprints: Array<string | undefined> = [];
+      const hostTurns: HostTurnFingerprint[] = [];
       let liveFingerprint: string | undefined;
       for (let i = 0, len = path.length; i < len; i++) {
         const content = contents[i];
         if (!TERMINAL_TURN_STATES.has(path[i].state)) {
           if (content) liveFingerprint = promptContentFingerprint(content);
-        } else if (path[i].state !== 'failed') {
-          hostFingerprints.push(content && promptContentFingerprint(content));
+        } else {
+          hostTurns.push({
+            fingerprint: content && promptContentFingerprint(content),
+            failed: path[i].state === 'failed',
+          });
         }
       }
       const attribution = attributeCorpus(
         corpus,
-        hostFingerprints,
+        hostTurns,
         liveFingerprint,
-        // A failed turn may or may not have left provider rows, so the count behind the corpus
-        // tail is unknowable: end-anchored alignment is off for that lineage.
-        hasHiddenPrefix(record, path[0]) && !path.some((turn) => turn.state === 'failed'),
+        hasHiddenPrefix(record, path[0]),
       );
       yield* backfill(expectsProvider, attribution, historyId);
       return attribution;
@@ -246,9 +247,9 @@ export class ConversationCheckpointService {
   ): Effect.Effect<void, OperationError> {
     const { turns } = this;
     return Effect.gen(function* () {
-      const { attributed, trailingLive } = attribution;
+      const { attributed, successors } = attribution;
       for (let j = 0, len = attributed.length; j < len; j++) {
-        const successor = j + 1 < len ? attributed[j + 1].userRow : trailingLive;
+        const successor = successors[j];
         const cursor =
           successor?.event.type === 'user-message' ? successor.event.branchCursor : undefined;
         if (cursor === undefined) continue;

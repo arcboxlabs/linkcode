@@ -8,10 +8,23 @@ export interface ProviderPartition {
   readonly rest: AgentHistoryEvent[];
 }
 
+/** One settled path turn's prompt fingerprint. A failed turn may or may not have left provider rows
+ * (the prompt is persisted before generation, so a mid-run failure usually did; a refusal before
+ * dispatch did not), so its partition is attributed only when the corpus count settles which. */
+export interface HostTurnFingerprint {
+  readonly fingerprint: string | undefined;
+  readonly failed: boolean;
+}
+
 export interface CorpusAttribution {
-  /** Partition i is the i-th settled path turn's provider content: a prefix of the candidates, or
-   * all of them when the corpus tail was aligned behind hidden pre-graph history. */
+  /** Partition i is the i-th settled non-failed path turn's provider content: a prefix of the
+   * candidates, or all of them when the corpus tail was aligned behind hidden pre-graph history. */
   readonly attributed: ProviderPartition[];
+  /** Per failed path turn, in order: its own partition when every failed turn provably left one. */
+  readonly failed: ReadonlyArray<ProviderPartition | undefined>;
+  /** Per attributed turn: the user row of the next verified partition in corpus order — a failed
+   * turn's included — or the in-flight row; where a fork after that turn cuts. */
+  readonly successors: ReadonlyArray<AgentHistoryEvent | undefined>;
   /** Rows before the first attributed partition — those ahead of the first user row, plus the
    * hidden history's own partitions — rendered unattributed, as a cold read would. */
   readonly leading: AgentHistoryEvent[];
@@ -71,15 +84,24 @@ export function pathToLeaf(
  * exist — the host turns align to the LAST partitions, every position must verify, and no other
  * offset may verify in full (repeated prompts let a shifted alignment verify too), else nothing
  * attributes; the unmatched head is hidden history. One trailing extra partition is tolerated only
- * when it fingerprint-verifies as the in-flight turn's own row (the live tail owns it).
+ * when it fingerprint-verifies as the in-flight turn's own row (the live tail owns it). Failed turns
+ * make the expected count itself uncertain, so a lineage carrying one aligns from the START only:
+ * every failed turn left a row (the count says so and each verifies), none did, or — ambiguous —
+ * only the prefix before the first failed turn attributes.
  */
 export function attributeCorpus(
   corpus: readonly AgentHistoryEvent[],
-  hostFingerprints: ReadonlyArray<string | undefined>,
+  hostTurns: ReadonlyArray<HostTurnFingerprint>,
   liveFingerprint: string | undefined,
   hiddenPrefixAllowed = false,
 ): CorpusAttribution {
-  const none = { attributed: [], leading: [] };
+  const settled: Array<string | undefined> = [];
+  let failedCount = 0;
+  for (let i = 0, len = hostTurns.length; i < len; i++) {
+    if (hostTurns[i].failed) failedCount += 1;
+    else settled.push(hostTurns[i].fingerprint);
+  }
+  const none = noAttribution(failedCount);
   const split = partitionAtUserRows(corpus);
   const { partitions } = split;
   let candidates = partitions;
@@ -88,18 +110,28 @@ export function attributeCorpus(
   if (
     trailing !== undefined &&
     liveFingerprint !== undefined &&
-    partitions.length > hostFingerprints.length &&
+    partitions.length > settled.length &&
     userRowFingerprint(trailing.userRow) === liveFingerprint
   ) {
     trailingLive = trailing.userRow;
     candidates = partitions.slice(0, -1);
   }
-  const hidden = candidates.length - hostFingerprints.length;
+  if (failedCount > 0) {
+    return attributeAroundFailed(
+      split.leading,
+      candidates,
+      hostTurns,
+      settled.length,
+      trailingLive,
+      hiddenPrefixAllowed,
+    );
+  }
+  const hidden = candidates.length - settled.length;
   if (hidden < 0 || (!hiddenPrefixAllowed && hidden > 0)) return none;
   const aligned = candidates.slice(hidden);
   const attributed: ProviderPartition[] = [];
   for (let i = 0, len = aligned.length; i < len; i++) {
-    if (!positionVerifies(aligned[i], hostFingerprints[i])) break;
+    if (!positionVerifies(aligned[i], settled[i])) break;
     attributed.push(aligned[i]);
   }
   if (attributed.length === 0) return none;
@@ -108,8 +140,8 @@ export function attributeCorpus(
   // in full: the replay binding a wrong alignment backfills is never corrected.
   if (hiddenPrefixAllowed && (trailingLive !== undefined || hidden > 0)) {
     if (attributed.length !== aligned.length) return none;
-    for (let k = 0, last = partitions.length - hostFingerprints.length; k <= last; k++) {
-      if (k !== hidden && windowVerifies(partitions, k, hostFingerprints)) return none;
+    for (let k = 0, last = partitions.length - settled.length; k <= last; k++) {
+      if (k !== hidden && windowVerifies(partitions, k, settled)) return none;
     }
   }
   const leading = [...split.leading];
@@ -118,11 +150,93 @@ export function attributeCorpus(
     leading.push(partition.userRow);
     for (let j = 0, len = partition.rest.length; j < len; j++) leading.push(partition.rest[j]);
   }
+  const complete = attributed.length === aligned.length;
+  const successors: Array<AgentHistoryEvent | undefined> = [];
+  for (let i = 0, len = attributed.length; i < len; i++) {
+    // The live row is the successor of the LAST settled turn only when every position verified.
+    successors.push(i + 1 < len ? attributed[i + 1].userRow : complete ? trailingLive : undefined);
+  }
   return {
     attributed,
+    failed: [],
+    successors,
     leading,
-    // The live row is the successor of the LAST settled turn only when every position verified.
-    ...(attributed.length === aligned.length && trailingLive !== undefined && { trailingLive }),
+    ...(complete && trailingLive !== undefined && { trailingLive }),
+  };
+}
+
+function noAttribution(failedCount: number): CorpusAttribution {
+  const failed: Array<ProviderPartition | undefined> = [];
+  for (let i = 0; i < failedCount; i++) failed.push(undefined);
+  return { attributed: [], failed, successors: [], leading: [] };
+}
+
+/** Start-anchored alignment through failed turns: the corpus count decides whether every failed
+ * turn consumes a partition (`all`), none does (`none`), or the answer is unknowable — then only
+ * the prefix before the first failed turn attributes; a wrong guess would splice a later turn's
+ * rows under the wrong prompt. Where hidden pre-graph rows are possible, an extra partition could
+ * be either, and even the first position cannot be trusted (an identical hidden prompt verifies),
+ * so any surplus attributes nothing. */
+function attributeAroundFailed(
+  leading: readonly AgentHistoryEvent[],
+  candidates: readonly ProviderPartition[],
+  hostTurns: ReadonlyArray<HostTurnFingerprint>,
+  settledCount: number,
+  trailingLive: AgentHistoryEvent | undefined,
+  hiddenPrefixPossible: boolean,
+): CorpusAttribution {
+  const failedCount = hostTurns.length - settledCount;
+  if (candidates.length < settledCount) return noAttribution(failedCount);
+  if (hiddenPrefixPossible && candidates.length !== settledCount) return noAttribution(failedCount);
+  const mode =
+    candidates.length === settledCount
+      ? 'none'
+      : candidates.length === hostTurns.length
+        ? 'all'
+        : 'ambiguous';
+  const attributed: ProviderPartition[] = [];
+  const failed: Array<ProviderPartition | undefined> = [];
+  const consumedAt: number[] = [];
+  let next = 0;
+  let broken = false;
+  for (let i = 0, len = hostTurns.length; i < len; i++) {
+    const turn = hostTurns[i];
+    if (turn.failed) {
+      if (mode === 'ambiguous') broken = true;
+      const partition = mode === 'all' && !broken ? candidates[next] : undefined;
+      if (partition === undefined || !positionVerifies(partition, turn.fingerprint)) {
+        if (mode === 'all') broken = true;
+        failed.push(undefined);
+        continue;
+      }
+      failed.push(partition);
+      next += 1;
+      continue;
+    }
+    if (broken) continue;
+    const partition = candidates[next];
+    if (partition === undefined || !positionVerifies(partition, turn.fingerprint)) {
+      broken = true;
+      continue;
+    }
+    attributed.push(partition);
+    consumedAt.push(next);
+    next += 1;
+  }
+  const complete = !broken && next === candidates.length;
+  const successors: Array<AgentHistoryEvent | undefined> = [];
+  for (let i = 0, len = consumedAt.length; i < len; i++) {
+    const following = consumedAt[i] + 1;
+    successors.push(
+      following < next ? candidates[following].userRow : complete ? trailingLive : undefined,
+    );
+  }
+  return {
+    attributed,
+    failed,
+    successors,
+    leading: [...leading],
+    ...(complete && trailingLive !== undefined && { trailingLive }),
   };
 }
 

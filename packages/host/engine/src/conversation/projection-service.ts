@@ -209,6 +209,7 @@ export class ConversationProjectionService {
       const items: ConversationReadItem[] = [];
       const contents = yield* hostContents(path);
       let attributed: ProviderPartition[] = [];
+      let failedPartitions: ReadonlyArray<ProviderPartition | undefined> = [];
       let leading: AgentHistoryEvent[] = [];
       const settled = settledWithProvider(path);
       const anchor = settled.at(-1);
@@ -230,6 +231,7 @@ export class ConversationProjectionService {
         );
         if (attribution !== undefined) {
           attributed = attribution.attributed;
+          failedPartitions = attribution.failed;
           leading = attribution.leading;
         }
       } else if (anchor !== undefined) {
@@ -248,6 +250,8 @@ export class ConversationProjectionService {
           );
           if (attribution !== undefined) {
             attributed = attribution.attributed.slice(0, shared);
+            // A failed turn is always a leaf, so only the active lineage's own read has them.
+            failedPartitions = activePath === path ? attribution.failed : [];
             leading = attribution.leading;
           }
         }
@@ -256,6 +260,7 @@ export class ConversationProjectionService {
         items.push(projectedItem(undefined, leading[i]));
       }
       let partitionIndex = 0;
+      let failedIndex = 0;
       for (let i = 0, len = path.length; i < len; i++) {
         const turn = path[i];
         const content = contents[i];
@@ -263,7 +268,18 @@ export class ConversationProjectionService {
           items.push(projectedUserRow(turn, content, runHistoryId(record, turn.runId)));
         }
         if (!TERMINAL_TURN_STATES.has(turn.state)) continue; // in-flight output rides the live tail
-        if (turn.state === 'failed') continue; // nothing durable ran; the state badge is the story
+        if (turn.state === 'failed') {
+          // The state badge is the story; whatever the provider kept of the attempt renders under
+          // it, and a turn that left nothing gets no placeholder — nothing durable ran.
+          const partial = failedPartitions[failedIndex];
+          failedIndex += 1;
+          if (partial !== undefined) {
+            for (let j = 0, restLen = partial.rest.length; j < restLen; j++) {
+              items.push(projectedItem(turn, partial.rest[j]));
+            }
+          }
+          continue;
+        }
         const partition = attributed[partitionIndex];
         partitionIndex += 1;
         if (partition !== undefined) {
