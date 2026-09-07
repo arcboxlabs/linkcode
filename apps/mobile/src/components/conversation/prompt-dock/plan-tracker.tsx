@@ -1,5 +1,11 @@
 import { CircularProgressIndicator, Column, Row, Text } from '@expo/ui/jetpack-compose';
-import { clickable, fillMaxWidth, size, weight } from '@expo/ui/jetpack-compose/modifiers';
+import {
+  clickable,
+  defaultMinSize,
+  fillMaxWidth,
+  size,
+  weight,
+} from '@expo/ui/jetpack-compose/modifiers';
 import type { CurrentPlan } from '@linkcode/ui/native';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { ThemedHost } from '@mobile/components/form/themed-host.android';
@@ -37,14 +43,18 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
           <Row
             verticalAlignment="center"
             horizontalArrangement={{ spacedBy: 8 }}
-            modifiers={[clickable(() => setExpanded((current_) => !current_)), fillMaxWidth()]}
+            modifiers={[
+              clickable(() => setExpanded((current_) => !current_)),
+              fillMaxWidth(),
+              defaultMinSize({ minHeight: 48 }),
+            ]}
           >
             <CircularProgressIndicator
               progress={(plan.currentIndex + 1) / plan.total}
               strokeWidth={2}
               modifiers={[size(18, 18)]}
             />
-            <Text style={{ typography: 'labelLarge' }}>
+            <Text style={{ typography: 'labelLarge' }} color={colors.onSurface}>
               {t('stepLabel', { current: plan.currentIndex + 1, total: plan.total })}
             </Text>
             <Text
@@ -80,7 +90,9 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
                       typography: 'bodySmall',
                       textDecoration: entry.status === 'completed' ? 'lineThrough' : 'none',
                     }}
-                    color={entry.status === 'completed' ? colors.onSurfaceVariant : undefined}
+                    color={
+                      entry.status === 'completed' ? colors.onSurfaceVariant : colors.onSurface
+                    }
                     modifiers={[weight(1)]}
                   >
                     {entry.content}
