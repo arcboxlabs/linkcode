@@ -241,6 +241,19 @@ describe('projection conversation store', () => {
     h.close();
   });
 
+  it('re-reads a fork whose leaf row arrived live: its relaunch’s epoch asks before the graph move', async () => {
+    const h = await harness();
+    const store = h.store(
+      seedOf([userRow(1, 'first'), userRow(2, 'second')], { epoch: 1, seq: 2 }, 3),
+    );
+    store.subscribe(noop);
+    h.send(echo(9, 'edited second'), { epoch: 2, seq: 1 });
+    h.graphChanged(4, turn(9));
+    await tick();
+    expect(h.resyncs).toEqual(['epoch']);
+    h.close();
+  });
+
   it('renders history-unavailable placeholders under their turn', async () => {
     const h = await harness();
     const store = h.store(
