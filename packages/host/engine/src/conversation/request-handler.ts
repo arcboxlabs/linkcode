@@ -25,7 +25,7 @@ export class ConversationRequestHandler {
       Effect.fail(
         new RequestError({
           code: 'unsupported',
-          message: `${payload.kind} is not implemented yet (CODE-629/CODE-631)`,
+          message: `${payload.kind} is not implemented yet`,
         }),
       ),
     );
