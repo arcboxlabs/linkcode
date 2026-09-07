@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type { AttachmentCapability, PromptRecord } from '@linkcode/schema';
 import {
   AttachmentIdSchema,
@@ -35,6 +36,18 @@ const PNG_1X1 = Buffer.from(
 function sha256(bytes: Uint8Array): string {
   return createHash('sha256').update(bytes).digest('hex');
 }
+
+/** A harness that reads files by path — none ships yet, so this is the only declaration of it. */
+const FILE_CAPABILITY: AttachmentCapability = {
+  kinds: {
+    file: {
+      mimeTypes: ['image/png'],
+      maxBytes: MAX_ATTACHMENT_BYTES,
+      maxCount: 1,
+    },
+  },
+  representations: ['readonly_file'],
+};
 
 async function fixture(bytes: Uint8Array = PNG_1X1): Promise<{
   materializer: PromptMaterializer;
@@ -115,16 +128,7 @@ describe('PromptMaterializer', () => {
     const { materializer, prompt, store, blobs } = await fixture();
     const stored = await store.getAttachment(AttachmentIdSchema.parse('att-1'));
     if (!stored) throw new Error('fixture attachment missing');
-    const fileCapability: AttachmentCapability = {
-      kinds: {
-        file: {
-          mimeTypes: ['image/png'],
-          maxBytes: MAX_ATTACHMENT_BYTES,
-          maxCount: 1,
-        },
-      },
-      representations: ['readonly_file'],
-    };
+    const fileCapability = FILE_CAPABILITY;
     await store.commitAttachment({
       blob: { blobId: stored.blobId, sizeBytes: stored.sizeBytes, createdAt: 1 },
       attachment: { ...stored, kind: 'file' },
@@ -157,6 +161,34 @@ describe('PromptMaterializer', () => {
     if (againFile.type !== 'readonly_file') return;
     await materializer.bootSweep();
     await expect(stat(againFile.path)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('hands a readonly_file projection to the adapter as a file resource link', async () => {
+    const { materializer, prompt, store } = await fixture();
+    const stored = nullthrow(await store.getAttachment(AttachmentIdSchema.parse('att-1')));
+    await store.commitAttachment({
+      blob: { blobId: stored.blobId, sizeBytes: stored.sizeBytes, createdAt: 1 },
+      attachment: { ...stored, kind: 'file' },
+    });
+    const prepared = await Effect.runPromise(
+      materializer.prepare(
+        SessionIdSchema.parse('sess-1'),
+        RunIdSchema.parse('run-1'),
+        { ...prompt, blocks: [{ type: 'attachment_ref', attachmentId: stored.attachmentId }] },
+        FILE_CAPABILITY,
+      ),
+    );
+    const file = prepared.blocks[0];
+    if (file.type !== 'readonly_file') throw new Error('expected a readonly_file projection');
+    expect(materializer.toContentBlocks(prepared)).toEqual([
+      {
+        type: 'resource_link',
+        uri: pathToFileURL(file.path).href,
+        name: 'shot.png',
+        mimeType: 'image/png',
+        size: PNG_1X1.byteLength,
+      },
+    ]);
   });
 
   it('materializes a repeated readonly_file ref twice in one run', async () => {
