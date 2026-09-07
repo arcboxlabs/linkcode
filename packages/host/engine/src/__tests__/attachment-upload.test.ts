@@ -10,12 +10,18 @@ import {
   SessionIdSchema,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
+import { createFixedArray } from 'foxts/create-fixed-array';
 import { afterEach, describe, expect, it } from 'vitest';
 import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { FsBlobStore } from '../attachment/blob-store';
 import { AttachmentGc, UPLOAD_LEASE_TTL_MS } from '../attachment/gc';
+import { AttachmentIngest } from '../attachment/ingest';
 import { AttachmentIoMutex } from '../attachment/io-mutex';
-import { AttachmentUploadService } from '../attachment/upload-service';
+import {
+  AttachmentUploadService,
+  MAX_LIVE_UPLOADS,
+  UPLOAD_IDLE_MS,
+} from '../attachment/upload-service';
 
 const temporaryDirectories: string[] = [];
 const sessionId = SessionIdSchema.parse('session-1');
@@ -46,6 +52,17 @@ async function makeService(reachableIds: AttachmentId[] = [], clock?: () => numb
 
 function stagingEntries(root: string): Promise<string[]> {
   return readdir(join(root, 'blobs', 'tmp'));
+}
+
+/** A distinct small upload per label. */
+function declareUpload(label: string) {
+  const bytes = Buffer.from(`upload ${label}`);
+  return {
+    declaredSha256: sha256(bytes),
+    declaredSize: bytes.byteLength,
+    name: `${label}.bin`,
+    attachmentKind: 'file',
+  };
 }
 
 function chunksOf(bytes: Buffer): Array<{ offset: number; data: string }> {
@@ -446,6 +463,91 @@ describe('AttachmentUploadService', () => {
       begun.uploadId,
     );
     expect(live?.head.buffer.byteLength).toBeLessThanOrEqual(16);
+  });
+
+  it('refuses a replayed begin whose declared fields differ instead of handing over the upload', async () => {
+    const { uploads } = await makeService();
+    const bytes = Buffer.from('draft');
+    const declared = {
+      operationId: 'op-shared',
+      declaredSha256: sha256(bytes),
+      declaredSize: bytes.byteLength,
+      name: 'draft.bin',
+      attachmentKind: 'file',
+    };
+    const first = await run(uploads.begin(declared));
+    await expect(
+      run(uploads.begin({ ...declared, declaredSha256: sha256(Buffer.from('other')) })),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'invalid_request' });
+    await expect(run(uploads.begin({ ...declared, name: 'other.bin' }))).rejects.toMatchObject({
+      _tag: 'RequestError',
+      code: 'invalid_request',
+    });
+    expect((await run(uploads.begin(declared))).uploadId).toBe(first.uploadId);
+  });
+
+  it('releases an idle stage at the next begin, long before its lease expires', async () => {
+    let now = 1000;
+    const { root, uploads } = await makeService([], () => now);
+    const bytes = Buffer.from('stalled');
+    const declare = (name: string) => ({
+      declaredSha256: sha256(bytes),
+      declaredSize: bytes.byteLength,
+      name,
+      attachmentKind: 'file',
+    });
+    const stalled = await run(uploads.begin(declare('stalled.bin')));
+    // A chunk keeps the upload alive; silence past the idle window does not.
+    now += UPLOAD_IDLE_MS - 1;
+    await run(uploads.chunk(stalled.uploadId, 0, bytes.subarray(0, 2).toString('base64')));
+    now += UPLOAD_IDLE_MS - 1;
+    const kept = await run(uploads.begin(declare('kept.bin')));
+    expect((await stagingEntries(root)).sort()).toEqual([kept.uploadId, stalled.uploadId].sort());
+
+    now += UPLOAD_IDLE_MS;
+    const later = await run(uploads.begin(declare('later.bin')));
+    expect(await stagingEntries(root)).toEqual([later.uploadId]);
+    await expect(
+      run(uploads.chunk(stalled.uploadId, 2, bytes.subarray(2).toString('base64'))),
+    ).rejects.toMatchObject({ _tag: 'RequestError', code: 'conflict' });
+  });
+
+  it('refuses a begin past the live-upload cap until one ends, counting begins still in flight', async () => {
+    const { uploads } = await makeService();
+    // One more than the cap, all in flight at once: exactly one must be turned away.
+    const settled = await Promise.allSettled(
+      createFixedArray(MAX_LIVE_UPLOADS + 1).map((i) =>
+        run(uploads.begin(declareUpload(String(i)))),
+      ),
+    );
+    const refused = settled.filter((result) => result.status === 'rejected');
+    expect(refused).toHaveLength(1);
+    expect(refused[0]).toMatchObject({
+      reason: { _tag: 'RequestError', code: 'limit_exceeded' },
+    });
+    const live = settled.find((result) => result.status === 'fulfilled');
+    if (live?.status !== 'fulfilled') throw new Error('no upload was admitted');
+    await run(uploads.abort(live.value.uploadId));
+    expect((await run(uploads.begin(declareUpload('extra')))).state).toBe('ready');
+  });
+});
+
+describe('AttachmentIngest', () => {
+  it('keeps a rowed blob when a same-hash ingest fails to publish its record', async () => {
+    const { attachments, blobs } = await makeService();
+    const ingest = new AttachmentIngest(blobs, attachments, new AttachmentIoMutex());
+    const bytes = Buffer.from('the same brief twice');
+    const record = { kind: 'file', name: 'brief.txt', mimeType: 'text/plain' };
+    const first = await ingest.store(bytes, record);
+    const blobId = blobIdFromSha256(sha256(bytes));
+
+    const commitAttachment = attachments.commitAttachment.bind(attachments);
+    attachments.commitAttachment = () => Promise.reject(new Error('row insert failed'));
+    await expect(ingest.store(bytes, record)).rejects.toThrow('row insert failed');
+    attachments.commitAttachment = commitAttachment;
+
+    expect(await blobs.stat(blobId)).toEqual({ sizeBytes: bytes.byteLength });
+    expect((await attachments.getAttachment(first))?.blobId).toBe(blobId);
   });
 });
 

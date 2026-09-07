@@ -65,11 +65,20 @@ interface LiveUpload {
   receivedBytes: number;
   head: Uint8Array;
   readonly state: 'ready' | 'exists';
+  /** Last begin or chunk; an upload idle past `UPLOAD_IDLE_MS` is reaped like an expired one. */
+  touchedAt: number;
 }
+
+/** Uploads live at once. The reap runs on the next begin only, so this — not the 24h lease —
+ * bounds the descriptors and staging bytes an abandoned burst can pin. */
+export const MAX_LIVE_UPLOADS = 32;
+/** v1 has no resume frame, so releasing a stalled upload's handle costs its client a restart. */
+export const UPLOAD_IDLE_MS = 5 * 60 * 1000;
 
 export class AttachmentUploadService {
   private readonly live = new Map<string, LiveUpload>();
   private readonly begunByOperation = new Map<string, AttachmentBeginResult>();
+  private reserved = 0;
 
   constructor(
     private readonly blobs: BlobStore,
@@ -81,20 +90,56 @@ export class AttachmentUploadService {
   begin(
     input: AttachmentBeginInput,
   ): Effect.Effect<AttachmentBeginResult, RequestError | OperationError> {
-    const store = this.store.bind(this);
     const files = this.files.bind(this);
     const reapExpired = this.reapExpired.bind(this);
+    const reserve = this.reserve.bind(this);
+    const release = this.release.bind(this);
+    const stageUpload = this.stageUpload.bind(this);
     return Effect.gen({ self: this }, function* () {
       if (input.operationId !== undefined) {
         const replayed = this.begunByOperation.get(input.operationId);
-        if (replayed) return replayed;
+        if (replayed) {
+          // One operation id names one begin: the same id with other declared fields is a client
+          // defect, and answering would hand it another upload's id — its chunks and its abort.
+          const lease = this.live.get(replayed.uploadId)?.lease;
+          if (lease === undefined || !sameDeclaration(lease, input)) {
+            return yield* invalid('invalid_request', 'The operation id belongs to another upload');
+          }
+          return replayed;
+        }
       }
       if (input.declaredSize > MAX_ATTACHMENT_BYTES) {
         return yield* invalid('limit_exceeded', 'Attachment exceeds the 8 MiB limit');
       }
       // A staging handle lives in `live` until commit or abort; a client that vanishes mid-upload
-      // never sends either, so expired leases release their descriptors here.
+      // never sends either, so expired and idle uploads release their descriptors here.
       yield* files('reap', reapExpired);
+      if (!reserve()) {
+        return yield* invalid('limit_exceeded', 'Too many uploads in flight; retry later');
+      }
+      return yield* stageUpload(input).pipe(Effect.ensuring(Effect.sync(release)));
+    });
+  }
+
+  /** Counts a begin from its cap check until its `live` entry exists; without it a burst of
+   * concurrent begins all pass the check. */
+  private reserve(): boolean {
+    if (this.live.size + this.reserved >= MAX_LIVE_UPLOADS) return false;
+    this.reserved += 1;
+    return true;
+  }
+
+  private release(): void {
+    this.reserved -= 1;
+  }
+
+  /** The lease, the dedupe check, and the staging handle behind one admitted begin. */
+  private stageUpload(
+    input: AttachmentBeginInput,
+  ): Effect.Effect<AttachmentBeginResult, RequestError | OperationError> {
+    const store = this.store.bind(this);
+    const files = this.files.bind(this);
+    return Effect.gen({ self: this }, function* () {
       const uploadId = UploadIdSchema.parse(`upl-${randomUUID()}`);
       const now = this.clock();
       const lease = yield* store('begin', () =>
@@ -132,6 +177,7 @@ export class AttachmentUploadService {
         receivedBytes: state === 'exists' ? input.declaredSize : 0,
         head: new Uint8Array(0),
         state,
+        touchedAt: now,
       });
       const result: AttachmentBeginResult = {
         uploadId,
@@ -183,6 +229,7 @@ export class AttachmentUploadService {
             live.head = new Uint8Array(bytes.subarray(0, Math.min(HEAD_BYTES, bytes.byteLength)));
           }
           live.receivedBytes += bytes.byteLength;
+          live.touchedAt = this.clock();
           return { uploadId, receivedBytes: live.receivedBytes };
         }),
       );
@@ -373,7 +420,7 @@ export class AttachmentUploadService {
     const now = this.clock();
     const dead: BlobStage[] = [];
     for (const [uploadId, live] of this.live) {
-      if (live.lease.expiresAt > now) continue;
+      if (live.lease.expiresAt > now && live.touchedAt + UPLOAD_IDLE_MS > now) continue;
       if (live.stage) dead.push(live.stage);
       this.forget(uploadId);
     }
@@ -418,6 +465,16 @@ function recordFromLease(lease: UploadLease, attachmentId: AttachmentId, now: nu
     metadata: {},
     createdAt: now,
   };
+}
+
+function sameDeclaration(lease: UploadLease, input: AttachmentBeginInput): boolean {
+  return (
+    lease.declaredSha256.toLowerCase() === input.declaredSha256.toLowerCase() &&
+    lease.declaredSize === input.declaredSize &&
+    lease.name === input.name &&
+    lease.mimeType === input.mimeType &&
+    lease.kind === input.attachmentKind
+  );
 }
 
 function decodeChunk(data: string): Uint8Array {
