@@ -908,9 +908,11 @@ export class DevMockHost {
       model,
       effort,
     });
-    // Parity with the engine: starting a session registers/freshens its directory's workspace.
+    // Parity with the engine: starting a session registers/freshens its directory's workspace,
+    // then announces the record before answering the request.
     this.touchWorkspace(cwd, now);
     const { sessionId } = session;
+    this.send({ kind: 'session.changed', sessionId, reason: 'created' });
     this.emit(sessionId, { type: 'status', status: 'starting' });
     this.emit(sessionId, { type: 'current-mode-update', currentModeId: 'mock' });
     this.emitDirectiveAdvertisement(sessionId);
@@ -954,6 +956,7 @@ export class DevMockHost {
       updatedAt: now,
       origin,
     });
+    this.send({ kind: 'session.changed', sessionId: session.sessionId, reason: 'created' });
     this.send({
       kind: 'session.imported',
       replyTo,
@@ -1084,6 +1087,8 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
+    // Parity with the engine: a relaunch appends a run, which re-points the listed identity.
+    this.send({ kind: 'session.changed', sessionId, reason: 'updated' });
     this.attachSession(sessionId);
     this.send({ kind: 'session.started', replyTo, sessionId });
   }
@@ -1239,7 +1244,10 @@ export class DevMockHost {
     content: ContentBlock[],
   ): Promise<void> {
     const text = promptText(content);
-    if (text && !session.title) session.title = text.slice(0, 80);
+    if (text && !session.title) {
+      session.title = text.slice(0, 80);
+      this.send({ kind: 'session.changed', sessionId: session.sessionId, reason: 'updated' });
+    }
     session.status = 'running';
     this.emit(session.sessionId, {
       type: 'user-message',

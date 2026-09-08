@@ -28,8 +28,12 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   the workbench **binding** — it pins the generic to `LinkCodeSdkClient`, promotes each
   generation into the ambient default tayori reads (`setDefaultClient`), and reports outcomes to
   product analytics. Behavior changes belong in client-core; only SDK/analytics wiring belongs here. SWR retains cached data across generations of the same
-  endpoint, starts a fresh cache after endpoint migration, and revalidates once after a generation
-  becomes protocol-ready; it does not own connection state.
+  endpoint, starts a fresh cache after endpoint migration, revalidates once after a generation
+  becomes protocol-ready, and revalidates the session and workspace list caches on every
+  `session.changed` push (the daemon registers/freshens a session's workspace as part of
+  start/resume/import, so that one frame covers both lists; an explicit `workspace.register` /
+  rename / archive from *another* client has no push and waits for the next focus revalidation);
+  it does not own connection state.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
