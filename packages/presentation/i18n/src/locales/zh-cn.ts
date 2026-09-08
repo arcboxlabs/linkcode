@@ -239,7 +239,7 @@ export const zhCN = {
       showLess: '收起',
       goodResponse: '有帮助',
       badResponse: '没帮助',
-      branch: '重写对话',
+      forkFromHere: '从此处分叉新线程',
     },
     diffSummary: {
       title: '编辑了 {count} 个文件',
