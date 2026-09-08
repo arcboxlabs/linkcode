@@ -1,7 +1,8 @@
-import type { Conversation, LinkCodeClient } from '@linkcode/client-core';
+import type { AttachmentReadBytes, Conversation, LinkCodeClient } from '@linkcode/client-core';
 import type { ContentBlock, SessionId, TurnId } from '@linkcode/schema';
 import { AttachmentIdSchema, userRowMessageId } from '@linkcode/schema';
 import type { ComposerAttachment } from '@linkcode/ui';
+import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearInflightUserAttachments,
@@ -11,6 +12,8 @@ import {
   overlayPendingUserAttachments,
   pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
+  resolveStoredAttachmentPreview,
+  revokeAttachmentObjectUrls,
   stageStoreAttachment,
 } from '../prompt-attachments';
 
@@ -61,6 +64,41 @@ describe('promptBlocksFromComposer', () => {
         { type: 'resource_link', uri: 'file:///tmp/a.ts', name: 'a.ts' },
       ]),
     ).toBeUndefined();
+  });
+});
+
+describe('resolveStoredAttachmentPreview', () => {
+  it('mints no URL for a read that outlives the session switch', async () => {
+    const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:preview');
+    const read: AttachmentReadBytes = {
+      blobId: 'sha256:a',
+      bytes: new Uint8Array([1]),
+      sizeBytes: 1,
+    };
+    try {
+      let release: (bytes: AttachmentReadBytes) => void = noop;
+      const getAttachmentBytes = vi.fn<LinkCodeClient['getAttachmentBytes']>(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      );
+      const pending = resolveStoredAttachmentPreview({ getAttachmentBytes }, sessionId, 'att-1');
+      revokeAttachmentObjectUrls();
+      release(read);
+      expect(await pending).toBeNull();
+      expect(createObjectURL).not.toHaveBeenCalled();
+
+      const settled = await resolveStoredAttachmentPreview(
+        { getAttachmentBytes: vi.fn(() => Promise.resolve(read)) },
+        sessionId,
+        'att-1',
+      );
+      expect(settled).toEqual({ url: 'blob:preview' });
+    } finally {
+      createObjectURL.mockRestore();
+      revokeAttachmentObjectUrls();
+    }
   });
 });
 

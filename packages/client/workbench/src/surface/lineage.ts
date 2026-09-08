@@ -139,10 +139,21 @@ export function lineageVersions(
   turns: readonly ConversationGraphTurn[],
   path: readonly ConversationGraphTurn[],
 ): Map<string, TurnVersion> {
+  // Group once: a per-turn scan is quadratic on a long thread, and this runs on every render.
+  const byParent = new Map<string, ConversationGraphTurn[]>();
+  for (let i = 0, len = turns.length; i < len; i++) {
+    const turn = turns[i];
+    const key = lineageParentKey(turn.parentTurnId);
+    const group = byParent.get(key);
+    if (group) group.push(turn);
+    else byParent.set(key, [turn]);
+  }
   const versions = new Map<string, TurnVersion>();
   for (let i = 0, len = path.length; i < len; i++) {
     const turn = path[i];
-    const siblings = siblingsOf(turns, turn);
+    const siblings = (byParent.get(lineageParentKey(turn.parentTurnId)) ?? [turn]).sort(
+      (a, b) => a.siblingOrdinal - b.siblingOrdinal,
+    );
     versions.set(userRowMessageId(turn.turnId), {
       index: siblings.findIndex((sibling) => sibling.turnId === turn.turnId) + 1,
       count: siblings.length,

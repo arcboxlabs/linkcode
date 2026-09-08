@@ -9,12 +9,7 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import {
-  AttachmentIdSchema,
-  MessageIdSchema,
-  userRowMessageId,
-  workspaceKind,
-} from '@linkcode/schema';
+import { MessageIdSchema, userRowMessageId, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
@@ -56,7 +51,7 @@ import {
 } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
-import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
@@ -93,7 +88,6 @@ import type { ParkedLineage } from './lineage-store';
 import { useLineageStore } from './lineage-store';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import {
-  attachmentObjectUrl,
   clearInflightUserAttachments,
   isStoredAttachmentBlock,
   noteInflightUserAttachments,
@@ -101,6 +95,7 @@ import {
   overlayPendingUserAttachments,
   pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
+  resolveStoredAttachmentPreview,
   revokeAttachmentObjectUrls,
   stageStoreAttachment,
   stageStoreAttachmentFromBase64,
@@ -605,18 +600,9 @@ function WorkbenchSessionSurface({
     });
   }
 
-  async function resolveAttachmentPreview(attachmentId: string): Promise<AttachmentPreview | null> {
-    if (!activeSessionId) return null;
-    try {
-      const { bytes } = await client.getAttachmentBytes(
-        activeSessionId,
-        AttachmentIdSchema.parse(attachmentId),
-      );
-      return { url: attachmentObjectUrl(attachmentId, bytes) };
-    } catch (error) {
-      if (isErrorLikeObject(error) && 'code' in error && error.code === 'not_found') return null;
-      throw error;
-    }
+  function resolveAttachmentPreview(attachmentId: string): Promise<AttachmentPreview | null> {
+    if (!activeSessionId) return Promise.resolve(null);
+    return resolveStoredAttachmentPreview(client, activeSessionId, attachmentId);
   }
 
   function handleModeChange(modeId: string): Promise<void> {
