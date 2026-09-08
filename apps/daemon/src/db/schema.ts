@@ -380,20 +380,36 @@ export const workspaces = sqliteTable(
   (table) => [index('workspaces_last_used_at_idx').on(table.lastUsedAt)],
 );
 
-/** Managed git worktrees. Session ids intentionally have no FK: rows survive session deletion until
- * the dedicated cleanup lifecycle owns removal. */
+/** Managed git worktrees (`WorktreeRecord`); the sessions holding one are `worktree_sessions`
+ * rows. Written by ../worktree-store.ts on the shared connection: releasing the last lease and
+ * marking the row `deleting` must be one transaction. */
 export const worktrees = sqliteTable(
   'worktrees',
   {
     worktreePath: text('worktree_path').primaryKey(),
     repoRoot: text('repo_root').notNull(),
     branch: text('branch').notNull(),
+    createdAt: integer('created_at').notNull(),
+    state: text('state', { enum: ['active', 'orphaned', 'deleting'] }).notNull(),
+  },
+  (table) => [uniqueIndex('worktrees_repo_root_branch_unique').on(table.repoRoot, table.branch)],
+);
+
+/** Session leases on managed worktrees (`WorktreeLease`). Session ids intentionally have no FK:
+ * the cleanup lifecycle owns a lease's removal (the last one marks the worktree `deleting` before
+ * any filesystem work), and boot reconcile sweeps leases whose session is gone. */
+export const worktreeSessions = sqliteTable(
+  'worktree_sessions',
+  {
+    worktreePath: text('worktree_path')
+      .notNull()
+      .references(() => worktrees.worktreePath, { onDelete: 'cascade' }),
     sessionId: text('session_id').notNull(),
     createdAt: integer('created_at').notNull(),
-    state: text('state', { enum: ['active', 'orphaned'] }).notNull(),
   },
   (table) => [
-    uniqueIndex('worktrees_repo_root_branch_unique').on(table.repoRoot, table.branch),
-    uniqueIndex('worktrees_session_id_unique').on(table.sessionId),
+    primaryKey({ columns: [table.worktreePath, table.sessionId] }),
+    // A session works in one directory; the lease is where it works.
+    uniqueIndex('worktree_sessions_session_unique').on(table.sessionId),
   ],
 );

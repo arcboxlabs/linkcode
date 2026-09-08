@@ -84,7 +84,7 @@ describe('WorktreeService', () => {
       ),
     );
     expect(result).toEqual({ kind: 'pi', cwd });
-    expect(await store.load()).toEqual([]);
+    expect(await store.load()).toEqual({ worktrees: [], leases: [] });
   });
 
   it('rejects worktree mode when the branch is already checked out in the original cwd', async () => {
@@ -121,7 +121,7 @@ describe('WorktreeService', () => {
     );
 
     expect(result).toEqual({ kind: 'pi', cwd });
-    expect(await store.load()).toEqual([]);
+    expect(await store.load()).toEqual({ worktrees: [], leases: [] });
     const status = await Effect.runPromise(gitService.getStatus(cwd));
     expect(status.isRepo && status.branch).toBe('feature/a');
   });
@@ -143,11 +143,11 @@ describe('WorktreeService', () => {
     expect(result.branch).toBeUndefined();
     expect(result.cwd).not.toBe(cwd);
     expect(existsSync(result.cwd)).toBe(true);
-    expect((await store.load())[0]).toMatchObject({
-      worktreePath: result.cwd,
-      repoRoot: cwd,
-      branch: 'feature/a',
-      state: 'active',
+    expect(await store.load()).toMatchObject({
+      worktrees: [
+        { worktreePath: result.cwd, repoRoot: cwd, branch: 'feature/a', state: 'active' },
+      ],
+      leases: [{ worktreePath: result.cwd, sessionId: 'sess-feature' }],
     });
     const status = await Effect.runPromise(gitService.getStatus(result.cwd));
     expect(status.isRepo && status.branch).toBe('feature/a');
@@ -221,7 +221,7 @@ describe('WorktreeService', () => {
     await Effect.runPromise(service.cleanupDeletedSession(id));
 
     expect(existsSync(worktree.cwd)).toBe(false);
-    expect(await store.load()).toEqual([]);
+    expect(await store.load()).toEqual({ worktrees: [], leases: [] });
   });
 
   it.each([
@@ -250,10 +250,10 @@ describe('WorktreeService', () => {
     await Effect.runPromise(service.cleanupDeletedSession(id));
 
     expect(existsSync(worktree.cwd)).toBe(true);
-    expect(await store.load()).toMatchObject([{ state: 'orphaned' }]);
+    expect(await store.load()).toMatchObject({ worktrees: [{ state: 'orphaned' }], leases: [] });
   });
 
-  it('does not update the in-memory ownership state when orphan persistence fails', async () => {
+  it('leaves the worktree deleting for the next boot when orphan persistence fails', async () => {
     const inner = new InMemoryWorktreeStore();
     let rejectSaves = false;
     const store: WorktreeStore = {
@@ -261,6 +261,8 @@ describe('WorktreeService', () => {
       save: (record) =>
         rejectSaves ? Promise.reject(new Error('disk unavailable')) : inner.save(record),
       delete: (path) => inner.delete(path),
+      acquireLease: (path, sessionId) => inner.acquireLease(path, sessionId),
+      releaseLease: (sessionId) => inner.releaseLease(sessionId),
     };
     const { service, id, worktree } = await managedWorktree(store);
     writeFileSync(join(worktree.cwd, 'untracked'), 'dirty');
@@ -269,15 +271,16 @@ describe('WorktreeService', () => {
     const result = await Effect.runPromiseExit(service.cleanupDeletedSession(id));
 
     expect(result._tag).toBe('Failure');
-    expect(service.get(id)?.state).toBe('active');
-    expect(await inner.load()).toMatchObject([{ state: 'active' }]);
+    // The lease release landed durably before the failed inspection: the session holds nothing.
+    expect(service.get(id)).toBeUndefined();
+    expect(await inner.load()).toMatchObject({ worktrees: [{ state: 'deleting' }], leases: [] });
     expect(existsSync(worktree.cwd)).toBe(true);
   });
 
-  it('keeps active ownership when non-force removal fails', async () => {
+  it('leaves the worktree deleting when non-force removal fails', async () => {
     const store = new InMemoryWorktreeStore();
     const { root, id, worktree } = await managedWorktree(store);
-    const [record] = await store.load();
+    const [record] = (await store.load()).worktrees;
     await store.save({ ...record, repoRoot: join(temp(), 'missing') });
     const restarted = new WorktreeService(
       store,
@@ -290,7 +293,7 @@ describe('WorktreeService', () => {
 
     expect(result._tag).toBe('Failure');
     expect(existsSync(worktree.cwd)).toBe(true);
-    expect(await store.load()).toMatchObject([{ state: 'active' }]);
+    expect(await store.load()).toMatchObject({ worktrees: [{ state: 'deleting' }], leases: [] });
   });
 
   it('reconciles active rows without sessions and missing rows on boot', async () => {
@@ -303,7 +306,7 @@ describe('WorktreeService', () => {
     );
     await Effect.runPromise(safeRestart.start());
     expect(existsSync(safe.worktree.cwd)).toBe(false);
-    expect(await safeStore.load()).toEqual([]);
+    expect(await safeStore.load()).toEqual({ worktrees: [], leases: [] });
 
     const missingStore = new InMemoryWorktreeStore();
     const missing = await managedWorktree(missingStore);
@@ -314,7 +317,7 @@ describe('WorktreeService', () => {
       await Effect.runPromise(GitService.make([])),
     );
     await Effect.runPromise(missingRestart.start());
-    expect(await missingStore.load()).toEqual([]);
+    expect(await missingStore.load()).toEqual({ worktrees: [], leases: [] });
   });
 
   it('retains a missing ownership row when its durable session still exists', async () => {
@@ -329,13 +332,16 @@ describe('WorktreeService', () => {
 
     await Effect.runPromise(restarted.start(new Set([id])));
 
-    expect(await store.load()).toMatchObject([{ state: 'orphaned' }]);
+    expect(await store.load()).toMatchObject({
+      worktrees: [{ state: 'orphaned' }],
+      leases: [{ sessionId: id }],
+    });
     await expect(Effect.runPromise(restarted.verifyResume(id))).rejects.toMatchObject({
       code: 'worktree_missing',
     });
   });
 
-  it('records unknown linked worktrees as orphaned but ignores ordinary directories', async () => {
+  it('adopts unknown linked worktrees as orphaned, ignores ordinary directories, and removes an orphan once it is safe', async () => {
     const cwd = repo();
     const root = temp();
     const candidate = join(root, 'repo-group', 'feature-leaf');
@@ -352,16 +358,23 @@ describe('WorktreeService', () => {
     const store = new InMemoryWorktreeStore();
     const service = new WorktreeService(store, root, await Effect.runPromise(GitService.make([])));
     await Effect.runPromise(service.start());
-    await Effect.runPromise(service.start());
 
     expect(existsSync(candidate)).toBe(true);
-    expect(await store.load()).toMatchObject([
-      {
-        worktreePath: candidate,
-        repoRoot: cwd,
-        branch: 'feature/a',
-        state: 'orphaned',
-      },
-    ]);
+    expect(await store.load()).toEqual({
+      worktrees: [
+        expect.objectContaining({
+          worktreePath: candidate,
+          repoRoot: cwd,
+          branch: 'feature/a',
+          state: 'orphaned',
+        }),
+      ],
+      leases: [],
+    });
+
+    // A holder-less orphan is re-inspected at every boot; clean and pushed, this one goes.
+    await Effect.runPromise(service.start());
+    expect(existsSync(candidate)).toBe(false);
+    expect(await store.load()).toEqual({ worktrees: [], leases: [] });
   });
 });
