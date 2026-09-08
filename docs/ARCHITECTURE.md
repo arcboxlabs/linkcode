@@ -325,8 +325,17 @@ at or above the floor whose `kind` this build has never heard of is dropped on i
 once per connection) while its neighbours are delivered, and only a frame below the floor is
 refused for its version. The handshake `pong` carries the answering build's `version` and
 `minCompatible`, which a client reads through `peerWireVersion` to skip frames an older host
-would drop; it also names the one skew both sides can still read (the host's floor moved past
-the client) instead of leaving it to the handshake timeout.
+would drop. `ping` and `pong` are the one exchange accepted whatever `v` they carry, so both
+skews are named at handshake instead of ending in the timeout: a client below the host's floor
+still gets the pong and reports that the app must update; a client whose floor has passed the
+host reads the older pong and reports that the host must update. The tunnel needs no
+wire-version surface of its own (it versions only its subprotocol and peer frames) — the relay
+carries `WireMessage` frames opaquely and the pong returns on the same peer connection. Moving
+`MIN_COMPATIBLE_WIRE_VERSION` waits until the clients it will refuse can render that advisory:
+at least two shipped mobile releases carrying the update-required screen. The handshake exchange
+itself has been in clients since wire v64 (2026-07-31, first released in v0.13.0), but those
+builds only surface the technical message after their retry budget — the procedure is in
+`docs/RELEASE.md`.
 
 Who receives a host frame is declared in `wire/delivery.ts`, not decided in the transport: a
 correlated reply follows its `replyTo` to the connection that asked, and everything else fans out
