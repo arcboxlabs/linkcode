@@ -18,6 +18,7 @@ export {
 export { type BlobStage, type BlobStore, FsBlobStore } from './attachment/blob-store';
 export type { LoopStore, ScheduleStore } from './automation';
 export {
+  type ConversationForkCommit,
   ConversationSessionBusyError,
   type ConversationStore,
   type ConversationTurnIntent,

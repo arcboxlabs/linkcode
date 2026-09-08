@@ -111,6 +111,16 @@ function openOperation(operationId: string, sessionId = 's-1'): ConversationOper
   });
 }
 
+function openFork(operationId: string) {
+  return {
+    operationId: OperationIdSchema.parse(operationId),
+    sessionId: SessionIdSchema.parse('s-1'),
+    kind: 'session.fork' as const,
+    state: 'open' as const,
+    createdAt: 4,
+  };
+}
+
 async function seedIntent(store: ConversationStore): Promise<void> {
   await store.persistTurnIntent({
     turn: turn({
@@ -480,5 +490,154 @@ describe('SQLite conversation store', () => {
     expect(await reopened.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
       { ...first, state: 'failed' },
     ]);
+  });
+
+  it('a turn-less operation respects the open-operation gate and a replayed id', async () => {
+    const { database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
+    const fork = openFork('op-fork');
+    await store.persistOperation(fork);
+
+    expect(await store.listOpenOperations(SessionIdSchema.parse('s-1'))).toEqual([fork]);
+    await expect(async () =>
+      store.persistTurnIntent({ turn: turn({ turnId: 't-1' }), operation: openOperation('op-1') }),
+    ).rejects.toBeInstanceOf(ConversationSessionBusyError);
+    await expect(async () => store.persistOperation(openFork('op-fork-2'))).rejects.toBeInstanceOf(
+      ConversationSessionBusyError,
+    );
+    await store.resolveOperation({
+      ...fork,
+      state: 'failed',
+      error: { code: 'unsupported', message: 'no checkpoint' },
+      resolvedAt: 5,
+    });
+    await expect(async () => store.persistOperation(fork)).rejects.toThrow('UNIQUE');
+  });
+
+  it('commitFork writes the child session, its runs, and its turns with the operation atomically', async () => {
+    const { path, database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
+    await seedIntent(store);
+    await store.resolveOperation({
+      ...openOperation('op-1'),
+      state: 'succeeded',
+      turnId: TurnIdSchema.parse('t-prompted'),
+      resolvedAt: 5,
+    });
+    const fork = openFork('op-fork');
+    await store.persistOperation(fork);
+    const child = SessionRecordSchema.parse({
+      sessionId: 's-child',
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      forkOrigin: { sourceSessionId: 's-1', sourceTurnId: 't-prompted', forkedAt: 6 },
+      createdAt: 6,
+      updatedAt: 6,
+      runs: [
+        { runId: 'run-child', baseTurnId: 't-copied-2', historyId: 'native-child', startedAt: 6 },
+      ],
+      graphRevision: 0,
+      eventEpoch: 0,
+    });
+    const copied = [
+      turn({
+        turnId: 't-copied-1',
+        sessionId: 's-child',
+        input: { type: 'prompt', promptId: PromptIdSchema.parse('p-1') },
+        runId: 'run-child',
+        state: 'completed',
+        createdAt: 2,
+      }),
+      turn({
+        turnId: 't-copied-2',
+        sessionId: 's-child',
+        parentTurnId: TurnIdSchema.parse('t-copied-1'),
+        runId: 'run-child',
+        state: 'completed',
+        createdAt: 3,
+      }),
+    ];
+    const succeeded = {
+      ...fork,
+      state: 'succeeded' as const,
+      turnId: TurnIdSchema.parse('t-copied-2'),
+      resolvedAt: 7,
+    };
+
+    expect(await store.commitFork({ child, turns: copied, operation: succeeded })).toBe(true);
+
+    closeDatabase(database);
+    const reopened = openDatabase(path);
+    const reopenedStore = createConversationStore(reopened.client);
+    expect(await createSessionStore(reopened.client).load()).toContainEqual(child);
+    expect(await reopenedStore.listTurns(child.sessionId)).toEqual(copied);
+    expect(await reopenedStore.getTurn(TurnIdSchema.parse('t-copied-2'))).toEqual(copied[1]);
+    expect(await reopenedStore.getOperation(fork.operationId)).toEqual(succeeded);
+    // The source's deletion keeps the prompt the child still references.
+    await reopenedStore.deleteSession(SessionIdSchema.parse('s-1'));
+    expect(await reopenedStore.getPrompt(PromptIdSchema.parse('p-1'))).toEqual(prompt('p-1'));
+  });
+
+  it('commitFork writes nothing when the operation already resolved or a row is refused', async () => {
+    const { database } = await databaseWithSessions('s-1');
+    const store = createConversationStore(database.client);
+    const sessionStore = createSessionStore(database.client);
+    const child = SessionRecordSchema.parse({
+      sessionId: 's-child',
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 6,
+      updatedAt: 6,
+      runs: [],
+    });
+    const failed = openFork('op-fork');
+    await store.persistOperation(failed);
+    await store.resolveOperation({
+      ...failed,
+      state: 'failed',
+      error: { code: 'timeout', message: 'too slow' },
+      resolvedAt: 5,
+    });
+    expect(
+      await store.commitFork({
+        child,
+        turns: [turn({ turnId: 't-late', sessionId: 's-child', state: 'completed' })],
+        operation: {
+          ...failed,
+          state: 'succeeded',
+          turnId: TurnIdSchema.parse('t-late'),
+          resolvedAt: 7,
+        },
+      }),
+    ).toBe(false);
+    expect(await sessionStore.load()).toHaveLength(1);
+
+    // A copied turn naming a prompt that no longer exists rolls the whole commit back.
+    const open = openFork('op-fork-2');
+    await store.persistOperation(open);
+    await expect(async () =>
+      store.commitFork({
+        child,
+        turns: [
+          turn({
+            turnId: 't-orphan',
+            sessionId: 's-child',
+            input: { type: 'prompt', promptId: PromptIdSchema.parse('p-gone') },
+            state: 'completed',
+          }),
+        ],
+        operation: {
+          ...open,
+          state: 'succeeded',
+          turnId: TurnIdSchema.parse('t-orphan'),
+          resolvedAt: 8,
+        },
+      }),
+    ).rejects.toThrow('FOREIGN KEY');
+    expect(await sessionStore.load()).toHaveLength(1);
+    expect(await store.getOperation(open.operationId)).toEqual(open);
+    expect(await store.getTurn(TurnIdSchema.parse('t-orphan'))).toBeUndefined();
   });
 });

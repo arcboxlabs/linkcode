@@ -95,6 +95,73 @@ describe('session record registry run addressing', () => {
   });
 });
 
+describe('session record registry provisional records', () => {
+  const childId = 'sess-child' as SessionId;
+
+  async function registryWithChild() {
+    const store = new InMemorySessionStore();
+    const changes: Array<[SessionId, string]> = [];
+    const registry = new SessionRecordRegistry(store, (id, reason) => {
+      changes.push([id, reason]);
+    });
+    await Effect.runPromise(
+      registry.start((effect) => {
+        void Effect.runPromise(effect);
+      }),
+    );
+    const runId = 'run-child' as RunId;
+    registry.registerProvisional({
+      ...makeRecord(),
+      sessionId: childId,
+      runs: [{ runId, startedAt: 1 }],
+    });
+    return { store, changes, registry, runId };
+  }
+
+  it('binds live events to a provisional record without listing, persisting, or announcing it', async () => {
+    const { store, changes, registry, runId } = await registryWithChild();
+
+    registry.bindHistoryId(childId, runId, asHistoryId('native-child'));
+    await wait(0);
+
+    expect(registry.get(childId)?.runs[0]?.historyId).toBe('native-child');
+    expect(registry.isCurrentRun(childId, runId)).toBe(true);
+    expect(registry.list(() => 'stopped')).toEqual([]);
+    expect(await store.load()).toEqual([]);
+    expect(changes).toEqual([]);
+  });
+
+  it('commit announces the record and resumes persisting it', async () => {
+    const { store, changes, registry, runId } = await registryWithChild();
+    registry.bindHistoryId(childId, runId, asHistoryId('native-child'));
+
+    registry.commitProvisional(childId);
+    await wait(0);
+
+    expect(changes).toEqual([[childId, 'created']]);
+    expect(registry.list(() => 'stopped').map((session) => session.sessionId)).toEqual([childId]);
+    expect((await store.load())[0]?.runs[0]?.historyId).toBe('native-child');
+    // A second commit is a no-op: nothing announces twice.
+    registry.commitProvisional(childId);
+    expect(changes).toHaveLength(1);
+  });
+
+  it('discard forgets a provisional record silently and leaves committed ones alone', async () => {
+    const { store, changes, registry } = await registryWithChild();
+
+    registry.discardProvisional(childId);
+    await wait(0);
+
+    expect(registry.get(childId)).toBeUndefined();
+    expect(changes).toEqual([]);
+    expect(await store.load()).toEqual([]);
+
+    registry.register(makeRecord());
+    registry.discardProvisional(sessionId);
+    expect(registry.get(sessionId)).toBeDefined();
+  });
+});
+
 describe('session record registry event epoch', () => {
   it('bumps the epoch on every run launch', async () => {
     const registry = await startedRegistry();
