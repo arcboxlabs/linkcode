@@ -2239,6 +2239,7 @@ export class DevMockHost {
       mimeType: upload.mimeType ?? 'application/octet-stream',
       kind: upload.attachmentKind,
     });
+    this.forgetAttachmentBegins(payload.uploadId);
     this.send({
       kind: 'attachment.upload.committed',
       replyTo: payload.clientReqId,
@@ -2255,11 +2256,16 @@ export class DevMockHost {
       return;
     }
     this.attachmentUploads.delete(payload.uploadId);
-    // The replay must die with the upload it names, or a retried operationId resolves to a dead id.
-    for (const [operationId, begun] of this.attachmentBegins) {
-      if (begun.uploadId === payload.uploadId) this.attachmentBegins.delete(operationId);
-    }
+    this.forgetAttachmentBegins(payload.uploadId);
     this.sendSuccess(payload.clientReqId);
+  }
+
+  /** The daemon's `forget`: a replay dies with the upload it names — committed or aborted — or a
+   * retried operationId resolves to a dead or already-committed id instead of a fresh begin. */
+  private forgetAttachmentBegins(uploadId: string): void {
+    for (const [operationId, begun] of this.attachmentBegins) {
+      if (begun.uploadId === uploadId) this.attachmentBegins.delete(operationId);
+    }
   }
 
   private publishResourceAttachment(

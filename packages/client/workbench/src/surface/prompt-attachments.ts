@@ -12,10 +12,14 @@ import {
   attachmentIdFromUri,
   attachmentUri,
   declaredMimeTypeMatches,
+  MAX_ATTACHMENT_NAME_LENGTH,
 } from '@linkcode/schema';
 import type { ComposerAttachment } from '@linkcode/ui';
+import { isErrorLikeObject } from 'foxts/extract-error-message';
 
 const objectUrls = new Map<string, string>();
+/** Bumped by each revoke: a preview read that started before it must not mint a URL after it. */
+let urlGeneration = 0;
 
 function blobUrlFor(bytes: Uint8Array, mimeType?: string): string {
   const copy = new Uint8Array(bytes.byteLength);
@@ -37,8 +41,30 @@ export function attachmentObjectUrl(
 }
 
 export function revokeAttachmentObjectUrls(): void {
+  urlGeneration += 1;
   for (const url of objectUrls.values()) URL.revokeObjectURL(url);
   objectUrls.clear();
+}
+
+/** The timeline preview of a stored attachment; `null` is a durable miss. A read that outlives the
+ * session switch mints no URL: the preview store discards the result, and the revoke already ran. */
+export async function resolveStoredAttachmentPreview(
+  client: Pick<LinkCodeClient, 'getAttachmentBytes'>,
+  sessionId: SessionId,
+  attachmentId: string,
+): Promise<{ url: string } | null> {
+  const generation = urlGeneration;
+  try {
+    const { bytes } = await client.getAttachmentBytes(
+      sessionId,
+      AttachmentIdSchema.parse(attachmentId),
+    );
+    if (generation !== urlGeneration) return null;
+    return { url: attachmentObjectUrl(attachmentId, bytes) };
+  } catch (error) {
+    if (isErrorLikeObject(error) && 'code' in error && error.code === 'not_found') return null;
+    throw error;
+  }
 }
 
 export function isStoredAttachmentBlock(block: ContentBlock): boolean {
@@ -97,9 +123,11 @@ export async function stageStoreAttachment(
     throw new Error(errors.contentMismatch);
   }
   const kind = pending.kind === 'image' ? 'image' : 'file';
+  // Records cap the name; the daemon caps a legacy upload's the same way rather than refusing it.
+  const name = file.name.slice(0, MAX_ATTACHMENT_NAME_LENGTH);
   const { attachmentId } = await client.putAttachment({
     bytes,
-    name: file.name,
+    name,
     mimeType: file.type || undefined,
     attachmentKind: kind,
   });
@@ -107,7 +135,7 @@ export async function stageStoreAttachment(
     ...pending,
     status: 'ready',
     url: blobUrlFor(bytes, file.type),
-    block: storedAttachmentResourceLink(attachmentId, file.name, file.type, file.size, kind),
+    block: storedAttachmentResourceLink(attachmentId, name, file.type, file.size, kind),
   };
 }
 
