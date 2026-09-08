@@ -105,6 +105,8 @@ export const sessionWireVariants = [
     kind: z.literal('session.forked'),
     replyTo: WireRequestIdSchema,
     sessionId: SessionIdSchema,
+    /** The child start's custom-MCP advisories, as `session.started` carries them. */
+    mcpWarnings: z.array(McpWarningSchema).optional(),
   }),
   /** Broadcast when the persisted list changes membership or identity, so a client holding a stale
    * snapshot knows to revalidate. Deliberately carries no record: `session.listed` stays the one

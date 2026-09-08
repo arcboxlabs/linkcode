@@ -17,7 +17,9 @@ import { nullthrow } from 'foxts/guard';
 import { noop } from 'foxts/noop';
 import { describe, expect, it, vi } from 'vitest';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
+import type { EngineDeps } from '../deps';
 import { InMemorySessionStore } from '../session/session-store';
+import type { SimulatorMcpProvider } from '../simulator/mcp';
 import {
   FakeAdapter,
   createSessionHarness as harness,
@@ -72,6 +74,19 @@ class GatedForkAdapter extends ForkingAdapter {
     return new Promise((resolve) => {
       this.release = resolve;
     });
+  }
+}
+
+/** The provider fork reports something on the way (claude: subagent transcripts not copied). */
+class NoisyForkAdapter extends ForkingAdapter {
+  override branchHistory(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void> {
+    this.emit({
+      type: 'error',
+      message: 'subagent transcripts were not copied',
+      code: 'fork_subagents_not_copied',
+      recoverable: true,
+    });
+    return super.branchHistory(opts, startOpts);
   }
 }
 
@@ -134,11 +149,15 @@ async function readAssistantRows(h: Harness, sessionId: SessionId) {
   );
 }
 
-async function startedHarness(makeAdapter: () => FakeAdapter = () => new ForkingAdapter()) {
+async function startedHarness(
+  makeAdapter: () => FakeAdapter = () => new ForkingAdapter(),
+  extraDeps: EngineDeps = {},
+) {
   const store = new InMemorySessionStore();
   const conversationStore = new InMemoryConversationStore();
   const h = harness(store, makeAdapter, undefined, undefined, undefined, undefined, {
     conversationStore,
+    ...extraDeps,
   });
   await h.engine.start();
   await h.inject({
@@ -178,17 +197,20 @@ function submittedTurnId(sent: WirePayload[], replyTo: string): TurnId {
 }
 
 /** Two settled turns on the source history, each with a live `ending` checkpoint. */
-async function twoCheckpointedTurns(h: Harness): Promise<[TurnId, TurnId]> {
+async function twoCheckpointedTurns(
+  h: Harness,
+  adapter: FakeAdapter = h.adapter,
+): Promise<[TurnId, TurnId]> {
   await submitPrompt(h, 's1', 'first');
   const firstTurnId = submittedTurnId(h.sent, 's1');
-  h.adapter.emit({ type: 'session-ref', historyId: SOURCE_HISTORY });
-  h.adapter.emitCheckpoint({ historyId: SOURCE_HISTORY, cursor: 'cp-1', turn: 'ending' });
-  h.adapter.emit({ type: 'status', status: 'idle' });
+  adapter.emit({ type: 'session-ref', historyId: SOURCE_HISTORY });
+  adapter.emitCheckpoint({ historyId: SOURCE_HISTORY, cursor: 'cp-1', turn: 'ending' });
+  adapter.emit({ type: 'status', status: 'idle' });
   await settleEngineTasks();
   await submitPrompt(h, 's2', 'second');
   const secondTurnId = submittedTurnId(h.sent, 's2');
-  h.adapter.emitCheckpoint({ historyId: SOURCE_HISTORY, cursor: 'cp-2', turn: 'ending' });
-  h.adapter.emit({ type: 'status', status: 'idle' });
+  adapter.emitCheckpoint({ historyId: SOURCE_HISTORY, cursor: 'cp-2', turn: 'ending' });
+  adapter.emit({ type: 'status', status: 'idle' });
   await settleEngineTasks();
   return [firstTurnId, secondTurnId];
 }
@@ -331,6 +353,123 @@ describe('session.fork saga', () => {
       state: 'succeeded',
       turnId: copy.turnId,
     });
+  });
+
+  it('resolves the child start options under the child session id', async () => {
+    const endpointsFor: SessionId[] = [];
+    const simulatorMcp: SimulatorMcpProvider = {
+      endpointFor(sessionId) {
+        endpointsFor.push(sessionId);
+        return { type: 'http', name: 'linkcode-sim', url: `http://127.0.0.1:1/mcp/${sessionId}` };
+      },
+      release: noop,
+    };
+    const h = await startedHarness(() => new ForkingAdapter(), { simulatorMcp });
+    const [firstTurnId] = await twoCheckpointedTurns(h);
+
+    await fork(h, 'f1', firstTurnId, 2);
+    await vi.waitFor(() => forkedSessionId(h.sent, 'f1'));
+    const childId = forkedSessionId(h.sent, 'f1');
+
+    // The source's pins carry over, but per-session resources are the child's own.
+    expect(endpointsFor.at(-1)).toBe(childId);
+    expect(forkedAdapter(h.adapters).startedWith?.mcpServers).toContainEqual(
+      expect.objectContaining({ url: `http://127.0.0.1:1/mcp/${childId}` }),
+    );
+  });
+
+  it('keeps a provisional child out of session notifications', async () => {
+    const h = await startedHarness(() => new NoisyForkAdapter());
+    const [firstTurnId] = await twoCheckpointedTurns(h);
+
+    await fork(h, 'f1', firstTurnId, 2);
+    await vi.waitFor(() => forkedSessionId(h.sent, 'f1'));
+    const childId = forkedSessionId(h.sent, 'f1');
+
+    expect(
+      h.sent.some(
+        (payload) =>
+          payload.kind === 'session.notification' && payload.notification.sessionId === childId,
+      ),
+    ).toBe(false);
+  });
+
+  it('a source deleted mid-fork fails the fork typed and leaves no child behind', async () => {
+    const h = await startedHarness(() => new GatedForkAdapter());
+    const [firstTurnId] = await twoCheckpointedTurns(h);
+    await fork(h, 'f1', firstTurnId, 2);
+    const gated = await vi.waitFor(() =>
+      nullthrow(
+        h.adapters.find(
+          (adapter): adapter is GatedForkAdapter =>
+            adapter instanceof GatedForkAdapter && adapter.branchedFrom !== null,
+        ),
+      ),
+    );
+
+    await h.inject({ kind: 'session.delete', clientReqId: 'del', sessionId: h.sessionId });
+    expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'del' });
+    gated.release();
+    await vi.waitFor(() => failure(h.sent, 'f1'));
+
+    expect(failure(h.sent, 'f1')).toMatchObject({
+      code: 'not_found',
+      message: 'The source session was deleted',
+    });
+    expect(await h.store.load()).toEqual([]);
+    expect(gated.stopped).toBe(true);
+    expect(await h.conversationStore.listOpenOperations()).toEqual([]);
+  });
+
+  it('re-binds and renders a child of a pre-graph source, whose copy carries the hidden rows', async () => {
+    const corpora: Corpora = {
+      [SOURCE_HISTORY]: [
+        cursorRow('e', 'earlier', 'before-earlier'),
+        assistantRow('ea', 'earlier answer'),
+        cursorRow('s1', 'first', 'before-first'),
+        assistantRow('sa1', 'original first'),
+        cursorRow('s2', 'second', 'before-second'),
+        assistantRow('sa2', 'original second'),
+      ],
+      [CHILD_HISTORY]: [
+        cursorRow('c0', 'earlier', 'child-before-earlier'),
+        assistantRow('ca0', 'copied earlier'),
+        cursorRow('c1', 'first', 'child-before-first'),
+        assistantRow('ca1', 'copied first'),
+        cursorRow('c2', 'second', 'child-before-second'),
+        assistantRow('ca2', 'copied second'),
+      ],
+    };
+    const h = await startedHarness(() => new ForkingAdapter(corpora));
+    // Provider history before any turn row: the source's first turn sits on a resume run.
+    h.adapter.emit({ type: 'session-ref', historyId: SOURCE_HISTORY });
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId: h.sessionId });
+    await h.inject({ kind: 'session.resume', clientReqId: 'resume', sessionId: h.sessionId });
+    await vi.waitFor(() => startedId(h.sent, 'resume'));
+    const resumed = nullthrow(h.adapters.find((adapter) => adapter.resumedFrom === SOURCE_HISTORY));
+    const [, secondTurnId] = await twoCheckpointedTurns(h, resumed);
+
+    await fork(h, 'f1', secondTurnId, 2);
+    await vi.waitFor(() => forkedSessionId(h.sent, 'f1'));
+    const childId = forkedSessionId(h.sent, 'f1');
+    const [copy1, copy2] = await h.conversationStore.listTurns(childId);
+
+    const texts = async () => (await readAssistantRows(h, childId)).map((row) => row.text);
+    // The hidden row leads the read as pre-graph history, from the source like the rest.
+    expect(await texts()).toEqual(['earlier answer', 'original first', 'original second']);
+    // The copy has three user rows for two copied turns; the extra one is the hidden prefix, so
+    // the end-anchored alignment still re-binds the prefix.
+    expect(await h.conversationStore.listBindings(copy1.turnId)).toEqual([
+      expect.objectContaining({
+        historyId: CHILD_HISTORY,
+        checkpoint: 'child-before-second',
+        capturedFrom: 'replay',
+      }),
+    ]);
+    expect(await h.conversationStore.listBindings(copy2.turnId)).toEqual([]);
+
+    await h.inject({ kind: 'session.delete', clientReqId: 'del', sessionId: h.sessionId });
+    expect(await texts()).toEqual(['copied earlier', 'copied first', 'copied second']);
   });
 
   it('replays a lost reply with the same forked session instead of forking twice', async () => {
@@ -523,6 +662,9 @@ describe('session.fork saga', () => {
     const [copy] = await h.conversationStore.listTurns(childId);
     expect(copy.turnId).not.toBe(firstTurnId);
 
+    // A source mid-delete (turns purged, record still registered) has no lineage to read.
+    await h.conversationStore.deleteSession(h.sessionId);
+    expect(await readAssistantRows(h, childId)).toEqual([{ ts: 9000, text: 'copied answer' }]);
     await h.inject({ kind: 'session.delete', clientReqId: 'del', sessionId: h.sessionId });
     expect(await readAssistantRows(h, childId)).toEqual([{ ts: 9000, text: 'copied answer' }]);
   });

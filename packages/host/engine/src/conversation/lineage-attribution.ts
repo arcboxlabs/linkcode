@@ -41,6 +41,9 @@ export function hasHiddenPrefix(record: SessionRecord, root: ConversationTurn): 
   const index = record.runs.findIndex((run) => run.runId === root.runId);
   // A root whose run cannot be placed (a pre-runId record) takes the safe direction.
   if (index < 0) return true;
+  // A forked session's copy carries whatever preceded the source's own root: the provider copies
+  // rows, not the graph, so the copied root may sit behind the source's hidden history.
+  if (index === 0 && record.forkOrigin !== undefined) return true;
   return record.runs
     .slice(0, index)
     .some((run) => run.historyId !== undefined && run.abandonedAt === undefined);

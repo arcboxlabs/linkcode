@@ -1081,12 +1081,12 @@ export class SessionLifecycleService {
   resolveForRecord(
     record: SessionRecord,
     override?: SessionPin,
+    /** The session the options are for: a fork resolves the source's pins for its child, whose
+     * own id must own the per-session resources (the simulator MCP endpoint token). */
+    sessionId: SessionId = record.sessionId,
   ): Effect.Effect<ResolvedStartOptions, EngineFailure> {
     const pinned = override ?? this.records.pinnedOptions(record.sessionId);
-    return this.startOptions.resolve(
-      { kind: record.kind, cwd: record.cwd, ...pinned },
-      record.sessionId,
-    );
+    return this.startOptions.resolve({ kind: record.kind, cwd: record.cwd, ...pinned }, sessionId);
   }
 
   /** Record the run this launch begins, then bind the record to a fresh adapter. Every relaunch of

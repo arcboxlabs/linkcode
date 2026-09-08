@@ -370,4 +370,36 @@ describe('InMemoryConversationStore', () => {
     await store.deleteSession(SessionIdSchema.parse('s-source'));
     expect(await store.getPrompt(shared.promptId)).toEqual(shared);
   });
+
+  it('commitFork refuses a copied turn whose prompt is gone, like the SQLite foreign key', async () => {
+    const store = new InMemoryConversationStore();
+    const fork = openFork('op-fork', 's-other');
+    await store.persistOperation(fork);
+    const orphan = turn({
+      turnId: 't-orphan',
+      sessionId: 's-child',
+      promptId: 'p-gone',
+      state: 'completed',
+    });
+
+    await expect(
+      store.commitFork({
+        child: {
+          sessionId: SessionIdSchema.parse('s-child'),
+          kind: 'claude-code',
+          cwd: '/repo',
+          origin: { type: 'created' },
+          createdAt: 3,
+          updatedAt: 3,
+          runs: [],
+          graphRevision: 0,
+          eventEpoch: 0,
+        },
+        turns: [orphan],
+        operation: { ...fork, state: 'succeeded', turnId: orphan.turnId, resolvedAt: 4 },
+      }),
+    ).rejects.toThrow('no longer exists');
+    expect(await store.getOperation(fork.operationId)).toEqual(fork);
+    expect(await store.getTurn(orphan.turnId)).toBeUndefined();
+  });
 });

@@ -127,6 +127,9 @@ export class SessionRequestHandler {
                             kind: 'session.forked',
                             replyTo: payload.clientReqId,
                             sessionId: result.sessionId,
+                            ...(result.mcpWarnings.length > 0 && {
+                              mcpWarnings: [...result.mcpWarnings],
+                            }),
                           }
                         : {
                             kind: 'request.failed',
