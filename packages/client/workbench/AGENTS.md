@@ -47,7 +47,10 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   explicit-parent `turn.submit`s under the version's last completed turn, an edit is a sibling
   under the edited turn's parent, and a successful submit follows the host default again (the
   daemon moved it before replying); the store also releases a parked view once the default runs
-  through its leaf.
+  through its leaf. "Fork a new thread from here" on an agent reply is `session.fork` through that
+  turn (`useWorkbenchSessions.fork`, offered only when the host and the harness can fork after a
+  turn): the daemon copies the lineage onto a provider-native fork, and this device selects the
+  child while the source stays as it was.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
   session registry that retains/detaches (rather than kills) a PTY across remounts, viewer
   attachment containers, and the transport-backed `TerminalSession`. Only the current controller

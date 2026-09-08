@@ -49,6 +49,8 @@ export interface TurnSegmentViewProps {
   versions?: ReadonlyMap<string, TurnVersion>;
   onSelectVersion?: (messageId: string, direction: -1 | 1) => void;
   rewritesViaGraph?: boolean;
+  /** Fork a new thread through the turn a user row opens (by its message id). */
+  onForkTurn?: (messageId: string) => void;
   /** Opens a subagent's full transcript in the conversation's viewer rail. */
   onExpandTask: (toolCallId: string) => void;
   /** Opens this turn's workspace changes in the host review surface. */
@@ -79,6 +81,7 @@ export function TurnSegmentView({
   versions,
   onSelectVersion,
   rewritesViaGraph,
+  onForkTurn,
   onExpandTask,
   onReviewChanges,
   onOpenBilling,
@@ -97,6 +100,16 @@ export function TurnSegmentView({
       : null;
   const agentEntries = leadingUserEntry ? entries.slice(1) : entries;
   const hasAgentTurnContent = agentEntries.length > 0 || edits || replyText;
+  // A fork copies the lineage through this turn, so the turn must be graph-known and completed —
+  // a failed or cancelled version has no provider cut to fork from.
+  const forkRowId =
+    leadingUserEntry !== null && versions?.get(leadingUserEntry.item.id)?.state === null
+      ? leadingUserEntry.item.id
+      : undefined;
+  const onFork =
+    onForkTurn !== undefined && ended && forkRowId !== undefined
+      ? () => onForkTurn(forkRowId)
+      : undefined;
 
   const renderEntry = (entry: TimelineEntry): React.ReactNode => {
     if (entry.type === 'run') {
@@ -257,6 +270,7 @@ export function TurnSegmentView({
               copyText={replyText}
               modelName={turnModel(segment.items) ?? modelName}
               receivedAt={latestReceivedAt(segment.items)}
+              onFork={onFork}
             />
           ) : null}
         </div>

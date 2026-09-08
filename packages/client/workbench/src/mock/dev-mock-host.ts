@@ -20,6 +20,7 @@ import type {
   ManagedAssetKey,
   ManagedAssetStatus,
   MessageId,
+  OperationId,
   PermissionOutcome,
   Plugin,
   PromptId,
@@ -294,6 +295,8 @@ export class DevMockHost {
   private readonly attachmentBegins = new Map<string, MockAttachmentBegin>();
   /** The daemon's `isReachable` roots: sessions whose prompt or resource names the attachment. */
   private readonly attachmentSessions = new Map<AttachmentId, Set<SessionId>>();
+  /** The daemon's operation journal for forks: a replayed id answers with the same child. */
+  private readonly forkOperations = new Map<OperationId, SessionId>();
   private uploadSeq = 0;
   private attachmentSeq = 0;
 
@@ -437,6 +440,10 @@ export class DevMockHost {
       case 'session.resume':
         await wait(CONTROL_LATENCY_MS);
         this.resumeSession(p.clientReqId, p.sessionId);
+        break;
+      case 'session.fork':
+        await wait(CONTROL_LATENCY_MS);
+        this.forkSession(p);
         break;
       case 'session.stop':
         await wait(CONTROL_LATENCY_MS);
@@ -1280,6 +1287,114 @@ export class DevMockHost {
     session.status = 'idle';
     this.attachSession(sessionId);
     this.send({ kind: 'session.started', replyTo, sessionId });
+  }
+
+  /** The daemon's `session.fork` reduced to mock parity: its admit rules in its order, then the
+   * source lineage through the turn copied onto a new live session — new turn ids, the same
+   * content, the prefix's journal frames as the child's provider copy — with the source untouched. */
+  private forkSession(p: Extract<WirePayload, { kind: 'session.fork' }>): void {
+    const replayed = this.forkOperations.get(p.operationId);
+    if (replayed !== undefined) {
+      this.send({ kind: 'session.forked', replyTo: p.clientReqId, sessionId: replayed });
+      return;
+    }
+    const source = this.sessions.get(p.sourceSessionId);
+    if (!source) {
+      this.sendFailure(p.clientReqId, `Unknown session: ${p.sourceSessionId}`, {
+        code: 'not_found',
+      });
+      return;
+    }
+    if (source.status === 'running') {
+      this.sendFailure(p.clientReqId, `Session is busy: ${p.sourceSessionId}`, { code: 'busy' });
+      return;
+    }
+    const through = source.graphTurns.find((turn) => turn.graph.turnId === p.throughTurnId);
+    if (through === undefined) {
+      this.sendFailure(p.clientReqId, `Unknown turn: ${p.throughTurnId}`, { code: 'not_found' });
+      return;
+    }
+    if (through.graph.state !== 'completed') {
+      this.sendFailure(p.clientReqId, 'The turn has not completed', { code: 'conflict' });
+      return;
+    }
+    if (p.expectedGraphRevision !== source.graphRevision) {
+      this.sendFailure(p.clientReqId, 'The conversation graph has moved', { code: 'conflict' });
+      return;
+    }
+    if (MOCK_HISTORY_CAPABILITIES[source.kind]?.forkAfterTurn !== true) {
+      this.sendFailure(p.clientReqId, `${source.kind}: forking a session is not supported`, {
+        code: 'unsupported',
+      });
+      return;
+    }
+    const now = Date.now();
+    const child = this.addSession({
+      kind: source.kind,
+      cwd: source.cwd,
+      status: 'idle',
+      createdAt: now,
+      updatedAt: now,
+      model: source.model,
+      effort: source.effort,
+      ...(source.title !== undefined && { title: source.title }),
+      forkOrigin: {
+        sourceSessionId: source.sessionId,
+        sourceTurnId: through.graph.turnId,
+        forkedAt: now,
+      },
+    });
+    const path: MockTurn[] = [];
+    for (let cursor: TurnId | null = through.graph.turnId; cursor !== null; ) {
+      const id: TurnId = cursor;
+      const turn = source.graphTurns.find((candidate) => candidate.graph.turnId === id);
+      if (turn === undefined) break;
+      path.unshift(turn);
+      cursor = turn.graph.parentTurnId;
+    }
+    const copiedIds = new Map<TurnId, TurnId>();
+    let parentTurnId: TurnId | null = null;
+    for (let i = 0, len = path.length; i < len; i++) {
+      const turn = path[i];
+      this.turnSeq += 1;
+      const id = this.turnSeq.toString(36);
+      const turnId = `turn-mock-${id}` as TurnId;
+      copiedIds.set(turn.graph.turnId, turnId);
+      child.graphTurns.push({
+        graph: {
+          ...turn.graph,
+          turnId,
+          sessionId: child.sessionId,
+          parentTurnId,
+          siblingOrdinal: 1,
+          runId: `run-mock-fork-${id}` as RunId,
+        },
+        content: turn.content,
+        ...(turn.readContent !== undefined && { readContent: turn.readContent }),
+      });
+      parentTurnId = turnId;
+    }
+    child.activeLeafTurnId = parentTurnId ?? undefined;
+    for (let i = 0, len = source.journal.length; i < len; i++) {
+      const entry = source.journal[i];
+      const turnId = entry.turnId === undefined ? undefined : copiedIds.get(entry.turnId);
+      if (turnId === undefined) continue;
+      child.eventSeq += 1;
+      child.journal.push({
+        epoch: child.eventEpoch,
+        seq: child.eventSeq,
+        ts: entry.ts,
+        turnId,
+        event:
+          entry.event.type === 'user-message'
+            ? { ...entry.event, messageId: userRowMessageId(turnId) }
+            : entry.event,
+      });
+    }
+    this.forkOperations.set(p.operationId, child.sessionId);
+    this.attachSession(child.sessionId);
+    this.send({ kind: 'session.changed', sessionId: child.sessionId, reason: 'created' });
+    this.send({ kind: 'session.forked', replyTo: p.clientReqId, sessionId: child.sessionId });
   }
 
   /** Replay the live state a late subscriber cannot recover from session history. */
@@ -2533,6 +2648,7 @@ function toSessionInfo(session: MockSession): SessionInfo {
     updatedAt: session.updatedAt,
     title: session.title,
     origin: session.origin,
+    ...(session.forkOrigin !== undefined && { forkOrigin: session.forkOrigin }),
     ...(MOCK_HISTORY_CAPABILITIES[session.kind] !== undefined && {
       historyCapabilities: MOCK_HISTORY_CAPABILITIES[session.kind],
     }),

@@ -46,6 +46,9 @@ export interface ConversationLineage {
   promptEditState: PromptEditState;
   /** Edits submit through the turn graph, so a row the graph knows needs no legacy branch cursor. */
   rewritesViaGraph: boolean;
+  /** Fork a new thread through the turn a user row opens (by its message id); absent when the
+   * host or the harness cannot fork sessions. */
+  onForkTurn?: (messageId: string) => void;
 }
 
 /**

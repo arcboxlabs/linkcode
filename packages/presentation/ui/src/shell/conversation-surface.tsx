@@ -174,6 +174,7 @@ export function ConversationSurface({
               versions={lineage?.versions}
               onSelectVersion={lineage?.onSelectVersion}
               rewritesViaGraph={lineage?.rewritesViaGraph}
+              onForkTurn={lineage?.onForkTurn}
               onReviewChanges={onReviewChanges}
               onOpenBilling={onOpenBilling}
             />

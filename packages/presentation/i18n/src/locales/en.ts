@@ -243,7 +243,7 @@ export const en = {
       showLess: 'Show less',
       goodResponse: 'Good response',
       badResponse: 'Bad response',
-      branch: 'Rewrite conversation',
+      forkFromHere: 'Fork a new thread from here',
     },
     diffSummary: {
       title: 'Edited {count, plural, one {# file} other {# files}}',

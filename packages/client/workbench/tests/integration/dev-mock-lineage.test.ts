@@ -198,6 +198,70 @@ describe('dev mock turn lineages', () => {
     client.dispose();
   });
 
+  it('forks a live child through a turn, copying the lineage and leaving the source alone', async () => {
+    const client = new LinkCodeClient(createDevMockTransport());
+    await client.connect();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const a = await client.submitTurn(sessionId, { type: 'shell-command', command: 'a' });
+    const b = await client.submitTurn(sessionId, { type: 'shell-command', command: 'b' });
+    const graph = await client.getConversationGraph(sessionId);
+
+    const { sessionId: childId } = await client.forkSession(
+      sessionId,
+      a.turnId,
+      graph.graphRevision,
+    );
+
+    expect(childId).not.toBe(sessionId);
+    const sessions = await client.listSessions();
+    const child = nullthrow(sessions.find((session) => session.sessionId === childId));
+    expect(child).toMatchObject({
+      kind: 'codex',
+      cwd: '/mock/repo',
+      status: 'idle',
+      forkOrigin: { sourceSessionId: sessionId, sourceTurnId: a.turnId },
+    });
+    const childGraph = await client.getConversationGraph(childId);
+    expect(childGraph.turns).toHaveLength(1);
+    const [copy] = childGraph.turns;
+    expect(copy.turnId).not.toBe(a.turnId);
+    expect(copy).toMatchObject({ parentTurnId: null, siblingOrdinal: 1, state: 'completed' });
+    expect(childGraph.activeLeafTurnId).toBe(copy.turnId);
+    expect(userTexts((await client.readConversation(childId)).events)).toEqual(['$ a']);
+    // The source keeps both turns and its leaf; a replayed operation answers with the same child.
+    const source = await client.getConversationGraph(sessionId);
+    expect(source.turns).toHaveLength(2);
+    expect(source.activeLeafTurnId).toBe(b.turnId);
+    expect(source.graphRevision).toBe(graph.graphRevision);
+    client.dispose();
+  });
+
+  it('refuses a fork through an unknown or stale turn and on a harness without forkAfterTurn', async () => {
+    const client = new LinkCodeClient(createDevMockTransport());
+    await client.connect();
+    const seeded = (await client.listSessions()).length;
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const a = await client.submitTurn(sessionId, { type: 'shell-command', command: 'a' });
+    const graph = await client.getConversationGraph(sessionId);
+
+    await expect(
+      client.forkSession(sessionId, 'turn-nope' as TurnId, graph.graphRevision),
+    ).rejects.toMatchObject({ code: 'not_found' });
+    await expect(
+      client.forkSession(sessionId, a.turnId, graph.graphRevision - 1),
+    ).rejects.toMatchObject({ code: 'conflict' });
+
+    const opencode = await client.startSession({ kind: 'opencode', cwd: '/mock/repo' });
+    const o = await client.submitTurn(opencode, { type: 'shell-command', command: 'o' });
+    const opencodeGraph = await client.getConversationGraph(opencode);
+    await expect(
+      client.forkSession(opencode, o.turnId, opencodeGraph.graphRevision),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+    // Nothing forked: only the two sessions this test started joined the seeded list.
+    expect(await client.listSessions()).toHaveLength(seeded + 2);
+    client.dispose();
+  });
+
   it('refuses to read toward a turn the session does not have', async () => {
     const client = new LinkCodeClient(createDevMockTransport());
     await client.connect();

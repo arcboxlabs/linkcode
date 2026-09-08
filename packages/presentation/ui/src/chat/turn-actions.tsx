@@ -13,6 +13,7 @@ export function AgentTurnActions({
   receivedAt,
   agentKind,
   modelName,
+  onFork,
 }: {
   copyText: string;
   /** Best-known time of the turn's last event (see ConversationItem.receivedAt). */
@@ -20,6 +21,8 @@ export function AgentTurnActions({
   agentKind?: AgentKind;
   /** The model that served this turn (message stamp, else the session's reported model). */
   modelName?: string;
+  /** Fork a new thread through this turn; absent disables the action. */
+  onFork?: () => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.message');
   const format = useFormatter();
@@ -38,8 +41,7 @@ export function AgentTurnActions({
         <MessageAction disabled tooltip={t('badResponse')}>
           <ThumbsDownIcon />
         </MessageAction>
-        {/* TODO(branch): disabled until sessions support forking a conversation mid-way. */}
-        <MessageAction disabled tooltip={t('branch')}>
+        <MessageAction disabled={onFork === undefined} tooltip={t('forkFromHere')} onClick={onFork}>
           <SplitIcon />
         </MessageAction>
       </MessageActions>
