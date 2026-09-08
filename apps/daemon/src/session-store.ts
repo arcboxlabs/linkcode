@@ -43,27 +43,8 @@ export function createSessionStore(db: DaemonDatabaseClient): SessionStore {
           .run();
         // Runs are few per session; rewriting them keeps save() a whole-record upsert.
         tx.delete(sessionRuns).where(eq(sessionRuns.sessionId, record.sessionId)).run();
-        if (record.runs.length > 0) {
-          tx.insert(sessionRuns)
-            .values(
-              record.runs.map((run, seq) => ({
-                sessionId: record.sessionId,
-                seq,
-                // runId is optional at the wire parse boundary only; every writer mints it, so a
-                // runId-less run here is a bug — minting one would drift the durable id per save.
-                runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
-                baseTurnId: run.baseTurnId ?? null,
-                historyId: run.historyId ?? null,
-                accountId: run.accountId ?? null,
-                model: run.model ?? null,
-                effort: run.effort ?? null,
-                approvalPolicyId: run.approvalPolicyId ?? null,
-                startedAt: run.startedAt,
-                endedAt: run.endedAt ?? null,
-              })),
-            )
-            .run();
-        }
+        const runs = toSessionRunRows(record);
+        if (runs.length > 0) tx.insert(sessionRuns).values(runs).run();
       });
       return Promise.resolve();
     },
@@ -76,7 +57,9 @@ export function createSessionStore(db: DaemonDatabaseClient): SessionStore {
   };
 }
 
-function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
+/** Also used by the conversation store, whose fork commit inserts the child session row in the
+ * same transaction as the turns that reference it. */
+export function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
   return {
     sessionId: record.sessionId,
     kind: record.kind,
@@ -97,6 +80,24 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
+}
+
+export function toSessionRunRows(record: SessionRecord): Array<typeof sessionRuns.$inferInsert> {
+  return record.runs.map((run, seq) => ({
+    sessionId: record.sessionId,
+    seq,
+    // runId is optional at the wire parse boundary only; every writer mints it, so a runId-less
+    // run here is a bug — minting one would drift the durable id per save.
+    runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
+    baseTurnId: run.baseTurnId ?? null,
+    historyId: run.historyId ?? null,
+    accountId: run.accountId ?? null,
+    model: run.model ?? null,
+    effort: run.effort ?? null,
+    approvalPolicyId: run.approvalPolicyId ?? null,
+    startedAt: run.startedAt,
+    endedAt: run.endedAt ?? null,
+  }));
 }
 
 function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {

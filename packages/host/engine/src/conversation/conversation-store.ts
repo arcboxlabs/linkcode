@@ -7,6 +7,7 @@ import type {
   PromptRecord,
   ProviderTurnBinding,
   SessionId,
+  SessionRecord,
   TurnId,
 } from '@linkcode/schema';
 
@@ -17,6 +18,17 @@ export interface ConversationTurnIntent {
   readonly turn: Omit<ConversationTurn, 'siblingOrdinal'>;
   readonly prompt?: PromptRecord;
   readonly operation: ConversationOperation;
+}
+
+/** The durable commit point of a session fork: the child's copied turn rows (the source lineage
+ * under the child's root run, prompts shared by reference) and the source operation's terminal
+ * result persist together or not at all. A store that owns session rows inserts `child` in the
+ * same transaction — turn rows reference it — while one that does not leaves the record to the
+ * session store. */
+export interface ConversationForkCommit {
+  readonly child: SessionRecord;
+  readonly turns: ConversationTurn[];
+  readonly operation: Extract<ConversationOperation, { state: 'succeeded' }>;
 }
 
 /** Rejection from {@link ConversationStore.persistTurnIntent} when the session already has an
@@ -36,6 +48,7 @@ export class ConversationSessionBusyError extends Error {
  */
 export interface ConversationStore {
   listTurns(sessionId: SessionId): Promise<ConversationTurn[]>;
+  getTurn(turnId: TurnId): Promise<ConversationTurn | undefined>;
   /** Upsert by `turnId` — state flips rewrite the row. */
   saveTurn(turn: ConversationTurn): Promise<void>;
   getPrompt(promptId: PromptId): Promise<PromptRecord | undefined>;
@@ -51,10 +64,17 @@ export interface ConversationStore {
    * {@link ConversationSessionBusyError} while the session has an open operation; rows are
    * plain-inserted, so a replayed operationId conflicts instead of re-opening a terminal row. */
   persistTurnIntent(intent: ConversationTurnIntent): Promise<ConversationTurn>;
+  /** Plain-insert an open operation that carries no turn of its own (a session fork). Rejects
+   * with {@link ConversationSessionBusyError} while the session has an open operation. */
+  persistOperation(operation: Extract<ConversationOperation, { state: 'open' }>): Promise<void>;
   /** Atomic: store the operation's terminal result and, when given, the turn's new state — but
    * only while the operation row is still `open`. Returns whether THIS call performed the
    * transition; the first terminal writer stands and losers must run no side effects. */
   resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean>;
+  /** Atomic: the fork's turn rows and the source operation's success, only while that operation
+   * is still `open`. Returns whether THIS call performed the transition — a loser (the operation
+   * already failed) writes nothing and must tear the child down. */
+  commitFork(commit: ConversationForkCommit): Promise<boolean>;
   /** Purge the session's turns, bindings, and operations. Prompts are shared by reference across
    * forks: one is deleted only when no turn in ANY session still references it. */
   deleteSession(sessionId: SessionId): Promise<void>;
@@ -98,6 +118,11 @@ export class InMemoryConversationStore implements ConversationStore {
       if (turn.sessionId === sessionId) turns.push(structuredClone(turn));
     }
     return Promise.resolve(turns);
+  }
+
+  getTurn(turnId: TurnId): Promise<ConversationTurn | undefined> {
+    const turn = this.turns.get(turnId);
+    return Promise.resolve(turn && structuredClone(turn));
   }
 
   saveTurn(turn: ConversationTurn): Promise<void> {
@@ -174,12 +199,38 @@ export class InMemoryConversationStore implements ConversationStore {
     return Promise.resolve(turn);
   }
 
+  persistOperation(operation: Extract<ConversationOperation, { state: 'open' }>): Promise<void> {
+    for (const existing of this.operations.values()) {
+      if (existing.sessionId === operation.sessionId && existing.state === 'open') {
+        return Promise.reject(new ConversationSessionBusyError(operation.sessionId));
+      }
+    }
+    if (this.operations.has(operation.operationId)) {
+      return Promise.reject(new Error(`Operation already persisted: ${operation.operationId}`));
+    }
+    this.operations.set(operation.operationId, structuredClone(operation));
+    return Promise.resolve();
+  }
+
   resolveOperation(operation: ConversationOperation, turn?: ConversationTurn): Promise<boolean> {
     if (this.operations.get(operation.operationId)?.state !== 'open') {
       return Promise.resolve(false);
     }
     this.operations.set(operation.operationId, structuredClone(operation));
     if (turn) this.turns.set(turn.turnId, structuredClone(turn));
+    return Promise.resolve(true);
+  }
+
+  commitFork(commit: ConversationForkCommit): Promise<boolean> {
+    const { operation } = commit;
+    if (this.operations.get(operation.operationId)?.state !== 'open') {
+      return Promise.resolve(false);
+    }
+    this.operations.set(operation.operationId, structuredClone(operation));
+    for (let i = 0, len = commit.turns.length; i < len; i++) {
+      const turn = commit.turns[i];
+      this.turns.set(turn.turnId, structuredClone(turn));
+    }
     return Promise.resolve(true);
   }
 
