@@ -345,6 +345,50 @@ describe('conversation projection live tail (CODE-35)', () => {
     });
     expect(result.watermark).toEqual({ epoch: 3, seq: 3 });
   });
+
+  it('carries the live tail only into the lineage that owns the running turn', async () => {
+    const rootTurnId = 'turn-root' as TurnId;
+    const firstVersionId = 'turn-v1' as TurnId;
+    const editedVersionId = 'turn-v2' as TurnId;
+    const strayTurnId = 'turn-stray' as TurnId;
+    const journals = new ConversationLiveJournals();
+    const journal = journals.open(sessionId);
+    // After an edit the journal is the relaunch's: it holds the edited sibling's stream, and no
+    // entry of the version being read back — nothing settled the cut can anchor on.
+    journal.append(stamped(1, editedVersionId, chunk('msg-edited', 'edited')));
+    journal.append(stamped(2, strayTurnId, chunk('msg-stray', 'a refused sibling')));
+
+    const { service, store } = await makeService({
+      journals,
+      record: makeRecord(editedVersionId),
+    });
+    const turnAt = (
+      turnId: TurnId,
+      parentTurnId: TurnId | null,
+      ordinal: number,
+      state: ConversationTurnState,
+    ) =>
+      store.saveTurn({
+        turnId,
+        sessionId,
+        parentTurnId,
+        siblingOrdinal: ordinal,
+        input: { type: 'shell-command', command: turnId },
+        runId,
+        state,
+        createdAt: ordinal,
+      });
+    await turnAt(rootTurnId, null, 1, 'completed');
+    await turnAt(firstVersionId, rootTurnId, 1, 'completed');
+    await turnAt(editedVersionId, rootTurnId, 2, 'running');
+
+    const seqsOf = (items: ConversationReadItem[]) =>
+      items.flatMap((item) => ('event' in item && item.seq !== undefined ? [item.seq] : []));
+    const parked = await Effect.runPromise(service.read({ sessionId, leafTurnId: firstVersionId }));
+    expect(seqsOf(parked.events)).toEqual([]);
+    const active = await Effect.runPromise(service.read({ sessionId }));
+    expect(seqsOf(active.events)).toEqual([1]);
+  });
 });
 
 describe('conversation projection attribution gate', () => {

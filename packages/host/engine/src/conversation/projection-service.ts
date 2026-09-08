@@ -171,7 +171,12 @@ export class ConversationProjectionService {
         }
         offset = decoded.offset;
       }
-      const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
+      // The journal is the active run's: only the lineage that owns the running turn, or the host
+      // default itself, may carry it — another version or an ancestor view reads durable rows only.
+      const ownsTail =
+        leafTurnId === record.activeLeafTurnId ||
+        path.some((turn) => !TERMINAL_TURN_STATES.has(turn.state));
+      const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path, ownsTail);
       const { events, nextOffset } = pageReadItems(
         durable,
         tail,
@@ -302,14 +307,17 @@ export class ConversationProjectionService {
 
   /** The live tail: retained journal events above the last event attributed to a settled path
    * turn, minus user echoes (host rows own user display) and headless chunk streams, plus the
-   * authoritative open interactive requests. */
+   * authoritative open interactive requests. The journal is the active run's, so a lineage that
+   * does not own it (`ownsTail` false: another version, an ancestor view) gets durable rows only. */
   private composeTail(
     sessionId: SessionId,
     eventEpoch: number,
     path: ConversationTurn[],
+    ownsTail: boolean,
   ): { tail: ConversationReadItem[]; watermark: ConversationWatermark } {
     const journal = this.journals.get(sessionId);
     const liveTurn = path.find((turn) => !TERMINAL_TURN_STATES.has(turn.state));
+    const pathIds = new Set(path.map((turn) => turn.turnId));
     const tail: ConversationReadItem[] = [];
     const seenRequestIds = new Set<string>();
     const seenStatusIds = new Set<string>();
@@ -317,7 +325,8 @@ export class ConversationProjectionService {
     // epoch and NOTHING in the current one: seqs start at 1, so the run's own events all compare
     // above {epoch, 0} — a client adopting this during the launch window drops nothing.
     let watermark: ConversationWatermark = { epoch: eventEpoch, seq: 0 };
-    if (journal) {
+    if (journal?.watermark !== undefined) watermark = journal.watermark;
+    if (journal && ownsTail) {
       const snapshot = journal.snapshot();
       const terminalIds = new Set<TurnId>();
       for (let i = 0, len = path.length; i < len; i++) {
@@ -339,6 +348,8 @@ export class ConversationProjectionService {
       for (let i = 0, len = aboveCut.length; i < len; i++) {
         const entry = aboveCut[i];
         const event = entry.event;
+        // An entry stamped for a turn off this lineage (a refused sibling) is another version's.
+        if (entry.turnId !== undefined && !pathIds.has(entry.turnId)) continue;
         // User rows are host truth — a live echo must not double the durable row.
         if (event.type === 'user-message') continue;
         const chunkKey = inflightChunkKey(event);
@@ -365,12 +376,11 @@ export class ConversationProjectionService {
       if (gap && liveTurn !== undefined) {
         tail.push({ type: 'history-unavailable', turnId: liveTurn.turnId, runId: liveTurn.runId });
       }
-      if (journal.watermark !== undefined) watermark = journal.watermark;
     }
     // CODE-35 backstop: open interactive requests — and the responding status of one being
     // answered — reach the reader even when their original events were evicted or fell below the
     // durable cut.
-    const openRequests = this.openRequests(sessionId);
+    const openRequests = ownsTail ? this.openRequests(sessionId) : [];
     for (let i = 0, len = openRequests.length; i < len; i++) {
       const request = openRequests[i];
       if (request.type === 'prompt-response-status') {
