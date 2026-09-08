@@ -53,7 +53,7 @@ export function settledWithProvider(path: readonly ConversationTurn[]): Conversa
 
 /** Root→leaf path through `parentTurnId`; a broken chain fails loud rather than rendering wrong. */
 export function pathToLeaf(
-  byId: Map<TurnId, ConversationTurn>,
+  byId: ReadonlyMap<TurnId, ConversationTurn>,
   leafTurnId: TurnId | undefined,
 ): ConversationTurn[] {
   if (leafTurnId === undefined) return [];

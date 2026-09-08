@@ -98,6 +98,42 @@ function cursorRow(itemId: string, text: string, branchCursor: string): AgentHis
   };
 }
 
+function assistantRow(itemId: string, text: string, ts?: number): AgentHistoryEvent {
+  return {
+    historyId: CHILD_HISTORY,
+    itemId,
+    ...(ts !== undefined && { ts }),
+    event: {
+      type: 'agent-message',
+      messageId: itemId as MessageId,
+      content: [{ type: 'text', text }],
+    },
+  };
+}
+
+/** Assistant texts of a child read, in order; the row `ts` rides along for the re-stamp check. */
+async function readAssistantRows(h: Harness, sessionId: SessionId) {
+  const clientReqId = `read-${h.sent.length}`;
+  await h.inject({ kind: 'conversation.read', clientReqId, sessionId });
+  await settleEngineTasks();
+  const reply = h.sent.find(
+    (payload) => payload.kind === 'conversation.read.result' && payload.replyTo === clientReqId,
+  );
+  if (reply?.kind !== 'conversation.read.result') throw new Error('no conversation.read.result');
+  return reply.events.flatMap((item: ConversationReadItem) =>
+    'event' in item && item.event.type === 'agent-message'
+      ? [
+          {
+            ts: item.ts,
+            text: (item.event.content ?? [])
+              .flatMap((b) => (b.type === 'text' ? [b.text] : []))
+              .join(''),
+          },
+        ]
+      : [],
+  );
+}
+
 async function startedHarness(makeAdapter: () => FakeAdapter = () => new ForkingAdapter()) {
   const store = new InMemorySessionStore();
   const conversationStore = new InMemoryConversationStore();
@@ -459,6 +495,36 @@ describe('session.fork saga', () => {
       historyId: CHILD_HISTORY,
       cursor: 'child-before-second',
     });
+  });
+
+  it('renders the copied prefix from the source history while the source exists, then from the copy', async () => {
+    // The provider's copy carries the same rows re-stamped at the cut (claude), so its `ts` and,
+    // here, its text differ from the source's original rows.
+    const corpora: Corpora = {
+      [SOURCE_HISTORY]: [
+        cursorRow('s1', 'first', 'before-first'),
+        assistantRow('sa1', 'original answer', 1000),
+        cursorRow('s2', 'second', 'before-second'),
+        assistantRow('sa2', 'second answer', 2000),
+      ],
+      [CHILD_HISTORY]: [
+        cursorRow('c1', 'first', 'child-before-first'),
+        assistantRow('ca1', 'copied answer', 9000),
+      ],
+    };
+    const h = await startedHarness(() => new ForkingAdapter(corpora));
+    const [firstTurnId] = await twoCheckpointedTurns(h);
+    await fork(h, 'f1', firstTurnId, 2);
+    await vi.waitFor(() => forkedSessionId(h.sent, 'f1'));
+    const childId = forkedSessionId(h.sent, 'f1');
+
+    expect(await readAssistantRows(h, childId)).toEqual([{ ts: 1000, text: 'original answer' }]);
+    // The copy is still attributed for its bindings: the re-binding gate saw one aligned row.
+    const [copy] = await h.conversationStore.listTurns(childId);
+    expect(copy.turnId).not.toBe(firstTurnId);
+
+    await h.inject({ kind: 'session.delete', clientReqId: 'del', sessionId: h.sessionId });
+    expect(await readAssistantRows(h, childId)).toEqual([{ ts: 9000, text: 'copied answer' }]);
   });
 
   it.each([

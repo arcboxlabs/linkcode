@@ -27,7 +27,7 @@ import { RequestError } from '../failure';
 import { encodeLiveBranchCursor } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationCheckpointService } from './checkpoint-service';
-import type { CorpusAttribution } from './lineage-attribution';
+import type { CorpusAttribution, ProviderPartition } from './lineage-attribution';
 import { pathToLeaf } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
@@ -214,67 +214,27 @@ export class ConversationProjectionService {
   /** Host user rows for every path turn, provider assistant/tool events under the attribution
    * gate, placeholders where provider content is unavailable or unverifiable. Every turn reads the
    * history of the run that executed it — never a fork's copy of it (claude re-stamps the rows it
-   * copies), so two versions render the turns they share identically. */
+   * copies), so two versions render the turns they share identically; a forked session's copied
+   * prefix likewise reads the source session's rows while that session exists. */
   private composeDurable(
     record: SessionRecord,
     path: ConversationTurn[],
     sessionTurns: ConversationTurn[],
     activePath: ConversationTurn[],
   ): Effect.Effect<ConversationReadItem[], OperationError> {
-    const { checkpoints, records, turns } = this;
+    const { checkpoints, records } = this;
+    const readHistories = this.readHistories.bind(this);
+    const loadContents = this.loadContents.bind(this);
+    const copiedPrefixPartitions = this.copiedPrefixPartitions.bind(this);
     return Effect.gen(function* () {
-      // A provider history is one linear transcript, so the turns whose runs wrote to it, in
-      // creation order, are its user rows — the alignment the gate needs, whichever lineage reads.
-      const turnsByHistory = new Map<AgentHistoryId, ConversationTurn[]>();
-      const ordered = [...sessionTurns].sort(byCreation);
-      for (let i = 0, len = ordered.length; i < len; i++) {
-        const historyId = runHistoryId(record, ordered[i].runId);
-        if (historyId === undefined) continue;
-        const group = turnsByHistory.get(historyId);
-        if (group) group.push(ordered[i]);
-        else turnsByHistory.set(historyId, [ordered[i]]);
-      }
+      const contents = new Map<TurnId, ContentBlock[] | undefined>();
       const touched = new Set<AgentHistoryId>();
-      const needed = new Map<TurnId, ConversationTurn>();
       for (let i = 0, len = path.length; i < len; i++) {
-        needed.set(path[i].turnId, path[i]);
         const historyId = runHistoryId(record, path[i].runId);
         if (historyId !== undefined) touched.add(historyId);
       }
-      for (const historyId of touched) {
-        const group = turnsByHistory.get(historyId) ?? [];
-        for (let i = 0, len = group.length; i < len; i++) needed.set(group[i].turnId, group[i]);
-      }
-      const neededTurns = [...needed.values()];
-      const loaded = yield* Effect.forEach(neededTurns, (turn) => turns.hostUserContent(turn));
-      const contentOf = new Map<TurnId, ContentBlock[] | undefined>();
-      for (let i = 0, len = neededTurns.length; i < len; i++) {
-        contentOf.set(neededTurns[i].turnId, loaded[i]);
-      }
-      const contentsOf = (lineage: readonly ConversationTurn[]) =>
-        lineage.map((turn) => contentOf.get(turn.turnId));
-
-      // Reading a corpus also backfills replay bindings on it.
-      const reads = new Map<AgentHistoryId, HistoryRead>();
-      for (const historyId of touched) {
-        const hostTurns = chainOrder(turnsByHistory.get(historyId) ?? []);
-        const attribution = yield* checkpoints.attributeLineage(
-          record,
-          hostTurns,
-          contentsOf(hostTurns),
-          historyId,
-        );
-        if (attribution === undefined) continue;
-        const partition = new Map<TurnId, number>();
-        const failed = new Map<TurnId, number>();
-        for (let i = 0, len = hostTurns.length; i < len; i++) {
-          const turn = hostTurns[i];
-          if (!TERMINAL_TURN_STATES.has(turn.state)) continue;
-          if (turn.state === 'failed') failed.set(turn.turnId, failed.size);
-          else partition.set(turn.turnId, partition.size);
-        }
-        reads.set(historyId, { attribution, partition, failed });
-      }
+      const reads = yield* readHistories(record, sessionTurns, touched, contents);
+      const pathContents = yield* loadContents(path, contents);
       // A fork's copy is still where a later fork after a copied turn cuts once that turn's own
       // history is gone, so the active lineage also backfills its prefix's bindings on the live
       // history. Rendering never reads this pass.
@@ -284,8 +244,14 @@ export class ConversationProjectionService {
         liveHistoryId !== undefined &&
         path.some((turn) => runHistoryId(record, turn.runId) !== liveHistoryId)
       ) {
-        yield* checkpoints.attributeLineage(record, path, contentsOf(path), liveHistoryId);
+        yield* checkpoints.attributeLineage(record, path, pathContents, liveHistoryId);
       }
+      const copied = yield* copiedPrefixPartitions(
+        record,
+        path,
+        new Map(sessionTurns.map((turn) => [turn.turnId, turn])),
+        new Set([record.sessionId]),
+      );
 
       const items: ConversationReadItem[] = [];
       // Rows ahead of the first user row are pre-graph history: they belong to the root's own
@@ -301,16 +267,16 @@ export class ConversationProjectionService {
       }
       for (let i = 0, len = path.length; i < len; i++) {
         const turn = path[i];
-        const content = contentOf.get(turn.turnId);
+        const content = pathContents[i];
         if (content !== undefined) {
           items.push(projectedUserRow(turn, content, runHistoryId(record, turn.runId)));
         }
         if (!TERMINAL_TURN_STATES.has(turn.state)) continue; // in-flight output rides the live tail
-        const historyId = runHistoryId(record, turn.runId);
-        const read = historyId === undefined ? undefined : reads.get(historyId);
         if (turn.state === 'failed') {
           // The state badge is the story; whatever the provider kept of the attempt renders under
           // it, and a turn that left nothing gets no placeholder — nothing durable ran.
+          const historyId = runHistoryId(record, turn.runId);
+          const read = historyId === undefined ? undefined : reads.get(historyId);
           const index = read?.failed.get(turn.turnId);
           const partial = index === undefined ? undefined : read?.attribution.failed[index];
           if (partial !== undefined) {
@@ -320,8 +286,7 @@ export class ConversationProjectionService {
           }
           continue;
         }
-        const index = read?.partition.get(turn.turnId);
-        const partition = index === undefined ? undefined : read?.attribution.attributed[index];
+        const partition = copied.get(turn.turnId) ?? readPartition(reads, record, turn);
         if (partition !== undefined) {
           for (let j = 0, restLen = partition.rest.length; j < restLen; j++) {
             items.push(projectedItem(turn, partition.rest[j]));
@@ -331,6 +296,131 @@ export class ConversationProjectionService {
         }
       }
       return items;
+    });
+  }
+
+  /** Host user-row content per turn of `lineage`, loaded once per read through `cache`. */
+  private loadContents(
+    lineage: readonly ConversationTurn[],
+    cache: Map<TurnId, ContentBlock[] | undefined>,
+  ): Effect.Effect<Array<ContentBlock[] | undefined>, OperationError> {
+    const { turns } = this;
+    return Effect.gen(function* () {
+      const missing = lineage.filter((turn) => !cache.has(turn.turnId));
+      const loaded = yield* Effect.forEach(missing, (turn) => turns.hostUserContent(turn));
+      for (let i = 0, len = missing.length; i < len; i++) cache.set(missing[i].turnId, loaded[i]);
+      return lineage.map((turn) => cache.get(turn.turnId));
+    });
+  }
+
+  /**
+   * Attribute each history in `historyIds` against the session's turns whose runs wrote to it. A
+   * provider history is one linear transcript, so those turns in chain order are its user rows —
+   * the alignment the gate needs, whichever lineage reads. Reading a corpus also backfills replay
+   * bindings on it.
+   */
+  private readHistories(
+    record: SessionRecord,
+    sessionTurns: readonly ConversationTurn[],
+    historyIds: ReadonlySet<AgentHistoryId>,
+    cache: Map<TurnId, ContentBlock[] | undefined>,
+  ): Effect.Effect<Map<AgentHistoryId, HistoryRead>, OperationError> {
+    const { checkpoints } = this;
+    const loadContents = this.loadContents.bind(this);
+    return Effect.gen(function* () {
+      const turnsByHistory = new Map<AgentHistoryId, ConversationTurn[]>();
+      const ordered = [...sessionTurns].sort(byCreation);
+      for (let i = 0, len = ordered.length; i < len; i++) {
+        const historyId = runHistoryId(record, ordered[i].runId);
+        if (historyId === undefined) continue;
+        const group = turnsByHistory.get(historyId);
+        if (group) group.push(ordered[i]);
+        else turnsByHistory.set(historyId, [ordered[i]]);
+      }
+      const reads = new Map<AgentHistoryId, HistoryRead>();
+      for (const historyId of historyIds) {
+        const hostTurns = chainOrder(turnsByHistory.get(historyId) ?? []);
+        const contents = yield* loadContents(hostTurns, cache);
+        const attribution = yield* checkpoints.attributeLineage(
+          record,
+          hostTurns,
+          contents,
+          historyId,
+        );
+        if (attribution === undefined) continue;
+        const partition = new Map<TurnId, number>();
+        const failed = new Map<TurnId, number>();
+        for (let i = 0, len = hostTurns.length; i < len; i++) {
+          const turn = hostTurns[i];
+          if (!TERMINAL_TURN_STATES.has(turn.state)) continue;
+          if (turn.state === 'failed') failed.set(turn.turnId, failed.size);
+          else partition.set(turn.turnId, partition.size);
+        }
+        reads.set(historyId, { attribution, partition, failed });
+      }
+      return reads;
+    });
+  }
+
+  /**
+   * The provider rows a forked session's copied prefix renders from: the source session's own,
+   * position by position along the lineage it copied, while that session exists. The provider's
+   * copy is lossy (claude re-stamps the row it cut at), and the source rows are what every other
+   * view of that lineage renders. A source that is itself a fork defers to its own source the same
+   * way; a deleted source leaves the copy as the only source there is.
+   */
+  private copiedPrefixPartitions(
+    record: SessionRecord,
+    path: readonly ConversationTurn[],
+    byId: ReadonlyMap<TurnId, ConversationTurn>,
+    visited: ReadonlySet<SessionId>,
+  ): Effect.Effect<Map<TurnId, ProviderPartition>, OperationError> {
+    const partitions = new Map<TurnId, ProviderPartition>();
+    const origin = record.forkOrigin;
+    const copiedLeaf = record.runs[0]?.baseTurnId;
+    const source = origin === undefined ? undefined : this.records.get(origin.sourceSessionId);
+    if (
+      origin === undefined ||
+      source === undefined ||
+      copiedLeaf === undefined ||
+      visited.has(source.sessionId)
+    ) {
+      return Effect.succeed(partitions);
+    }
+    const { turns } = this;
+    const readHistories = this.readHistories.bind(this);
+    const copiedPrefixPartitions = this.copiedPrefixPartitions.bind(this);
+    return Effect.gen(function* () {
+      // Position i of the copied lineage is position i of the source lineage it was copied from;
+      // the read path shares that lineage only up to its first turn of the session's own.
+      const copiedPath = pathToLeaf(byId, copiedLeaf);
+      const sourceTurns = yield* turns.listTurns(source.sessionId);
+      const sourceById = new Map(sourceTurns.map((turn) => [turn.turnId, turn]));
+      const sourcePath = pathToLeaf(sourceById, origin.sourceTurnId);
+      const limit = Math.min(path.length, copiedPath.length, sourcePath.length);
+      let shared = 0;
+      while (shared < limit && path[shared].turnId === copiedPath[shared].turnId) shared += 1;
+      if (shared === 0) return partitions;
+      const sourcePrefix = sourcePath.slice(0, shared);
+      const histories = new Set<AgentHistoryId>();
+      for (let i = 0; i < shared; i++) {
+        const historyId = runHistoryId(source, sourcePrefix[i].runId);
+        if (historyId !== undefined) histories.add(historyId);
+      }
+      const reads = yield* readHistories(source, sourceTurns, histories, new Map());
+      const inherited = yield* copiedPrefixPartitions(
+        source,
+        sourcePrefix,
+        sourceById,
+        new Set([...visited, source.sessionId]),
+      );
+      for (let i = 0; i < shared; i++) {
+        const sourceTurn = sourcePrefix[i];
+        const partition =
+          inherited.get(sourceTurn.turnId) ?? readPartition(reads, source, sourceTurn);
+        if (partition !== undefined) partitions.set(path[i].turnId, partition);
+      }
+      return partitions;
     });
   }
 
@@ -566,6 +656,18 @@ function projectedItem(
 
 function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
   return record.runs.find((run) => run.runId === runId)?.historyId;
+}
+
+/** The provider partition a settled turn renders from, off the read of its own run's history. */
+function readPartition(
+  reads: ReadonlyMap<AgentHistoryId, HistoryRead>,
+  record: SessionRecord,
+  turn: ConversationTurn,
+): ProviderPartition | undefined {
+  const historyId = runHistoryId(record, turn.runId);
+  const read = historyId === undefined ? undefined : reads.get(historyId);
+  const index = read?.partition.get(turn.turnId);
+  return index === undefined ? undefined : read?.attribution.attributed[index];
 }
 
 /** The turns that ran on one history in transcript order: the chain through `parentTurnId` from
