@@ -1,3 +1,4 @@
+import { MIN_COMPATIBLE_WIRE_VERSION } from '@linkcode/schema';
 import {
   TUNNEL_MAX_CONNECTION_AGE_MS,
   TunnelChunkAssembler,
@@ -117,6 +118,22 @@ describe('TunnelTransportServer', () => {
       });
     }
     expect(inbound).toEqual([request]);
+
+    // A remote peer below this build's floor still gets its handshake through — the relay carries
+    // the frame opaquely, so this is the tunnel's whole version surface.
+    const belowFloorPing = {
+      v: MIN_COMPATIBLE_WIRE_VERSION - 1,
+      id: 'message-2',
+      ts: 1,
+      payload: { kind: 'ping' },
+    };
+    const pingChunks = new TunnelChunkEncoder(1).encode(JSON.stringify(belowFloorPing));
+    for (let i = 0, len = pingChunks.length; i < len; i++) {
+      socket.emit('message', {
+        data: encodeTunnelPeerFrame({ kind: 'peer.data', peerId: 'peer-1', data: pingChunks[i] }),
+      });
+    }
+    expect(inbound).toEqual([request, belowFloorPing]);
 
     connection.send(createWireMessage({ kind: 'request.succeeded', replyTo: 'r1' }));
     let outbound: TunnelPeerFrame | null = null;

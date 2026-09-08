@@ -19,7 +19,28 @@ describe('wire envelope compatibility', () => {
   });
 
   it('refuses a peer below the compatible floor, naming the version it spoke', () => {
-    const parsed = parseWireMessage(envelope(ping, MIN_COMPATIBLE_WIRE_VERSION - 1));
+    const parsed = parseWireMessage(
+      envelope({ kind: 'session.list', clientReqId: 'r1' }, MIN_COMPATIBLE_WIRE_VERSION - 1),
+    );
+
+    expect(parsed).toMatchObject({
+      ok: false,
+      reason: 'unsupported-version',
+      version: MIN_COMPATIBLE_WIRE_VERSION - 1,
+    });
+  });
+
+  it('accepts the handshake whatever version it carries, so a skew can be named', () => {
+    const belowFloorPing = parseWireMessage(envelope(ping, MIN_COMPATIBLE_WIRE_VERSION - 1));
+    expect(belowFloorPing).toMatchObject({ ok: true, message: { payload: ping } });
+
+    const olderHostPong = { kind: 'pong', version: 1, minCompatible: 1 };
+    const belowFloorPong = parseWireMessage(envelope(olderHostPong, 1));
+    expect(belowFloorPong).toMatchObject({ ok: true, message: { v: 1, payload: olderHostPong } });
+  });
+
+  it('refuses a below-floor frame that only claims to be the handshake', () => {
+    const parsed = parseWireMessage(envelope({ kind: 'pong' }, MIN_COMPATIBLE_WIRE_VERSION - 1));
 
     expect(parsed).toMatchObject({
       ok: false,
