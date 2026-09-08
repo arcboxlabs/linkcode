@@ -34,7 +34,7 @@ import { systemBridge } from '../ipc';
 import { DesktopChrome } from '../shell/chrome/chrome';
 import { DESKTOP_CHROME_METRICS_STYLE, DESKTOP_CHROME_SPACER_CLASS } from '../shell/chrome/metrics';
 import type { DesktopShellStyle } from '../shell/layout/shell-style';
-import { DEFAULT_LAYOUT } from '../shell/store/model';
+import { useDesktopShellStore } from '../shell/store/store';
 import { AboutTab } from './about-tab';
 import { AgentsTab } from './agents-tab';
 import { AppearanceTab } from './appearance-tab';
@@ -54,13 +54,6 @@ const AGENT_KINDS: readonly AgentKind[] = AgentKindSchema.options;
 const DEFAULT_HISTORY_PROVIDER: AgentKind = 'claude-code';
 const CLOSE_SETTINGS_SHORTCUT = { key: 'Escape' } as const;
 
-const SETTINGS_CHROME_STYLE: DesktopShellStyle = {
-  ...DESKTOP_CHROME_METRICS_STYLE,
-  '--lc-sidebar-w': `${DEFAULT_LAYOUT.sidebarW}px`,
-  '--lc-right-w': '0px',
-  '--lc-bottom-h': '0px',
-};
-
 /**
  * Full-page Settings surface. Rendered above the connection gate so it stays reachable even when the
  * daemon is unreachable (needed to fix a bad daemon URL). The workbench stays mounted underneath.
@@ -74,6 +67,7 @@ export function SettingsView(): React.ReactNode {
   const setCategory = useDesktopSettingsStore((state) => state.setSettingsCategory);
   const historyProvider = useDesktopSettingsStore((state) => state.historyImportProvider);
   const setHistoryProvider = useDesktopSettingsStore((state) => state.setHistoryImportProvider);
+  const sidebarWidth = useDesktopShellStore((state) => state.layout.sidebarW);
   const [searchQuery, setSearchQuery] = useState('');
   const searchKeywords = useSettingsSearchKeywords();
   const settingsRootRef = useRef<HTMLDivElement>(null);
@@ -81,6 +75,12 @@ export function SettingsView(): React.ReactNode {
   const hasNativeTrafficLights = desktopPlatform === 'darwin';
   const hasNativeBackdrop = desktopPlatform === 'darwin' || desktopPlatform === 'win32';
   const showWindowControls = desktopPlatform !== 'darwin';
+  const settingsChromeStyle: DesktopShellStyle = {
+    ...DESKTOP_CHROME_METRICS_STYLE,
+    '--lc-sidebar-w': `${sidebarWidth}px`,
+    '--lc-right-w': '0px',
+    '--lc-bottom-h': '0px',
+  };
 
   useKeyboardShortcut({
     actionId: 'desktop.close-settings',
@@ -232,7 +232,7 @@ export function SettingsView(): React.ReactNode {
     <div
       ref={settingsRootRef}
       className="linkcode-desktop-shell fixed inset-0 z-50 bg-transparent text-foreground"
-      style={SETTINGS_CHROME_STYLE}
+      style={settingsChromeStyle}
     >
       <DesktopChrome
         header={{ title: t('title') }}
