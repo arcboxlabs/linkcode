@@ -61,9 +61,11 @@ export interface SessionStartResult {
   mcpWarnings: McpWarning[];
 }
 
-/** `session.forked` without its correlation fields: the new session, live and selectable. */
+/** `session.forked` without its correlation fields: the new session, live and selectable, and
+ * the child start's custom-MCP advisories (delivered only on this reply, like a start's). */
 export interface SessionForkResult {
   sessionId: SessionId;
+  mcpWarnings: McpWarning[];
 }
 
 /** The `plugin.list.result` payload as one value: catalogs, standalone skills, and per-provider

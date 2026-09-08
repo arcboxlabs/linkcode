@@ -67,6 +67,9 @@ export interface WorkbenchSessions {
     throughTurnId: TurnId,
     expectedGraphRevision: number,
   ) => Promise<SessionId>;
+  /** A fork is in flight: the daemon holds the source's operation slot until it lands, so the
+   * affordance must not offer a second one meanwhile. */
+  forking: boolean;
   /** Revalidate the session list — the cue for a mutation made outside this hook (e.g. an import). */
   refresh: () => void;
 }
@@ -249,11 +252,12 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     expectedGraphRevision: number,
   ): Promise<SessionId> {
     const from = currentLocation;
-    const { sessionId } = await forkMutation.trigger({
+    const { sessionId, mcpWarnings } = await forkMutation.trigger({
       sourceSessionId,
       throughTurnId,
       expectedGraphRevision,
     });
+    showMcpWarnings(mcpWarnings, tMcpWarnings);
     // Mutate before selecting to avoid a flash of the previous session.
     await mutate().catch(noop);
     recordNavigation(from, { surface: 'thread', sessionId });
@@ -294,6 +298,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     create,
     close,
     fork,
+    forking: forkMutation.isMutating,
     refresh,
   };
 }
