@@ -102,7 +102,7 @@ async function harness() {
 const tick = (): Promise<void> => wait(10);
 
 describe('projection conversation store', () => {
-  it('freezes a parked read: live events and graph changes never reach it', async () => {
+  it('freezes a parked read’s content — live rows and graph changes never reach it — but not the session’s state', async () => {
     const h = await harness();
     const store = createConversationStore(
       h.client,
@@ -114,9 +114,17 @@ describe('projection conversation store', () => {
     h.send(echo(2, 'the active lineage moves on'), { epoch: 1, seq: 2 });
     h.send(chunk('a2', 'streaming into the other version'), { epoch: 1, seq: 3 });
     h.graphChanged(7, turn(2));
+    // The composer renders these while parked; they are the session's, not the lineage's.
+    h.send({ type: 'model-update', model: 'claude-fable-5' }, { epoch: 1, seq: 4 });
+    h.send({ type: 'effort-update', effort: 'high' }, { epoch: 1, seq: 5 });
+    h.send({ type: 'status', status: 'running' }, { epoch: 1, seq: 6 });
     await tick();
 
     expect(texts(store)).toEqual(['old version']);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.currentModel).toBe('claude-fable-5');
+    expect(snapshot.currentEffort).toBe('high');
+    expect(snapshot.status).toBe('running');
     expect(h.resyncs).toEqual([]);
     unsubscribe();
     h.close();
