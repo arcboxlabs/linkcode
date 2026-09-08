@@ -61,6 +61,11 @@ export interface SessionStartResult {
   mcpWarnings: McpWarning[];
 }
 
+/** `session.forked` without its correlation fields: the new session, live and selectable. */
+export interface SessionForkResult {
+  sessionId: SessionId;
+}
+
 /** The `plugin.list.result` payload as one value: catalogs, standalone skills, and per-provider
  * discovery outcomes travel together so the UI can tell "empty" from "provider CLI failed". */
 export interface PluginList {
@@ -133,6 +138,7 @@ export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
  */
 export interface PendingValueMap {
   start: SessionStartResult;
+  fork: SessionForkResult;
   list: SessionInfo[];
   import: SessionRecord;
   historyList: AgentHistoryListResult;
@@ -202,6 +208,7 @@ type PendingMaps = { [K in keyof PendingValueMap]: Map<string, Pending<PendingVa
 export class PendingRegistry {
   private readonly maps: PendingMaps = {
     start: new Map(),
+    fork: new Map(),
     list: new Map(),
     import: new Map(),
     historyList: new Map(),

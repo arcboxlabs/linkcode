@@ -5,6 +5,7 @@ import type {
   HistoryReadClientOptions,
   PluginList,
   PluginMutation,
+  SessionForkResult,
   SessionStartResult,
 } from '@linkcode/client-core';
 import { LinkCodeClient } from '@linkcode/client-core';
@@ -60,6 +61,7 @@ import type {
   StandaloneSkill,
   StandaloneSkillScope,
   StartOptions,
+  TurnId,
   WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
@@ -178,6 +180,15 @@ export class LinkCodeSdkClient {
   /** Import a provider-local history session as a cold record (listed, not started). */
   importSession(agentKind: AgentKind, historyId: AgentHistoryId): RequestResult<SessionRecord> {
     return toResult(this.raw.importSession(agentKind, historyId));
+  }
+
+  /** Fork a live child session off `sourceSessionId` through `throughTurnId` (included). */
+  forkSession(
+    sourceSessionId: SessionId,
+    throughTurnId: TurnId,
+    expectedGraphRevision: number,
+  ): RequestResult<SessionForkResult> {
+    return toResult(this.raw.forkSession(sourceSessionId, throughTurnId, expectedGraphRevision));
   }
 
   listHistory(
