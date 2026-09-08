@@ -144,6 +144,10 @@ export class SessionRecordRegistry {
     this.announce(sessionId, 'created');
   }
 
+  isProvisional(sessionId: SessionId): boolean {
+    return this.provisional.has(sessionId);
+  }
+
   /** The creating transaction never happened: the record was never durable, so nothing announces
    * its removal. */
   discardProvisional(sessionId: SessionId): void {

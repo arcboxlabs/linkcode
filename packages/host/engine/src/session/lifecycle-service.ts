@@ -67,7 +67,7 @@ type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions
 const TURN_SUBMIT_TIMEOUT_MS = 60_000;
 /** Launch budget: the claude CLI can legitimately take ~3 minutes to cold-start at peak hours;
  * the other harnesses bound their own startup well under this. */
-const LAUNCH_TIMEOUT_MS = 300_000;
+export const LAUNCH_TIMEOUT_MS = 300_000;
 
 export interface TurnSubmitRequest {
   readonly sessionId: SessionId;
@@ -1078,7 +1078,7 @@ export class SessionLifecycleService {
    * configured default answers for new and unpinned sessions, and adopting it here would silently
    * move a running thread to whatever Settings now says.
    */
-  private resolveForRecord(
+  resolveForRecord(
     record: SessionRecord,
     override?: SessionPin,
   ): Effect.Effect<ResolvedStartOptions, EngineFailure> {
@@ -1183,7 +1183,8 @@ export class SessionLifecycleService {
     });
   }
 
-  private nextSessionId(): SessionId {
+  /** The one session-id minter: a second counter could collide within a millisecond. */
+  nextSessionId(): SessionId {
     this.seq += 1;
     return `sess-${Date.now().toString(36)}-${this.seq.toString(36)}` as SessionId;
   }
@@ -1197,7 +1198,9 @@ export class SessionLifecycleService {
     return semaphore;
   }
 
-  private sessionSemaphore(sessionId: SessionId): Semaphore.Semaphore {
+  /** The per-session critical section every saga admits under, so a fork's admission serializes
+   * with the source's own submits and relaunches. */
+  sessionSemaphore(sessionId: SessionId): Semaphore.Semaphore {
     const existing = this.sessionSemaphores.get(sessionId);
     if (existing) return existing;
     const semaphore = Semaphore.makeUnsafe(1);
@@ -1250,7 +1253,7 @@ function workspaceRegisterWorktree(
  * than the options it produced, because only the resolver knows one actually backed the run.
  * Unresolved fields stay absent rather than writing `undefined` into the record, and are what a later
  * relaunch reads back to stay put. */
-function runOf(options: StartOptions, accountId: string | undefined): SessionPin {
+export function runOf(options: StartOptions, accountId: string | undefined): SessionPin {
   return {
     ...(accountId !== undefined && { accountId }),
     ...(options.model !== undefined && { model: options.model }),

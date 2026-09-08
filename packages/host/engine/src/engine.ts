@@ -58,6 +58,7 @@ import { InMemoryResourceStore } from './resource/resource-store';
 import { ResourceService } from './resource/service';
 import { ScriptRequestHandler } from './scripts/request-handler';
 import { ScriptService } from './scripts/script-service';
+import { SessionForkService } from './session/fork-service';
 import { HistoryRequestHandler } from './session/history-request-handler';
 import { HistoryService } from './session/history-service';
 import { SessionLifecycleService } from './session/lifecycle-service';
@@ -281,11 +282,21 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     materializer,
     ingest,
   );
+  const sessionForks = new SessionForkService(
+    sessions,
+    records,
+    history,
+    worktrees,
+    conversationTurns,
+    conversationCheckpoints,
+    sessionLifecycle,
+  );
   const sessionRequests = new SessionRequestHandler(
     transport,
     sessionLifecycle,
     sessions,
     responder,
+    sessionForks,
   );
   const historyRequests = new HistoryRequestHandler(
     transport,

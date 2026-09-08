@@ -121,7 +121,14 @@ export class ConversationCheckpointService {
         liveFingerprint,
         hasHiddenPrefix(record, path[0]),
       );
-      yield* backfill(expectsProvider, attribution, historyId);
+      // A forked session's first history is the provider's copy of its prefix, and a copy can drop
+      // or gain rows (image-only prompts, compaction) that shift a partial alignment; a binding
+      // backfilled from one is never corrected, so that history backfills every position or none.
+      const copiedPrefix =
+        record.forkOrigin !== undefined && record.runs[0]?.historyId === historyId;
+      if (!copiedPrefix || attribution.attributed.length === expectsProvider.length) {
+        yield* backfill(expectsProvider, attribution, historyId);
+      }
       return attribution;
     });
   }
