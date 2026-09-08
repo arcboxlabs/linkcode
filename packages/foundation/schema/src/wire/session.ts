@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { StartOptionsSchema } from '../model/agent';
 import { McpWarningSchema } from '../model/custom-mcp';
-import { AgentHistoryIdSchema, AgentKindSchema, SessionIdSchema } from '../model/primitives';
+import {
+  AgentHistoryIdSchema,
+  AgentKindSchema,
+  OperationIdSchema,
+  SessionIdSchema,
+  TurnIdSchema,
+} from '../model/primitives';
 import {
   SessionInfoSchema,
   SessionNotificationSchema,
@@ -19,6 +25,9 @@ export type SessionSubscriptionMode = z.infer<typeof SessionSubscriptionModeSche
  * a listed session can still gain — its title and its provider history binding. */
 export const SessionChangeReasonSchema = z.enum(['created', 'removed', 'updated']);
 export type SessionChangeReason = z.infer<typeof SessionChangeReasonSchema>;
+
+/** The wire version that introduced `session.fork`; clients feature-detect the affordance on it. */
+export const SESSION_FORK_WIRE_VERSION = 82 as const;
 
 /** Session control wire variants — starting, stopping, listing, and resuming sessions. */
 export const sessionWireVariants = [
@@ -79,6 +88,23 @@ export const sessionWireVariants = [
     kind: z.literal('session.imported'),
     replyTo: WireRequestIdSchema,
     record: SessionRecordSchema,
+  }),
+  /** Fork a new session off `sourceSessionId`: the lineage through `throughTurnId` (that turn
+   * included, its suffix excluded) is copied onto a provider-native fork of its history, and the
+   * child starts live. The source is untouched. Idempotent by `operationId` like `turn.submit`;
+   * `expectedGraphRevision` guards the source graph the caller looked at. */
+  z.object({
+    kind: z.literal('session.fork'),
+    clientReqId: WireRequestIdSchema,
+    sourceSessionId: SessionIdSchema,
+    throughTurnId: TurnIdSchema,
+    operationId: OperationIdSchema,
+    expectedGraphRevision: z.number().int().nonnegative(),
+  }),
+  z.object({
+    kind: z.literal('session.forked'),
+    replyTo: WireRequestIdSchema,
+    sessionId: SessionIdSchema,
   }),
   /** Broadcast when the persisted list changes membership or identity, so a client holding a stale
    * snapshot knows to revalidate. Deliberately carries no record: `session.listed` stays the one

@@ -62,6 +62,26 @@ describe('session wire variants', () => {
     expect(parseWireMessage(sessionStart('high', { name: 'feature' })).ok).toBe(false);
   });
 
+  it('parses session.fork only with its revision guard and replies with the forked id', () => {
+    const fork = {
+      kind: 'session.fork',
+      clientReqId: 'request-1',
+      sourceSessionId: 'session-source',
+      throughTurnId: 'turn-through',
+      operationId: 'op-fork',
+      expectedGraphRevision: 3,
+    };
+    const envelope = (payload: unknown) => ({ v: WIRE_PROTOCOL_VERSION, id: 'm', ts: 0, payload });
+    expect(parseWireMessage(envelope(fork)).ok).toBe(true);
+    const { expectedGraphRevision: _guard, ...unguarded } = fork;
+    expect(parseWireMessage(envelope(unguarded)).ok).toBe(false);
+    expect(
+      parseWireMessage(
+        envelope({ kind: 'session.forked', replyTo: 'request-1', sessionId: 'session-child' }),
+      ).ok,
+    ).toBe(true);
+  });
+
   it('accepts a legacy session.imported record whose runs predate runId', () => {
     // ≤v79 daemons emit runs without runId; required-ness waits for the floor bump.
     expect(
