@@ -3,6 +3,8 @@ import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   ATTACHMENT_UPLOAD_WINDOW_CHUNKS,
   MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { noop } from 'foxts/noop';
@@ -48,6 +50,17 @@ export class AttachmentChannel {
   ) {}
 
   beginUpload(input: AttachmentBeginInput): Promise<AttachmentUploadBegun> {
+    // The wire schema bounds both fields; an over-long begin is dropped unanswered, never refused.
+    if (input.name.length > MAX_ATTACHMENT_NAME_LENGTH) {
+      return Promise.reject(
+        new Error(`Attachment name exceeds ${MAX_ATTACHMENT_NAME_LENGTH} characters`),
+      );
+    }
+    if (input.mimeType !== undefined && input.mimeType.length > MAX_MIME_TYPE_LENGTH) {
+      return Promise.reject(
+        new Error(`Attachment MIME type exceeds ${MAX_MIME_TYPE_LENGTH} characters`),
+      );
+    }
     return sendCorrelated(this.transport, this.pending, 'attachmentBegin', (clientReqId) => ({
       kind: 'attachment.upload.begin',
       clientReqId,
