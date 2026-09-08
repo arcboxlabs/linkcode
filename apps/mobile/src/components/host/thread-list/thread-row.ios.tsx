@@ -1,5 +1,7 @@
 import { HStack, Image, RNHostView, Spacer, Text, VStack } from '@expo/ui/swift-ui';
 import {
+  accessibilityAddTraits,
+  accessibilityElement,
   contentShape,
   foregroundStyle,
   lineLimit,
@@ -37,7 +39,15 @@ export function ThreadRow({ session, now, onPress }: ThreadRowProps): React.Reac
   const palette = useNativePalette();
 
   return (
-    <HStack spacing={10} modifiers={[WHOLE_ROW, onTapGesture(onPress)]}>
+    <HStack
+      spacing={10}
+      modifiers={[
+        WHOLE_ROW,
+        onTapGesture(onPress),
+        accessibilityElement('combine'),
+        accessibilityAddTraits(['isButton']),
+      ]}
+    >
       <RNHostView matchContents>
         <View pointerEvents="none" style={{ width: GLYPH_SIZE, height: GLYPH_SIZE }}>
           <AgentIcon kind={session.kind} variant="ghost" size={GLYPH_SIZE} color={palette.text} />

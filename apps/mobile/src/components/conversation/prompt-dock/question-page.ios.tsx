@@ -14,6 +14,7 @@ import {
   buttonStyle,
   contentShape,
   disabled,
+  fixedSize,
   font,
   foregroundStyle,
   frame,
@@ -61,7 +62,7 @@ export function QuestionPage({
       className="rounded-xl border px-3 py-2.5"
       style={{ backgroundColor: palette.background, borderColor: palette.outline }}
     >
-      <Host matchContents>
+      <Host matchContents={{ vertical: true }}>
         <VStack alignment="leading" spacing={10}>
           <HStack spacing={8}>
             {current > 1 ? (
@@ -125,7 +126,13 @@ export function QuestionPage({
                     <VStack alignment="leading" spacing={1}>
                       <Text modifiers={[font({ textStyle: 'subheadline' })]}>{option.label}</Text>
                       {option.description ? (
-                        <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>
+                        <Text
+                          modifiers={[
+                            font({ textStyle: 'footnote' }),
+                            SECONDARY,
+                            fixedSize({ horizontal: false, vertical: true }),
+                          ]}
+                        >
                           {option.description}
                         </Text>
                       ) : null}

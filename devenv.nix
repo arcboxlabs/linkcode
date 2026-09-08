@@ -86,7 +86,7 @@
   scripts.mobile.exec = ''
     export PATH="/usr/bin:$PATH" SENTRY_DISABLE_AUTO_UPLOAD=true
     unset DEVELOPER_DIR SDKROOT CC CXX LD NIX_CFLAGS_COMPILE NIX_LDFLAGS MACOSX_DEPLOYMENT_TARGET
-    pnpm run --filter @linkcode/mobile ios
+    pnpm run --filter @linkcode/mobile ios "$@"
   '';
   scripts.app.exec = "pnpm run --filter @linkcode/daemon build:rust && pnpm --filter @linkcode/daemon --filter @linkcode/desktop --parallel dev";
 }

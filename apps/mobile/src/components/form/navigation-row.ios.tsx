@@ -1,5 +1,12 @@
 import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
-import { badge, contentShape, onTapGesture, shapes } from '@expo/ui/swift-ui/modifiers';
+import {
+  accessibilityAddTraits,
+  accessibilityElement,
+  badge,
+  contentShape,
+  onTapGesture,
+  shapes,
+} from '@expo/ui/swift-ui/modifiers';
 import type { NavigationRowProps } from '@mobile/components/form/navigation-row.types';
 import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles.ios';
 
@@ -17,7 +24,16 @@ export function NavigationRow({
   onPress,
 }: NavigationRowProps): React.ReactNode {
   return (
-    <HStack spacing={8} modifiers={[WHOLE_ROW, onTapGesture(onPress), badge(badgeText)]}>
+    <HStack
+      spacing={8}
+      modifiers={[
+        WHOLE_ROW,
+        onTapGesture(onPress),
+        badge(badgeText),
+        accessibilityElement('combine'),
+        accessibilityAddTraits(['isButton']),
+      ]}
+    >
       <VStack alignment="leading" spacing={2}>
         <Text>{title}</Text>
         {subtitle ? <Text modifiers={[FOOTNOTE, SECONDARY]}>{subtitle}</Text> : null}

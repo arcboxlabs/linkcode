@@ -42,7 +42,7 @@ export function PermissionPrompt({
       className="rounded-xl border px-3 py-2.5"
       style={{ backgroundColor: palette.background, borderColor: palette.outline }}
     >
-      <Host matchContents>
+      <Host matchContents={{ vertical: true }}>
         <VStack alignment="leading" spacing={10}>
           <HStack spacing={8}>
             <Text

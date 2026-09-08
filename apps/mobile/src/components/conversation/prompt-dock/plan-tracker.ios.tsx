@@ -5,6 +5,7 @@ import {
   frame,
   gaugeStyle,
   lineLimit,
+  scaleEffect,
   strikethrough,
 } from '@expo/ui/swift-ui/modifiers';
 import type { CurrentPlan } from '@linkcode/ui/native';
@@ -40,14 +41,18 @@ export function PlanTracker({ plan }: { plan: CurrentPlan }): React.ReactNode {
       className="rounded-xl border px-3 py-1.5"
       style={{ backgroundColor: palette.surface, borderColor: palette.outline }}
     >
-      <Host matchContents>
+      <Host matchContents={{ vertical: true }}>
         <DisclosureGroup isExpanded={expanded} onIsExpandedChange={setExpanded}>
           <DisclosureGroup.Label>
             <HStack spacing={8}>
               <Gauge
                 value={plan.currentIndex + 1}
                 max={plan.total}
-                modifiers={[gaugeStyle('circularCapacity'), frame({ width: 18, height: 18 })]}
+                modifiers={[
+                  gaugeStyle('circularCapacity'),
+                  scaleEffect(0.35),
+                  frame({ width: 18, height: 18 }),
+                ]}
               />
               <Text modifiers={[font({ textStyle: 'footnote', weight: 'semibold' })]}>
                 {t('stepLabel', {

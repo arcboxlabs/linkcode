@@ -33,7 +33,6 @@ import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
 import { noop } from 'foxact/noop';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, View } from 'react-native';
@@ -60,7 +59,6 @@ function SessionScreen(): React.ReactNode {
   const tChat = useTranslations('mobile.chat');
   const tSettings = useTranslations('mobile.settings');
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
   const palette = useNativePalette();
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
@@ -148,6 +146,9 @@ function SessionScreen(): React.ReactNode {
       <Stack.Screen
         options={{
           ...VISIBLE_HEADER_OPTIONS,
+          // Transparent header blur washes out content in UIKit's inverted scroll coordinates.
+          headerBackground: undefined,
+          headerTransparent: false,
           title,
           headerTitle: () => <SessionTitle title={title} status={conversation.status} />,
           ...(process.env.EXPO_OS === 'ios'
@@ -210,9 +211,6 @@ function SessionScreen(): React.ReactNode {
               onPressTool={(toolCall) => setOpenToolCallId(toolCall.toolCallId)}
             />
           )}
-          ListFooterComponent={
-            process.env.EXPO_OS === 'ios' ? <View style={{ height: headerHeight }} /> : null
-          }
           // Inverted list: the header renders at the visual bottom — the clearance that keeps
           // resting content out from under the floating composer.
           ListHeaderComponent={
