@@ -287,7 +287,7 @@ async function main(): Promise<void> {
         scheduleStore: createScheduleStore(databasePath()),
         loopStore: createLoopStore(databasePath()),
         workspaceStore: createWorkspaceStore(databasePath()),
-        worktreeStore: createWorktreeStore(databasePath()),
+        worktreeStore: createWorktreeStore(database.client),
         worktreeRoot: worktreeRoot(),
         previewRoutes,
         browserToolsEnabled: process.env.LINKCODE_BROWSER_TOOLS === '1',

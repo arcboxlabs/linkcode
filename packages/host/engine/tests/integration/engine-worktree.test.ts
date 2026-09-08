@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { StartOptions } from '@linkcode/schema';
+import type { SessionId, StartOptions } from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSessionHarness,
@@ -55,6 +55,37 @@ class RejectingStartAdapter extends FakeAdapter {
   }
 }
 
+type Harness = ReturnType<typeof createSessionHarness>;
+
+function worktreeHarness(
+  makeAdapter: () => FakeAdapter,
+  stores: {
+    sessionStore?: InMemorySessionStore;
+    workspaceStore?: InMemoryWorkspaceStore;
+    worktreeStore: InMemoryWorktreeStore;
+    worktreeRoot: string;
+  },
+): Harness {
+  return createSessionHarness(
+    stores.sessionStore ?? new InMemorySessionStore(),
+    makeAdapter,
+    undefined,
+    undefined,
+    stores.workspaceStore,
+    undefined,
+    { worktreeStore: stores.worktreeStore, worktreeRoot: stores.worktreeRoot },
+  );
+}
+
+async function startOnWorktree(h: Harness, clientReqId: string, repo: string): Promise<SessionId> {
+  await h.inject({
+    kind: 'session.start',
+    clientReqId,
+    opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature', mode: 'worktree' } },
+  });
+  return vi.waitFor(() => startedSessionId(h.sent, clientReqId));
+}
+
 afterEach(() => {
   const drained = tempRoots.splice(0);
   for (let i = 0, len = drained.length; i < len; i++) {
@@ -90,13 +121,13 @@ describe('engine managed worktree sessions', () => {
         },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-delete'));
-      const [record] = await worktreeStore.load();
+      const [record] = (await worktreeStore.load()).worktrees;
       await h.inject({ kind: 'session.delete', clientReqId: 'delete', sessionId });
       await vi.waitFor(() =>
         expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'delete' }),
       );
       expect(existsSync(record.worktreePath)).toBe(false);
-      expect(await worktreeStore.load()).toEqual([]);
+      expect(await worktreeStore.load()).toEqual({ worktrees: [], leases: [] });
       expect((await workspaceStore.load()).some(({ cwd }) => cwd === record.worktreePath)).toBe(
         false,
       );
@@ -135,7 +166,7 @@ describe('engine managed worktree sessions', () => {
         },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-delete-failure'));
-      const [record] = await worktreeStore.load();
+      const [record] = (await worktreeStore.load()).worktrees;
 
       await h.inject({ kind: 'session.delete', clientReqId: 'delete-failure', sessionId });
 
@@ -148,27 +179,28 @@ describe('engine managed worktree sessions', () => {
         }),
       );
       expect(existsSync(record.worktreePath)).toBe(true);
-      expect(await worktreeStore.load()).toMatchObject([{ state: 'active' }]);
+      expect(await worktreeStore.load()).toMatchObject({
+        worktrees: [{ state: 'active' }],
+        leases: [{ sessionId }],
+      });
       expect(await inner.load()).toHaveLength(1);
     } finally {
       await h.engine.stop();
     }
   });
 
-  it('retries orphan cleanup when an already-deleted session is deleted again', async () => {
+  it('keeps a dirty worktree orphaned and removes it at the next boot once it is clean', async () => {
     const repo = makeRepo();
     const workspaceStore = new InMemoryWorkspaceStore();
     const worktreeStore = new InMemoryWorktreeStore();
-    const h = createSessionHarness(
-      new InMemorySessionStore(),
-      undefined,
-      undefined,
-      undefined,
+    const worktreeRoot = makeTempDir();
+    const h = worktreeHarness(() => new FakeAdapter(), {
       workspaceStore,
-      undefined,
-      { worktreeStore, worktreeRoot: makeTempDir() },
-    );
+      worktreeStore,
+      worktreeRoot,
+    });
     await h.engine.start();
+    let record: { worktreePath: string };
     try {
       await h.inject({
         kind: 'session.start',
@@ -180,7 +212,7 @@ describe('engine managed worktree sessions', () => {
         },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start-retry'));
-      const [record] = await worktreeStore.load();
+      [record] = (await worktreeStore.load()).worktrees;
       const dirtyPath = join(record.worktreePath, 'untracked');
       writeFileSync(dirtyPath, 'dirty');
 
@@ -192,23 +224,29 @@ describe('engine managed worktree sessions', () => {
         }),
       );
       expect(existsSync(record.worktreePath)).toBe(true);
-      expect(await worktreeStore.load()).toMatchObject([{ state: 'orphaned' }]);
-
+      expect(await worktreeStore.load()).toMatchObject({
+        worktrees: [{ state: 'orphaned' }],
+        leases: [],
+      });
       rmSync(dirtyPath);
-      await h.inject({ kind: 'session.delete', clientReqId: 'delete-retry', sessionId });
-      await vi.waitFor(() =>
-        expect(h.sent).toContainEqual({
-          kind: 'request.succeeded',
-          replyTo: 'delete-retry',
-        }),
-      );
+    } finally {
+      await h.engine.stop();
+    }
+
+    const next = worktreeHarness(() => new FakeAdapter(), {
+      workspaceStore,
+      worktreeStore,
+      worktreeRoot,
+    });
+    await next.engine.start();
+    try {
       expect(existsSync(record.worktreePath)).toBe(false);
-      expect(await worktreeStore.load()).toEqual([]);
+      expect(await worktreeStore.load()).toEqual({ worktrees: [], leases: [] });
       expect((await workspaceStore.load()).some(({ cwd }) => cwd === record.worktreePath)).toBe(
         false,
       );
     } finally {
-      await h.engine.stop();
+      await next.engine.stop();
     }
   });
 
@@ -239,9 +277,12 @@ describe('engine managed worktree sessions', () => {
         },
       });
       const sessionId = await vi.waitFor(() => startedSessionId(h.sent, 'start'));
-      const [worktree] = await worktreeStore.load();
+      const {
+        worktrees: [worktree],
+        leases,
+      } = await worktreeStore.load();
       const [session] = await sessionStore.load();
-      expect(worktree.sessionId).toBe(sessionId);
+      expect(leases).toMatchObject([{ worktreePath: worktree.worktreePath, sessionId }]);
       expect(session.cwd).toBe(worktree.worktreePath);
       expect(h.adapters[0].startedWith).toEqual({
         kind: 'claude-code',
@@ -319,12 +360,46 @@ describe('engine managed worktree sessions', () => {
         }),
       );
       expect(JSON.stringify(h.sent)).not.toContain('private adapter failure');
-      const [worktree] = await worktreeStore.load();
+      const {
+        worktrees: [worktree],
+        leases,
+      } = await worktreeStore.load();
       const [session] = await sessionStore.load();
-      expect(worktree.sessionId).toBe(session.sessionId);
+      expect(leases).toMatchObject([
+        { worktreePath: worktree.worktreePath, sessionId: session.sessionId },
+      ]);
       expect(session.cwd).toBe(worktree.worktreePath);
     } finally {
       await h.engine.stop();
+    }
+  });
+});
+
+describe('engine managed worktree leases', () => {
+  it('sweeps a lease whose session is gone at boot and finishes the cleanup', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const worktreeRoot = makeTempDir();
+    const first = worktreeHarness(() => new FakeAdapter(), { worktreeStore, worktreeRoot });
+    await first.engine.start();
+    let worktreePath: string;
+    try {
+      await startOnWorktree(first, 'start', repo);
+      worktreePath = (await worktreeStore.load()).worktrees[0].worktreePath;
+    } finally {
+      await first.engine.stop();
+    }
+    expect(existsSync(worktreePath)).toBe(true);
+    expect((await worktreeStore.load()).leases).toHaveLength(1);
+
+    // The session store the next boot reads never held that session.
+    const second = worktreeHarness(() => new FakeAdapter(), { worktreeStore, worktreeRoot });
+    await second.engine.start();
+    try {
+      expect(existsSync(worktreePath)).toBe(false);
+      expect(await worktreeStore.load()).toEqual({ worktrees: [], leases: [] });
+    } finally {
+      await second.engine.stop();
     }
   });
 });

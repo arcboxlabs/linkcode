@@ -47,4 +47,9 @@ export type { SimulatorMcpProvider } from './simulator/mcp';
 export { SimulatorService } from './simulator/service';
 export type { PtyBackend, PtyOpenOptions, PtyProcess } from './terminal/pty-backend';
 export type { WorkspaceStore } from './workspace/workspace-store';
-export type { WorktreeStore } from './worktree/worktree-store';
+export {
+  type WorktreeLeaseRelease,
+  type WorktreeStore,
+  type WorktreeStoreSnapshot,
+  WorktreeUnavailableError,
+} from './worktree/worktree-store';
