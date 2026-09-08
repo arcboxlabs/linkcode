@@ -11,7 +11,7 @@ import { wait } from 'foxts/wait';
 import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
 import type { Cache, Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig, useSWRConfig } from 'swr';
-import { isInternalSWRKey } from 'tayori';
+import { coalesceRuns } from './coalesce';
 import type {
   WorkbenchConnectionGeneration,
   WorkbenchConnectionSource,
@@ -177,15 +177,20 @@ function WorkbenchRuntimeGeneration({
   );
 }
 
-/** Every `useData(listSessions)` / `useData(listWorkspaces)` cache entry, whichever surface owns it. */
+/** A `listSessions` / `listWorkspaces` cache entry, whichever surface owns it. Both tayori key
+ * forms land in the cache as the resolved `[sdkMethod, arg, cacheTags]` tuple, so this matches the
+ * tuple rather than tayori's brand — the lazy form brands its outer function, not the array. */
 function isHostListKey(key: unknown): boolean {
-  return isInternalSWRKey(key) && (key[0] === listSessions || key[0] === listWorkspaces);
+  return Array.isArray(key) && (key[0] === listSessions || key[0] === listWorkspaces);
 }
 
 /**
  * Keeps SWR in step with the host: everything once a generation is protocol-ready, and the two
  * list caches on each `session.changed` push. The daemon registers/freshens a session's workspace
- * as part of start/resume/import, so that one frame stands for both lists.
+ * before it announces the record on start and resume, so one frame stands for both lists there;
+ * import announces first and touches after, so a brand-new imported cwd can need the next
+ * revalidation. Pushes are coalesced: a single start emits several frames, and a bulk import emits
+ * one per entry, while SWR's key-filter `mutate` deletes its own dedupe markers.
  */
 function HostRevalidator({
   children,
@@ -211,10 +216,7 @@ function HostRevalidator({
 
   const client = generation.client.raw;
   useEffect(
-    () =>
-      client.subscribeSessionChanged(() => {
-        void mutate(isHostListKey);
-      }),
+    () => client.subscribeSessionChanged(coalesceRuns(() => mutate(isHostListKey))),
     [client, mutate],
   );
 

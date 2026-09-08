@@ -956,7 +956,10 @@ export class DevMockHost {
       updatedAt: now,
       origin,
     });
+    // Engine order, deliberately: importRecord announces the record and only then touches the
+    // workspace, unlike start/resume which register it first.
     this.send({ kind: 'session.changed', sessionId: session.sessionId, reason: 'created' });
+    this.touchWorkspace(session.cwd, now);
     this.send({
       kind: 'session.imported',
       replyTo,

@@ -30,10 +30,14 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   product analytics. Behavior changes belong in client-core; only SDK/analytics wiring belongs here. SWR retains cached data across generations of the same
   endpoint, starts a fresh cache after endpoint migration, revalidates once after a generation
   becomes protocol-ready, and revalidates the session and workspace list caches on every
-  `session.changed` push (the daemon registers/freshens a session's workspace as part of
-  start/resume/import, so that one frame covers both lists; an explicit `workspace.register` /
-  rename / archive from *another* client has no push and waits for the next focus revalidation);
-  it does not own connection state.
+  `session.changed` push, coalesced through `coalesceRuns` (the daemon registers/freshens a
+  session's workspace *before* announcing the record on start and resume, so one frame covers both
+  lists there; an import of a brand-new cwd announces before the touch, and another client's
+  explicit `workspace.register` / rename / archive has no push at all, so both wait for the next
+  revalidation). Coalescing is not optional: one start emits several frames, a bulk import emits one
+  per entry, and SWR's key-filter `mutate` deletes its own dedupe markers, so an uncoalesced
+  subscription turns a burst into one forced round trip per frame per list. It does not own
+  connection state.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
