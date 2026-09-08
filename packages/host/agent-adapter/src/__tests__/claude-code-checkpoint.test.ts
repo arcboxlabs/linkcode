@@ -23,6 +23,7 @@ class TestClaude extends ClaudeCodeAdapter {
   forkSession = vi.fn(forkedChild);
   supplementUuids: string[] = [];
   started: StartOptions[] = [];
+  subagentCopies: Array<[string, string]> = [];
 
   feed(value: object): void {
     this.handleMessage(value as SDKMessage);
@@ -30,6 +31,11 @@ class TestClaude extends ClaudeCodeAdapter {
 
   protected override loadSdk<T>(): Promise<T> {
     return Promise.resolve({ forkSession: this.forkSession } as T);
+  }
+
+  protected override copySubagentTranscripts(sourceId: string, childId: string): Promise<void> {
+    this.subagentCopies.push([sourceId, childId]);
+    return Promise.resolve();
   }
 
   protected override readTranscriptSupplement(): Promise<ClaudeTranscriptSupplement> {
@@ -187,6 +193,8 @@ describe('ClaudeCodeAdapter.branchHistory checkpoint validity', () => {
   it('forks through the checkpoint row when the transcript still has it', async () => {
     const adapter = new TestClaude();
     adapter.supplementUuids = ['row-a', 'row-b'];
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
 
     await adapter.branchHistory(
       {
@@ -201,6 +209,10 @@ describe('ClaudeCodeAdapter.branchHistory checkpoint validity', () => {
       dir: '/repo',
     });
     expect(adapter.started).toEqual([start]);
+    // The child exists on disk before the first prompt: its subagents travel with it and its id is
+    // announced at once, so a prompt-less fork can read its own history.
+    expect(adapter.subagentCopies).toEqual([[SESSION, 'sid-child']]);
+    expect(events).toContainEqual({ type: 'session-ref', historyId: 'sid-child' });
   });
 
   it('refuses typed, without forking or starting, when the row is gone (rewritten or deleted transcript)', async () => {
