@@ -18,6 +18,7 @@ export function HostClientGate({ children }: React.PropsWithChildren): React.Rea
         status={connection.status}
         url={connection.endpointLabel}
         failure={connection.failure}
+        wireRemedy={connection.wireRemedy}
         onRetry={connection.retry}
       />
     );
