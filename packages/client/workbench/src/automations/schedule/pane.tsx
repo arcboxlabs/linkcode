@@ -1,5 +1,5 @@
 import type { ScheduleStatus } from '@linkcode/schema';
-import { useRelativeTimeLabel } from '@linkcode/ui';
+import { TaskLoadError, useRelativeTimeLabel } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -11,6 +11,7 @@ import {
 } from 'coss-ui/components/empty';
 import { ClockIcon, PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
+import { AutomationActions } from '../actions';
 import { AutomationMasterButton, AutomationPaneSkeleton } from '../pane-layout';
 import { useAutomationsViewStore } from '../store';
 import { useSchedules } from './hooks';
@@ -26,19 +27,38 @@ const STATUS_BADGE: Record<ScheduleStatus, 'success' | 'warning' | 'secondary'> 
 
 export function SchedulePane({ query }: { query: string }): React.ReactNode {
   const t = useTranslations('workbench.automations');
-  const { data: schedules, isLoading } = useSchedules();
+  const { data: schedules, isLoading, error, mutate } = useSchedules();
+  const filter = useAutomationsViewStore((state) => state.scheduleFilter);
   const selectedScheduleId = useAutomationsViewStore((state) => state.selectedScheduleId);
   const select = useAutomationsViewStore((state) => state.select);
   const startCreate = useAutomationsViewStore((state) => state.startCreate);
   const normalizedQuery = query.trim().toLowerCase();
-  const allItems = buildScheduleItems(schedules);
-  const items = normalizedQuery
-    ? allItems.filter((item) => item.name.toLowerCase().includes(normalizedQuery))
-    : allItems;
+  const tasksById = new Map(schedules?.map((task) => [task.scheduleId, task]));
+  const items = buildScheduleItems(
+    schedules?.filter(
+      (schedule) =>
+        (filter === 'all' || schedule.status === filter) &&
+        `${schedule.spec.name ?? ''} ${schedule.spec.prompt}`
+          .toLowerCase()
+          .includes(normalizedQuery),
+    ),
+  );
+
+  if (error && !schedules) {
+    return (
+      <TaskLoadError
+        message={t('loadFailed')}
+        retryLabel={t('retry')}
+        onRetry={() => {
+          void mutate();
+        }}
+      />
+    );
+  }
 
   if (items.length === 0) {
     if (isLoading) return <AutomationPaneSkeleton />;
-    if (normalizedQuery) {
+    if (normalizedQuery || filter !== 'all') {
       return (
         <p className="px-3 py-8 text-center text-muted-foreground text-sm">{t('noMatches')}</p>
       );
@@ -62,15 +82,21 @@ export function SchedulePane({ query }: { query: string }): React.ReactNode {
 
   return (
     <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-2">
-      {items.map((item) => (
-        <li key={item.scheduleId}>
-          <ScheduleRow
-            item={item}
-            active={item.scheduleId === selectedScheduleId}
-            onSelect={() => select(item.scheduleId)}
-          />
-        </li>
-      ))}
+      {items.map((item) => {
+        const task = tasksById.get(item.scheduleId);
+        return (
+          <li key={item.scheduleId} className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <ScheduleRow
+                item={item}
+                active={item.scheduleId === selectedScheduleId}
+                onSelect={() => select(item.scheduleId)}
+              />
+            </div>
+            {task ? <AutomationActions task={task} /> : null}
+          </li>
+        );
+      })}
     </ul>
   );
 }

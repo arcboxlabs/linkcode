@@ -4,20 +4,15 @@ import { createFixedArray } from 'foxts/create-fixed-array';
 /** The create form's full-pane wrapper: centered column with a heading. */
 export function AutomationCreatePane({
   title,
-  description,
   children,
 }: {
   title: string;
-  description: string;
   children: React.ReactNode;
 }): React.ReactNode {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto py-6">
       <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
-        <header className="flex flex-col gap-1">
-          <h2 className="font-semibold text-lg">{title}</h2>
-          <p className="text-muted-foreground text-sm">{description}</p>
-        </header>
+        <h2 className="sr-only">{title}</h2>
         {children}
       </div>
     </div>
@@ -41,8 +36,9 @@ export function AutomationMasterButton({
 }): React.ReactNode {
   return (
     <button
+      data-automation-open
       type="button"
-      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors ${
+      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-(--density-row-py) text-left transition-colors ${
         active
           ? 'border-border bg-muted'
           : 'border-transparent hover:bg-muted/50 active:bg-muted/50'

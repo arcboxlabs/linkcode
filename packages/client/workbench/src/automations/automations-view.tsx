@@ -1,16 +1,20 @@
 import type { LoopId, ScheduleId, SessionId } from '@linkcode/schema';
-import { cn, SHELL_TRANSITION, usePaneTransition } from '@linkcode/ui';
+import { cn, SHELL_TRANSITION, TaskLoadError, usePaneTransition } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { Tabs, TabsList, TabsTab } from 'coss-ui/components/tabs';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { PlusIcon, SearchIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { useAutomationDefaults } from './defaults';
+import { AutomationDraftGuard } from './draft-guard';
+import { AutomationFilters } from './filters';
 import { LoopDetail } from './loop/detail';
 import { LoopForm } from './loop/form';
 import { LoopPane } from './loop/pane';
-import { AutomationCreatePane } from './pane-layout';
+import { AutomationCreatePane, AutomationPaneSkeleton } from './pane-layout';
 import { ScheduleDetail } from './schedule/detail';
 import { ScheduleForm } from './schedule/form';
 import { SchedulePane } from './schedule/pane';
@@ -38,15 +42,26 @@ export function AutomationsView({
   const startCreate = useAutomationsViewStore((state) => state.startCreate);
   const startCreateLoop = useAutomationsViewStore((state) => state.startCreateLoop);
   const collapse = useAutomationsViewStore((state) => state.collapse);
-  const [query, setQuery] = useState('');
+  const query = useAutomationsViewStore((state) => state.queries[tab]);
+  const updateQuery = useAutomationsViewStore((state) => state.setQuery);
+  const setQuery = (value: string): void => updateQuery(tab, value);
   const creating = view.kind !== 'browse';
   const expanded =
     creating || (tab === 'schedules' ? selectedScheduleId !== null : selectedLoopId !== null);
   const splitLayout = useMediaQuery({ min: 1024 });
   const paneTransition = usePaneTransition({ open: expanded && splitLayout });
   const masterDetailVisible = splitLayout ? paneTransition.paneVisible : expanded;
+  const rootRef = useRef<HTMLDivElement>(null);
+  const openerRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (masterDetailVisible || !openerRef.current) return;
+    const target = openerRef.current.isConnected
+      ? openerRef.current
+      : rootRef.current?.querySelector<HTMLElement>('[data-automation-open]');
+    target?.focus();
+    openerRef.current = null;
+  }, [masterDetailVisible]);
   const startCurrentCreate = tab === 'schedules' ? startCreate : startCreateLoop;
-  const createDisabled = view.kind === (tab === 'schedules' ? 'create-schedule' : 'create-loop');
   const createLabel = tab === 'schedules' ? t('schedule.new') : t('loop.new');
   const list = tab === 'schedules' ? <SchedulePane query={query} /> : <LoopPane query={query} />;
   const detailTarget = getAutomationDetailTarget({
@@ -67,11 +82,8 @@ export function AutomationsView({
   switch (renderedDetailTarget?.kind) {
     case 'create-schedule': {
       detail = (
-        <AutomationCreatePane
-          title={t('schedule.new')}
-          description={t('schedule.createDescription')}
-        >
-          <ScheduleForm />
+        <AutomationCreatePane title={t('schedule.new')}>
+          <AutomationCreateForm kind="schedule" />
         </AutomationCreatePane>
       );
 
@@ -79,8 +91,8 @@ export function AutomationsView({
     }
     case 'create-loop': {
       detail = (
-        <AutomationCreatePane title={t('loop.new')} description={t('loop.createDescription')}>
-          <LoopForm />
+        <AutomationCreatePane title={t('loop.new')}>
+          <AutomationCreateForm kind="loop" />
         </AutomationCreatePane>
       );
 
@@ -89,6 +101,7 @@ export function AutomationsView({
     case 'schedule': {
       detail = (
         <ScheduleDetail
+          key={renderedDetailTarget.scheduleId}
           scheduleId={renderedDetailTarget.scheduleId}
           onOpenSession={onOpenSession}
         />
@@ -97,7 +110,13 @@ export function AutomationsView({
       break;
     }
     case 'loop': {
-      detail = <LoopDetail loopId={renderedDetailTarget.loopId} onOpenSession={onOpenSession} />;
+      detail = (
+        <LoopDetail
+          key={renderedDetailTarget.loopId}
+          loopId={renderedDetailTarget.loopId}
+          onOpenSession={onOpenSession}
+        />
+      );
 
       break;
     }
@@ -121,6 +140,12 @@ export function AutomationsView({
 
   return (
     <div
+      ref={rootRef}
+      onClickCapture={(event) => {
+        if (!(event.target instanceof Element)) return;
+        const opener = event.target.closest<HTMLElement>('[data-automation-open]');
+        if (opener) openerRef.current = opener;
+      }}
       className={cn(
         'grid h-full min-h-0 grid-cols-1 bg-background lg:[container-type:inline-size] lg:transition-[grid-template-columns] motion-reduce:transition-none',
         expanded ? 'lg:grid-cols-[22rem_calc(100%_-_22rem)]' : 'lg:grid-cols-[100%_0%]',
@@ -136,56 +161,60 @@ export function AutomationsView({
       onTransitionEnd={handleTransitionEnd}
       onTransitionCancel={handleTransitionRun}
     >
-      <section className="min-h-0 min-w-0 overflow-hidden">
-        {masterDetailVisible ? (
-          <div className="flex h-full min-h-0 w-full flex-col border-border border-b px-4 py-3 lg:w-[22rem] lg:border-r lg:border-b-0">
-            <div className="flex shrink-0 items-center justify-between gap-2">
-              <Tabs value={tab} onValueChange={(value) => setTab(value as AutomationTab)}>
+      <AutomationDraftGuard />
+      <section
+        className={cn('min-h-0 min-w-0 overflow-hidden', expanded && !splitLayout && 'hidden')}
+      >
+        <div
+          className={cn(
+            'flex h-full min-h-0 flex-col overflow-y-auto',
+            masterDetailVisible
+              ? 'border-border border-r px-4 py-3 lg:w-[22rem]'
+              : 'px-6 py-10 lg:py-16',
+          )}
+        >
+          <div
+            className={cn(
+              'mx-auto flex min-h-0 w-full flex-1 flex-col',
+              !masterDetailVisible && 'max-w-4xl',
+            )}
+          >
+            {masterDetailVisible ? null : (
+              <h1 className="mb-5 font-semibold text-3xl tracking-tight">{t('title')}</h1>
+            )}
+            <header className="flex shrink-0 items-center justify-between gap-2">
+              <Tabs
+                value={tab}
+                onValueChange={(value) => {
+                  if (value === 'schedules' || value === 'loops') setTab(value);
+                }}
+              >
                 <TabsList>
                   <TabsTab value="schedules">{t('tabs.schedules')}</TabsTab>
                   <TabsTab value="loops">{t('tabs.loops')}</TabsTab>
                 </TabsList>
               </Tabs>
-              <Button
-                size="icon-sm"
-                disabled={createDisabled}
-                aria-label={createLabel}
-                onClick={startCurrentCreate}
-              >
-                <PlusIcon className="size-4" />
-              </Button>
-            </div>
-            <AutomationSearch compact query={query} onQueryChange={setQuery} />
-            {list}
-          </div>
-        ) : (
-          <div className="h-full min-h-0 overflow-y-auto">
-            <div className="mx-auto flex min-h-full w-full max-w-4xl flex-col px-6 py-10 lg:py-16">
-              <header className="flex shrink-0 items-start justify-between gap-6">
-                <div className="min-w-0">
-                  <h1 className="font-semibold text-3xl tracking-tight">{t('title')}</h1>
-                  <p className="mt-2 text-muted-foreground text-sm">{t('description')}</p>
-                </div>
-                <Button size="sm" disabled={createDisabled} onClick={startCurrentCreate}>
+              {creating ? null : (
+                <Button
+                  data-automation-open
+                  size={masterDetailVisible ? 'icon-sm' : 'sm'}
+                  aria-label={createLabel}
+                  onClick={startCurrentCreate}
+                >
                   <PlusIcon className="size-4" />
-                  {createLabel}
+                  {masterDetailVisible ? null : createLabel}
                 </Button>
-              </header>
-              <AutomationSearch query={query} onQueryChange={setQuery} />
-              <div className="mt-5 shrink-0">
-                <Tabs value={tab} onValueChange={(value) => setTab(value as AutomationTab)}>
-                  <TabsList>
-                    <TabsTab value="schedules">{t('tabs.schedules')}</TabsTab>
-                    <TabsTab value="loops">{t('tabs.loops')}</TabsTab>
-                  </TabsList>
-                </Tabs>
-              </div>
-              <div className="mt-4 flex min-h-64 flex-1 flex-col border-border border-t">
-                {list}
-              </div>
-            </div>
+              )}
+            </header>
+            <AutomationSearch
+              compact={masterDetailVisible}
+              query={query}
+              onQueryChange={setQuery}
+            />
+            <AutomationFilters />
+            <div className="mt-3 flex min-h-0 flex-1 flex-col">{list}</div>
           </div>
-        )}
+        </div>
       </section>
       {masterDetailVisible ? (
         <section
@@ -211,6 +240,24 @@ export function AutomationsView({
       ) : null}
     </div>
   );
+}
+
+function AutomationCreateForm({ kind }: { kind: 'schedule' | 'loop' }): React.ReactNode {
+  const defaults = useAutomationDefaults();
+  const t = useTranslations('workbench.automations');
+  if (defaults.error) {
+    return (
+      <TaskLoadError
+        message={t('loadFailed')}
+        retryLabel={t('retry')}
+        onRetry={() => {
+          void defaults.retry();
+        }}
+      />
+    );
+  }
+  if (!defaults.ready) return <AutomationPaneSkeleton />;
+  return kind === 'schedule' ? <ScheduleForm /> : <LoopForm />;
 }
 
 function getAutomationDetailTarget({
