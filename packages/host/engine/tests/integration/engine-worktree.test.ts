@@ -2,17 +2,31 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { SessionId, StartOptions } from '@linkcode/schema';
+import { asHistoryId } from '@linkcode/agent-adapter';
+import type {
+  AgentHistoryBranchOptions,
+  AgentHistoryCapabilities,
+  SessionId,
+  StartOptions,
+  TurnId,
+  WirePayload,
+} from '@linkcode/schema';
+import { OperationIdSchema } from '@linkcode/schema';
+import { nullthrow } from 'foxts/guard';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSessionHarness,
   FakeAdapter,
+  settleEngineTasks,
   startedSessionId,
 } from '../../src/__tests__/fixtures/session-harness';
 import type { SessionStore } from '../../src/session/session-store';
 import { InMemorySessionStore } from '../../src/session/session-store';
 import { InMemoryWorkspaceStore } from '../../src/workspace/workspace-store';
 import { InMemoryWorktreeStore } from '../../src/worktree/worktree-store';
+
+const SOURCE_HISTORY = asHistoryId('native-1');
+const CHILD_HISTORY = asHistoryId('native-child');
 
 const tempRoots: string[] = [];
 
@@ -55,6 +69,22 @@ class RejectingStartAdapter extends FakeAdapter {
   }
 }
 
+class ForkingAdapter extends FakeAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities = {
+    list: false,
+    read: true,
+    resume: true,
+    forkAfterTurn: true,
+    branch: true,
+  };
+
+  branchHistory(_opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void> {
+    this.startedWith = startOpts;
+    this.emit({ type: 'session-ref', historyId: CHILD_HISTORY });
+    return Promise.resolve();
+  }
+}
+
 type Harness = ReturnType<typeof createSessionHarness>;
 
 function worktreeHarness(
@@ -84,6 +114,79 @@ async function startOnWorktree(h: Harness, clientReqId: string, repo: string): P
     opts: { kind: 'claude-code', cwd: repo, branch: { name: 'feature', mode: 'worktree' } },
   });
   return vi.waitFor(() => startedSessionId(h.sent, clientReqId));
+}
+
+function submitPrompt(h: Harness, clientReqId: string, sessionId: SessionId, text: string) {
+  return h.inject({
+    kind: 'turn.submit',
+    clientReqId,
+    sessionId,
+    operationId: OperationIdSchema.parse(`op-${clientReqId}`),
+    input: { type: 'prompt', blocks: [{ type: 'text', text }] },
+  });
+}
+
+function submittedTurnId(sent: WirePayload[], replyTo: string): TurnId {
+  const reply = sent.find(
+    (payload) => payload.kind === 'turn.submitted' && payload.replyTo === replyTo,
+  );
+  if (reply?.kind !== 'turn.submitted') throw new Error(`no turn.submitted for ${replyTo}`);
+  return reply.turnId;
+}
+
+/** One settled turn on the source history with a live `ending` checkpoint. */
+async function checkpointedTurn(
+  h: Harness,
+  adapter: FakeAdapter,
+  sessionId: SessionId,
+  clientReqId: string,
+): Promise<TurnId> {
+  await submitPrompt(h, clientReqId, sessionId, clientReqId);
+  const turnId = submittedTurnId(h.sent, clientReqId);
+  adapter.emit({ type: 'session-ref', historyId: SOURCE_HISTORY });
+  adapter.emitCheckpoint({
+    historyId: SOURCE_HISTORY,
+    cursor: `cp-${clientReqId}`,
+    turn: 'ending',
+  });
+  adapter.emit({ type: 'status', status: 'idle' });
+  await settleEngineTasks();
+  return turnId;
+}
+
+type ForkReply = Extract<WirePayload, { kind: 'session.forked' | 'request.failed' }>;
+
+async function fork(
+  h: Harness,
+  clientReqId: string,
+  sourceSessionId: SessionId,
+  throughTurnId: TurnId,
+  expectedGraphRevision: number,
+): Promise<ForkReply> {
+  await h.inject({
+    kind: 'session.fork',
+    clientReqId,
+    sourceSessionId,
+    throughTurnId,
+    operationId: OperationIdSchema.parse(`op-${clientReqId}`),
+    expectedGraphRevision,
+  });
+  return vi.waitFor(() => {
+    const reply = h.sent.find(
+      (payload): payload is ForkReply =>
+        (payload.kind === 'session.forked' || payload.kind === 'request.failed') &&
+        payload.replyTo === clientReqId,
+    );
+    return nullthrow(reply, `no fork reply for ${clientReqId}`);
+  });
+}
+
+/** The adapter a fork started, as opposed to the throwaway instances capability lookups mint. */
+function forkedAdapter(h: Harness, source: FakeAdapter): FakeAdapter {
+  return nullthrow(
+    h.adapters.find((adapter) => adapter !== source && adapter.startedWith !== null),
+    'no forked adapter',
+  );
 }
 
 afterEach(() => {
@@ -376,6 +479,100 @@ describe('engine managed worktree sessions', () => {
 });
 
 describe('engine managed worktree leases', () => {
+  it('shares the worktree with a fork child and removes it only after the last lease goes', async () => {
+    const repo = makeRepo();
+    const workspaceStore = new InMemoryWorkspaceStore();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      workspaceStore,
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      await checkpointedTurn(h, source, sourceId, 't1');
+      const secondTurnId = await checkpointedTurn(h, source, sourceId, 't2');
+
+      const forked = await fork(h, 'fork', sourceId, secondTurnId, 2);
+      if (forked.kind !== 'session.forked') throw new Error(`fork failed: ${forked.message}`);
+      const childId = forked.sessionId;
+      const {
+        worktrees: [worktree],
+        leases,
+      } = await worktreeStore.load();
+      expect(leases.map((lease) => lease.sessionId).sort()).toEqual([sourceId, childId].sort());
+      expect(new Set(leases.map((lease) => lease.worktreePath))).toEqual(
+        new Set([worktree.worktreePath]),
+      );
+      expect(forkedAdapter(h, source).startedWith).toMatchObject({ cwd: worktree.worktreePath });
+
+      await h.inject({ kind: 'session.delete', clientReqId: 'delete-source', sessionId: sourceId });
+      await vi.waitFor(() =>
+        expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'delete-source' }),
+      );
+      expect(existsSync(worktree.worktreePath)).toBe(true);
+      expect(await worktreeStore.load()).toMatchObject({
+        worktrees: [{ worktreePath: worktree.worktreePath, state: 'active' }],
+        leases: [{ sessionId: childId }],
+      });
+      expect((await workspaceStore.load()).some(({ cwd }) => cwd === worktree.worktreePath)).toBe(
+        true,
+      );
+
+      await h.inject({ kind: 'session.delete', clientReqId: 'delete-child', sessionId: childId });
+      await vi.waitFor(() =>
+        expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'delete-child' }),
+      );
+      expect(existsSync(worktree.worktreePath)).toBe(false);
+      expect(await worktreeStore.load()).toEqual({ worktrees: [], leases: [] });
+      expect((await workspaceStore.load()).some(({ cwd }) => cwd === worktree.worktreePath)).toBe(
+        false,
+      );
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
+  it('refuses to fork onto a worktree whose removal has begun and abandons the child', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      const turnId = await checkpointedTurn(h, source, sourceId, 't1');
+      // The last lease's release landed durably (another process, or a crash mid-cleanup) while
+      // this engine still holds the source's view of the worktree.
+      const [worktree] = (await worktreeStore.load()).worktrees;
+      await worktreeStore.save({ ...worktree, state: 'deleting' });
+
+      const forked = await fork(h, 'fork', sourceId, turnId, 1);
+      expect(forked).toMatchObject({
+        kind: 'request.failed',
+        code: 'conflict',
+        message: 'The managed worktree is being removed',
+      });
+      expect((await worktreeStore.load()).leases).toMatchObject([{ sessionId: sourceId }]);
+      expect(
+        h.sent.filter(
+          (payload) => payload.kind === 'session.changed' && payload.reason === 'created',
+        ),
+      ).toHaveLength(1);
+      const forkedChild = h.adapters.find(
+        (adapter) => adapter !== source && adapter.startedWith !== null,
+      );
+      expect(forkedChild).toBeUndefined();
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
   it('sweeps a lease whose session is gone at boot and finishes the cleanup', async () => {
     const repo = makeRepo();
     const worktreeStore = new InMemoryWorktreeStore();
