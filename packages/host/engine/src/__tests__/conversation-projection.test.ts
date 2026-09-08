@@ -448,35 +448,59 @@ describe('conversation projection attribution gate', () => {
     return events.flatMap((item) => (!('event' in item) ? [item.turnId] : []));
   }
 
-  it('never attributes positionally on an inactive sibling lineage — even an identical retry', async () => {
+  it('reads a shared turn from the run that wrote it, so an identical retry on a fork never claims its rows', async () => {
+    const forkRunId = 'run-2' as RunId;
+    const record: SessionRecord = {
+      ...makeRecord('turn-b2' as TurnId, true),
+      runs: [
+        { runId, startedAt: 1, historyId: asHistoryId('hist-1') },
+        {
+          runId: forkRunId,
+          startedAt: 2,
+          historyId: asHistoryId('hist-2'),
+          baseTurnId: 'turn-a' as TurnId,
+        },
+      ],
+    };
     const { service, store } = await makeService({
       journals: new ConversationLiveJournals(),
-      record: makeRecord('turn-b2' as TurnId, true),
-      historyEvents: [
-        providerUser('u-a', 'a'),
-        providerAnswer('ans-a', 'answer a'),
-        providerUser('u-b', 'b'),
-        providerAnswer('ans-b', 'answer b'),
-      ],
+      record,
+      historiesById: {
+        'hist-1': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a', 'answer a'),
+          providerUser('u-b', 'b'),
+          providerAnswer('ans-b1', 'answer b'),
+        ],
+        // The fork copied A's rows — a copy, not the source: claude re-stamps what it copies — and
+        // the retry ran here with prompt text IDENTICAL to the sibling's.
+        'hist-2': [
+          providerUser('u-a-copy', 'a'),
+          providerAnswer('ans-a-copy', 'answer a'),
+          providerUser('u-b', 'b'),
+          providerAnswer('ans-b2', 'answer b'),
+        ],
+      },
     });
     await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
     await store.saveTurn(shellTurn('turn-b1', 'turn-a', 'b', 'completed', 1));
-    await store.saveTurn(shellTurn('turn-b2', 'turn-a', 'b', 'completed', 2));
+    await store.saveTurn({
+      ...shellTurn('turn-b2', 'turn-a', 'b', 'completed', 2),
+      runId: forkRunId,
+    });
 
-    // The inactive sibling B1 carries IDENTICAL prompt text to the active B2: counts and
-    // fingerprints both pass, so only the active-lineage gate stops the mis-slice. The shared
-    // prefix reads where the active lineage reads.
+    // Both versions render A from hist-1, where A ran; each B reads the history its own run wrote.
     const inactive = await Effect.runPromise(
       service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
     );
-    expect(answers(inactive.events)).toEqual([['ans-a', 'turn-a']]);
-    expect(placeholderTurnIds(inactive.events)).toEqual(['turn-b1']);
-
-    // The active lineage attributes normally.
+    expect(answers(inactive.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b1', 'turn-b1'],
+    ]);
     const active = await Effect.runPromise(service.read({ sessionId }));
     expect(answers(active.events)).toEqual([
       ['ans-a', 'turn-a'],
-      ['ans-b', 'turn-b2'],
+      ['ans-b2', 'turn-b2'],
     ]);
     expect(placeholderTurnIds(active.events)).toEqual([]);
   });
@@ -532,9 +556,10 @@ describe('conversation projection attribution gate', () => {
     await expectOwnHistory('turn-b1' as TurnId);
     await expectOwnHistory('turn-c1' as TurnId);
 
+    // The active lineage's shared turn A also reads hist-1, never the fork's copy of it.
     const active = await Effect.runPromise(service.read({ sessionId }));
     expect(answers(active.events)).toEqual([
-      ['ans-a2', 'turn-a'],
+      ['ans-a', 'turn-a'],
       ['ans-b2', 'turn-b2'],
     ]);
   });
