@@ -489,6 +489,9 @@ export class LinkCodeSdkClient {
   }
 
   updateSchedule(scheduleId: ScheduleId, patch: ScheduleUpdate): RequestResult<Schedule> {
+    if (Object.values(patch).includes(null) && (this.raw.peerWireVersion ?? 0) < 80) {
+      return Promise.reject(new Error('Update the host to clear schedule settings'));
+    }
     return toResult(this.raw.updateSchedule(scheduleId, patch));
   }
 

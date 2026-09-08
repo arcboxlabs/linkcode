@@ -174,12 +174,14 @@ export class ScheduleService {
               ...current,
               spec: {
                 ...current.spec,
-                ...(patch.name !== undefined && { name: patch.name }),
+                ...(patch.name !== undefined && { name: patch.name ?? undefined }),
                 ...(patch.prompt !== undefined && { prompt: patch.prompt }),
                 ...(patch.cadence !== undefined && { cadence: patch.cadence }),
-                ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns }),
-                ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt }),
-                ...(patch.misfirePolicy !== undefined && { misfirePolicy: patch.misfirePolicy }),
+                ...(patch.maxRuns !== undefined && { maxRuns: patch.maxRuns ?? undefined }),
+                ...(patch.expiresAt !== undefined && { expiresAt: patch.expiresAt ?? undefined }),
+                ...(patch.misfirePolicy !== undefined && {
+                  misfirePolicy: patch.misfirePolicy ?? undefined,
+                }),
               },
               ...(current.status === 'active' &&
                 patch.cadence !== undefined && {
@@ -207,6 +209,13 @@ export class ScheduleService {
   delete(scheduleId: ScheduleId): Effect.Effect<void, RequestError | OperationError> {
     return this.serialized(() =>
       this.find(scheduleId).pipe(
+        Effect.flatMap(() =>
+          this.runCoordinator.isActive(scheduleId)
+            ? Effect.fail(
+                conflict('Wait for the current run to finish before deleting this schedule'),
+              )
+            : Effect.void,
+        ),
         Effect.andThen(
           storeEffect('schedules.delete', 'Failed to delete schedule', () =>
             this.store.delete(scheduleId),

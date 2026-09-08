@@ -31,6 +31,7 @@ export * from './shell-control';
 export * from './shell-frame';
 export * from './shell-sidebar';
 export * from './sidebar';
+export * from './task-controls';
 export * from './task-resources-panel';
 export * from './terminal/prefs';
 export * from './terminal-settings-panel';
