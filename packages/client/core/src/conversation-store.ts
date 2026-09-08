@@ -21,9 +21,11 @@ export type ConversationResyncReason = 'epoch' | 'gap' | 'graph';
 export interface ConversationStoreOptions {
   /** Called at most once per store, never during a render, when the seed must be re-read. */
   onResync?: (reason: ConversationResyncReason) => void;
-  /** `false` freezes a projection store at its read: a client browsing an inactive lineage must
-   * not fold the active run's live stream, and a graph change is the owner's business (the
-   * "continued elsewhere" chip), not a re-read. Default `true`. */
+  /** `false` freezes a projection store's content at its read: a client browsing an inactive
+   * lineage must not fold the active run's live stream, and a graph change is the owner's business
+   * (the "continued elsewhere" chip), not a re-read. Session state — policy, model, effort, mode,
+   * capabilities, commands, usage, status — still follows: it is the session's, not a lineage's,
+   * and the composer renders it. Default `true`. */
   followLive?: boolean;
 }
 
@@ -82,6 +84,21 @@ const INTERACTIVE_EVENT_TYPES = new Set<AgentEvent['type']>([
   'permission-resolved',
   'question-resolved',
   'prompt-response-status',
+]);
+
+/** Session state, not lineage content: the latest of each wins, so a frozen store folds them
+ * without a watermark — a parked composer must not fall back to defaults. */
+const SESSION_STATE_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'status',
+  'current-mode-update',
+  'approval-policy-update',
+  'model-update',
+  'effort-update',
+  'available-commands-update',
+  'available-models-update',
+  'capabilities-update',
+  'token-usage',
+  'usage-report',
 ]);
 
 /**
@@ -152,10 +169,14 @@ function createProjectionStore(
       seeded = true;
       foldSeed();
     }
-    if (!followLive || client.eventSeq(sessionId) <= consumedSeq) return;
+    if (client.eventSeq(sessionId) <= consumedSeq) return;
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq), len = events.length; i < len; i += 1) {
       const entry = events[i];
+      if (!followLive) {
+        if (SESSION_STATE_EVENT_TYPES.has(entry.event.type)) fold(entry.event, entry.receivedAt);
+        continue;
+      }
       if (admit(entry)) fold(entry.event, entry.receivedAt);
     }
     consumedSeq = client.eventSeq(sessionId);
@@ -179,12 +200,13 @@ function createProjectionStore(
   return {
     subscribe(onStoreChange) {
       sync();
-      if (!followLive) return noop;
-      checkGraph(client.latestGraphChange(sessionId));
       const unsubscribeEvents = client.subscribe(sessionId, () => {
         sync();
         onStoreChange();
       });
+      // A frozen store keeps its session state live but leaves graph changes to its owner.
+      if (!followLive) return unsubscribeEvents;
+      checkGraph(client.latestGraphChange(sessionId));
       const unsubscribeGraph = client.subscribeGraphChanges(sessionId, (change) => {
         sync();
         checkGraph(change);
