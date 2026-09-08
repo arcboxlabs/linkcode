@@ -8,6 +8,8 @@ import {
   blobIdFromSha256,
   declaredMimeTypeMatches,
   MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
   SessionResourceIdSchema,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -74,14 +76,23 @@ export class ResourceService {
 
   upload(
     sessionId: SessionId,
-    name: string,
+    rawName: string,
     mimeType: string | undefined,
     data: string,
   ): Effect.Effect<SessionResource, OperationError | RequestError> {
     const { blobs, ingest, records, transport } = this;
+    // The v79 frame bounds neither field; attachment records do. Cap the name the way ingest caps a
+    // legacy image's, and refuse a MIME type no record can hold — an older peer gets an answer.
+    const name = rawName.slice(0, MAX_ATTACHMENT_NAME_LENGTH);
     return Effect.gen({ self: this }, function* () {
       if (!records.has(sessionId)) {
         return yield* new RequestError({ code: 'not_found', message: 'Session not found' });
+      }
+      if (mimeType !== undefined && mimeType.length > MAX_MIME_TYPE_LENGTH) {
+        return yield* new RequestError({
+          code: 'invalid_request',
+          message: `MIME type exceeds ${MAX_MIME_TYPE_LENGTH} characters`,
+        });
       }
       const bytes = Buffer.from(data, 'base64');
       if (bytes.byteLength > MAX_ATTACHMENT_BYTES) {

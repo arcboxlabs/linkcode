@@ -2,7 +2,12 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentEvent, SessionResource, WirePayload } from '@linkcode/schema';
-import { MessageIdSchema, SessionIdSchema } from '@linkcode/schema';
+import {
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
+  MessageIdSchema,
+  SessionIdSchema,
+} from '@linkcode/schema';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { createSessionHarness, startedSessionId } from './fixtures/session-harness';
@@ -31,6 +36,65 @@ function listedResources(sent: WirePayload[], replyTo: string): SessionResource[
 }
 
 describe('engine session resources', () => {
+  it('caps a legacy upload name and refuses an over-long MIME type typed, so an older peer is answered', async () => {
+    const stateDir = await tempDirectory();
+    const h = createSessionHarness(
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { stateDir },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'start',
+      opts: { kind: 'claude-code', cwd: stateDir },
+    });
+    const sessionId = startedSessionId(h.sent, 'start');
+
+    // The v79 frame bounds neither field; a released client may still send this.
+    await h.inject({
+      kind: 'resource.source.upload',
+      clientReqId: 'long-name',
+      sessionId,
+      name: `${'n'.repeat(MAX_ATTACHMENT_NAME_LENGTH)}-and-then-some.txt`,
+      mimeType: 'text/plain',
+      data: Buffer.from('named').toString('base64'),
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'resource.uploaded', replyTo: 'long-name' }),
+      );
+    });
+    const uploaded = h.sent.find(
+      (payload) => payload.kind === 'resource.uploaded' && payload.replyTo === 'long-name',
+    );
+    if (uploaded?.kind !== 'resource.uploaded') throw new Error('no resource.uploaded');
+    expect(uploaded.resource.status).toBe('ready');
+    expect(uploaded.resource.name).toBe('n'.repeat(MAX_ATTACHMENT_NAME_LENGTH));
+
+    await h.inject({
+      kind: 'resource.source.upload',
+      clientReqId: 'long-mime',
+      sessionId,
+      name: 'typed.bin',
+      mimeType: `application/${'x'.repeat(MAX_MIME_TYPE_LENGTH)}`,
+      data: Buffer.from('typed').toString('base64'),
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({
+          kind: 'request.failed',
+          replyTo: 'long-mime',
+          code: 'invalid_request',
+        }),
+      );
+    });
+  });
+
   it('persists a source, injects only its path into the adapter prompt, and cleans it up', async () => {
     const stateDir = await tempDirectory();
     const h = createSessionHarness(
