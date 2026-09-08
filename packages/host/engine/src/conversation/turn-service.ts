@@ -302,7 +302,8 @@ export class ConversationTurnService {
   }
 
   /** Store a turn-less operation's failure. The first terminal writer stands: a loser gets the
-   * stored failure back, so the reply never differs from what a retry replays. */
+   * stored failure back, so the reply never differs from what a retry replays. An operation row
+   * that vanished went with its session — the only thing that deletes one. */
   failOperation(
     operation: OpenOperation,
     error: TurnFailure,
@@ -320,7 +321,13 @@ export class ConversationTurnService {
         if (transitioned) return Effect.succeed(error);
         return this.getOperation(operation.operationId).pipe(
           Effect.flatMap((stored) => {
-            if (stored === undefined || stored.state === 'open') {
+            if (stored === undefined) {
+              return Effect.succeed({
+                code: 'not_found',
+                message: 'The source session was deleted',
+              });
+            }
+            if (stored.state === 'open') {
               return Effect.fail(
                 new OperationError({
                   subsystem: 'store',

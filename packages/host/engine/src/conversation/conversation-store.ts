@@ -226,6 +226,13 @@ export class InMemoryConversationStore implements ConversationStore {
     if (this.operations.get(operation.operationId)?.state !== 'open') {
       return Promise.resolve(false);
     }
+    // The SQLite store's prompt foreign key: a source deleted meanwhile took its prompts along.
+    for (let i = 0, len = commit.turns.length; i < len; i++) {
+      const { input } = commit.turns[i];
+      if (input.type === 'prompt' && input.promptId !== null && !this.prompts.has(input.promptId)) {
+        return Promise.reject(new Error(`Prompt no longer exists: ${input.promptId}`));
+      }
+    }
     this.operations.set(operation.operationId, structuredClone(operation));
     for (let i = 0, len = commit.turns.length; i < len; i++) {
       const turn = commit.turns[i];

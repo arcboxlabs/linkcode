@@ -694,6 +694,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       });
       await this.copySubagentTranscripts(opts.historyId, fork.sessionId);
       this.resumeFrom = fork.sessionId;
+      // A query rebuild re-arms `resumeFrom` from here; without it a child that dies before its
+      // first init would silently start a new conversation instead of resuming the copy.
+      this.lastSessionRef = fork.sessionId;
       // The child transcript exists now, so a fork that dispatches no prompt (a session fork) can
       // still read its own history; the first query's init announces the same id and dedupes.
       this.emitSessionRef(asHistoryId(fork.sessionId));

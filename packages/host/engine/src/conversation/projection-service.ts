@@ -256,11 +256,11 @@ export class ConversationProjectionService {
       const items: ConversationReadItem[] = [];
       // Rows ahead of the first user row are pre-graph history: they belong to the root's own
       // history alone — a fork child's leading rows are its copy of the prefix, rendered from the
-      // source above.
+      // source above; a forked session's come from the source session it copied them from.
       const rootHistoryId = path.length === 0 ? undefined : runHistoryId(record, path[0].runId);
       const rootRead = rootHistoryId === undefined ? undefined : reads.get(rootHistoryId);
-      if (rootRead !== undefined) {
-        const { leading } = rootRead.attribution;
+      const leading = copied.leading ?? rootRead?.attribution.leading;
+      if (leading !== undefined) {
         for (let i = 0, len = leading.length; i < len; i++) {
           items.push(projectedItem(undefined, leading[i]));
         }
@@ -286,7 +286,7 @@ export class ConversationProjectionService {
           }
           continue;
         }
-        const partition = copied.get(turn.turnId) ?? readPartition(reads, record, turn);
+        const partition = copied.partitions.get(turn.turnId) ?? readPartition(reads, record, turn);
         if (partition !== undefined) {
           for (let j = 0, restLen = partition.rest.length; j < restLen; j++) {
             items.push(projectedItem(turn, partition.rest[j]));
@@ -367,14 +367,15 @@ export class ConversationProjectionService {
    * position by position along the lineage it copied, while that session exists. The provider's
    * copy is lossy (claude re-stamps the row it cut at), and the source rows are what every other
    * view of that lineage renders. A source that is itself a fork defers to its own source the same
-   * way; a deleted source leaves the copy as the only source there is.
+   * way; a deleted source leaves the copy as the only source there is. Each level costs the
+   * source's turn list and one provider read per touched history (TTL-cached like any read).
    */
   private copiedPrefixPartitions(
     record: SessionRecord,
     path: readonly ConversationTurn[],
     byId: ReadonlyMap<TurnId, ConversationTurn>,
     visited: ReadonlySet<SessionId>,
-  ): Effect.Effect<Map<TurnId, ProviderPartition>, OperationError> {
+  ): Effect.Effect<CopiedPrefix, OperationError> {
     const partitions = new Map<TurnId, ProviderPartition>();
     const origin = record.forkOrigin;
     const copiedLeaf = record.runs[0]?.baseTurnId;
@@ -385,7 +386,7 @@ export class ConversationProjectionService {
       copiedLeaf === undefined ||
       visited.has(source.sessionId)
     ) {
-      return Effect.succeed(partitions);
+      return Effect.succeed({ partitions });
     }
     const { turns } = this;
     const readHistories = this.readHistories.bind(this);
@@ -396,11 +397,14 @@ export class ConversationProjectionService {
       const copiedPath = pathToLeaf(byId, copiedLeaf);
       const sourceTurns = yield* turns.listTurns(source.sessionId);
       const sourceById = new Map(sourceTurns.map((turn) => [turn.turnId, turn]));
+      // A source mid-delete (turns purged, record still registered) or half-deleted has no
+      // lineage to read: the copy is what there is.
+      if (!sourceById.has(origin.sourceTurnId)) return { partitions };
       const sourcePath = pathToLeaf(sourceById, origin.sourceTurnId);
       const limit = Math.min(path.length, copiedPath.length, sourcePath.length);
       let shared = 0;
       while (shared < limit && path[shared].turnId === copiedPath[shared].turnId) shared += 1;
-      if (shared === 0) return partitions;
+      if (shared === 0) return { partitions };
       const sourcePrefix = sourcePath.slice(0, shared);
       const histories = new Set<AgentHistoryId>();
       for (let i = 0; i < shared; i++) {
@@ -417,10 +421,15 @@ export class ConversationProjectionService {
       for (let i = 0; i < shared; i++) {
         const sourceTurn = sourcePrefix[i];
         const partition =
-          inherited.get(sourceTurn.turnId) ?? readPartition(reads, source, sourceTurn);
+          inherited.partitions.get(sourceTurn.turnId) ?? readPartition(reads, source, sourceTurn);
         if (partition !== undefined) partitions.set(path[i].turnId, partition);
       }
-      return partitions;
+      // The copied root's leading rows (hidden pre-graph history) are the source's too.
+      const rootHistoryId = runHistoryId(source, sourcePrefix[0].runId);
+      const leading =
+        inherited.leading ??
+        (rootHistoryId === undefined ? undefined : reads.get(rootHistoryId)?.attribution.leading);
+      return { partitions, leading };
     });
   }
 
@@ -656,6 +665,13 @@ function projectedItem(
 
 function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
   return record.runs.find((run) => run.runId === runId)?.historyId;
+}
+
+/** What a forked session's copied prefix renders from: the source rows per copied turn, and the
+ * source root's leading rows; both absent when the copy is all there is. */
+interface CopiedPrefix {
+  readonly partitions: ReadonlyMap<TurnId, ProviderPartition>;
+  readonly leading?: CorpusAttribution['leading'];
 }
 
 /** The provider partition a settled turn renders from, off the read of its own run's history. */

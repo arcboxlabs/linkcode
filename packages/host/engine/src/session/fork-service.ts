@@ -1,6 +1,7 @@
 import type {
   ConversationOperation,
   ConversationTurn,
+  McpWarning,
   OperationId,
   SessionId,
   SessionRecord,
@@ -35,9 +36,14 @@ export interface SessionForkRequest {
   readonly expectedGraphRevision: number;
 }
 
-/** The reply a fork resolves to: the forked session, or the stored failure a retry replays. */
+/** The reply a fork resolves to: the forked session (with the child start's custom-MCP
+ * advisories, which only this reply can carry), or the stored failure a retry replays. */
 export type SessionForkResult =
-  | { readonly state: 'succeeded'; readonly sessionId: SessionId }
+  | {
+      readonly state: 'succeeded';
+      readonly sessionId: SessionId;
+      readonly mcpWarnings: readonly McpWarning[];
+    }
   | { readonly state: 'failed'; readonly error: TurnFailure };
 
 type OpenForkOperation = Extract<ConversationOperation, { state: 'open' }> & {
@@ -94,20 +100,20 @@ export class SessionForkService {
           );
         }
         if (existing.state === 'failed') return { state: 'failed', error: existing.error };
-        // A succeeded fork names the child's copied leaf; that turn's session is the child.
+        // A succeeded fork names the child's copied leaf; that turn's session is the child. The
+        // start's advisories were delivered once, on the reply that started it.
         const leaf = yield* turns.getTurn(existing.turnId);
         if (leaf === undefined) {
           return yield* Effect.fail(
             new RequestError({ code: 'not_found', message: 'The forked session no longer exists' }),
           );
         }
-        return { state: 'succeeded', sessionId: leaf.sessionId };
+        return { state: 'succeeded', sessionId: leaf.sessionId, mcpWarnings: [] };
       }
       const admitted = yield* admit(request);
       return yield* launchChild(admitted).pipe(
         Effect.matchEffect({
-          onSuccess: (sessionId) =>
-            Effect.succeed<SessionForkResult>({ state: 'succeeded', sessionId }),
+          onSuccess: (child) => Effect.succeed<SessionForkResult>({ state: 'succeeded', ...child }),
           // Any post-admit failure resolves the operation; a retry replays this stored error.
           onFailure: (error) =>
             turns
@@ -242,15 +248,22 @@ export class SessionForkService {
    * success. Every failure exit before that tears the child down; the orphaned provider history is
    * logged, never entered.
    */
-  private launchChild(admitted: AdmittedFork): Effect.Effect<SessionId, EngineFailure> {
+  private launchChild(
+    admitted: AdmittedFork,
+  ): Effect.Effect<
+    { readonly sessionId: SessionId; readonly mcpWarnings: readonly McpWarning[] },
+    EngineFailure
+  > {
     const { history, lifecycle, records, sessions, turns } = this;
     const abandon = this.abandon.bind(this);
     return Effect.gen(function* () {
       const { source, through, path, cut, operation } = admitted;
-      const resolved = yield* lifecycle.resolveForRecord(source);
+      const childId = lifecycle.nextSessionId();
+      // The source's pins, resolved for the child: per-session resources such as the simulator
+      // MCP endpoint token must belong to the child, or its tools act as the source's.
+      const resolved = yield* lifecycle.resolveForRecord(source, undefined, childId);
       const now = Date.now();
       const runId = mintRunId();
-      const childId = lifecycle.nextSessionId();
       const copies: ConversationTurn[] = [];
       let parentTurnId: TurnId | null = null;
       for (let i = 0, len = path.length; i < len; i++) {
@@ -352,7 +365,7 @@ export class SessionForkService {
           Exit.isFailure(exit) && records.isProvisional(childId) ? abandon(child) : Effect.void,
         ),
       );
-      return childId;
+      return { sessionId: childId, mcpWarnings: resolved.warnings };
     });
   }
 
