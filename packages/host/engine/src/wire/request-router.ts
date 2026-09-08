@@ -69,6 +69,7 @@ export class WireRequestRouter {
       case 'session.list':
       case 'session.resume':
       case 'session.import':
+      case 'session.fork':
       case 'session.attach':
       case 'session.detach': {
         return this.handlers.session.handle(p);
