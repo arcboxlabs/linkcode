@@ -297,6 +297,8 @@ export class DevMockHost {
   private readonly attachmentSessions = new Map<AttachmentId, Set<SessionId>>();
   /** The daemon's operation journal for forks: a replayed id answers with the same child. */
   private readonly forkOperations = new Map<OperationId, SessionId>();
+  /** Sources with a fork in flight — the daemon's open operation, which refuses a second one. */
+  private readonly forkingSessions = new Set<SessionId>();
   private uploadSeq = 0;
   private attachmentSeq = 0;
 
@@ -442,8 +444,7 @@ export class DevMockHost {
         this.resumeSession(p.clientReqId, p.sessionId);
         break;
       case 'session.fork':
-        await wait(CONTROL_LATENCY_MS);
-        this.forkSession(p);
+        await this.forkSession(p);
         break;
       case 'session.stop':
         await wait(CONTROL_LATENCY_MS);
@@ -1292,7 +1293,8 @@ export class DevMockHost {
   /** The daemon's `session.fork` reduced to mock parity: its admit rules in its order, then the
    * source lineage through the turn copied onto a new live session — new turn ids, the same
    * content, the prefix's journal frames as the child's provider copy — with the source untouched. */
-  private forkSession(p: Extract<WirePayload, { kind: 'session.fork' }>): void {
+  private async forkSession(p: Extract<WirePayload, { kind: 'session.fork' }>): Promise<void> {
+    await wait(CONTROL_LATENCY_MS);
     const replayed = this.forkOperations.get(p.operationId);
     if (replayed !== undefined) {
       this.send({ kind: 'session.forked', replyTo: p.clientReqId, sessionId: replayed });
@@ -1307,6 +1309,12 @@ export class DevMockHost {
     }
     if (source.status === 'running') {
       this.sendFailure(p.clientReqId, `Session is busy: ${p.sourceSessionId}`, { code: 'busy' });
+      return;
+    }
+    if (this.forkingSessions.has(source.sessionId)) {
+      this.sendFailure(p.clientReqId, 'Another operation is open on this session', {
+        code: 'busy',
+      });
       return;
     }
     const through = source.graphTurns.find((turn) => turn.graph.turnId === p.throughTurnId);
@@ -1327,6 +1335,13 @@ export class DevMockHost {
         code: 'unsupported',
       });
       return;
+    }
+    // The provider fork takes a moment; the source's operation slot is held meanwhile.
+    this.forkingSessions.add(source.sessionId);
+    try {
+      await wait(CONTROL_LATENCY_MS);
+    } finally {
+      this.forkingSessions.delete(source.sessionId);
     }
     const now = Date.now();
     const child = this.addSession({
@@ -1353,12 +1368,13 @@ export class DevMockHost {
       cursor = turn.graph.parentTurnId;
     }
     const copiedIds = new Map<TurnId, TurnId>();
+    // The whole copied prefix sits on the child's one root run, as the daemon writes it.
+    const runId = `run-mock-fork-${this.sessionSeq.toString(36)}` as RunId;
     let parentTurnId: TurnId | null = null;
     for (let i = 0, len = path.length; i < len; i++) {
       const turn = path[i];
       this.turnSeq += 1;
-      const id = this.turnSeq.toString(36);
-      const turnId = `turn-mock-${id}` as TurnId;
+      const turnId = `turn-mock-${this.turnSeq.toString(36)}` as TurnId;
       copiedIds.set(turn.graph.turnId, turnId);
       child.graphTurns.push({
         graph: {
@@ -1367,7 +1383,7 @@ export class DevMockHost {
           sessionId: child.sessionId,
           parentTurnId,
           siblingOrdinal: 1,
-          runId: `run-mock-fork-${id}` as RunId,
+          runId,
         },
         content: turn.content,
         ...(turn.readContent !== undefined && { readContent: turn.readContent }),

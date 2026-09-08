@@ -470,7 +470,10 @@ export class LinkCodeClient {
         this.pending.resolve('import', p.replyTo, p.record);
         break;
       case 'session.forked':
-        this.pending.resolve('fork', p.replyTo, { sessionId: p.sessionId });
+        this.pending.resolve('fork', p.replyTo, {
+          sessionId: p.sessionId,
+          mcpWarnings: p.mcpWarnings ?? [],
+        });
         break;
       case 'history.listed':
         this.pending.resolve('historyList', p.replyTo, p.result);

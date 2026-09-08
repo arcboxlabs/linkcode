@@ -228,6 +228,15 @@ describe('dev mock turn lineages', () => {
     expect(copy).toMatchObject({ parentTurnId: null, siblingOrdinal: 1, state: 'completed' });
     expect(childGraph.activeLeafTurnId).toBe(copy.turnId);
     expect(userTexts((await client.readConversation(childId)).events)).toEqual(['$ a']);
+    // A longer prefix shares the child's one root run, as the daemon writes it.
+    const { sessionId: deeper } = await client.forkSession(
+      sessionId,
+      b.turnId,
+      graph.graphRevision,
+    );
+    const deeperTurns = (await client.getConversationGraph(deeper)).turns;
+    expect(new Set(deeperTurns.map((turn) => turn.runId)).size).toBe(1);
+    expect(deeperTurns).toHaveLength(2);
     // The source keeps both turns and its leaf; a replayed operation answers with the same child.
     const source = await client.getConversationGraph(sessionId);
     expect(source.turns).toHaveLength(2);
@@ -259,6 +268,16 @@ describe('dev mock turn lineages', () => {
     ).rejects.toMatchObject({ code: 'unsupported' });
     // Nothing forked: only the two sessions this test started joined the seeded list.
     expect(await client.listSessions()).toHaveLength(seeded + 2);
+
+    // A fork holds the source's operation slot: a second one in flight is refused `busy`.
+    const outcomes = await Promise.allSettled([
+      client.forkSession(sessionId, a.turnId, graph.graphRevision),
+      client.forkSession(sessionId, a.turnId, graph.graphRevision),
+    ]);
+    expect(outcomes.map((outcome) => outcome.status).sort()).toEqual(['fulfilled', 'rejected']);
+    const refused = outcomes.find((outcome) => outcome.status === 'rejected');
+    expect(refused?.reason).toMatchObject({ code: 'busy' });
+    expect(await client.listSessions()).toHaveLength(seeded + 3);
     client.dispose();
   });
 

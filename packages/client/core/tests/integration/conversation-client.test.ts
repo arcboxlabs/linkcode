@@ -187,6 +187,7 @@ describe('LinkCodeClient conversation graph API', () => {
               kind: 'session.forked',
               replyTo: p.clientReqId,
               sessionId: 'sess-child' as SessionId,
+              mcpWarnings: [{ serverName: 'linear', reason: 'provider-unsupported' }],
             })
           : createWireMessage({
               kind: 'request.failed',
@@ -200,6 +201,7 @@ describe('LinkCodeClient conversation graph API', () => {
     expect(client.supportsSessionFork).toBe(true);
     await expect(client.forkSession(sessionId, leafTurnId, 7)).resolves.toEqual({
       sessionId: 'sess-child',
+      mcpWarnings: [{ serverName: 'linear', reason: 'provider-unsupported' }],
     });
     await expect(client.forkSession(sessionId, leafTurnId, 6)).rejects.toMatchObject({
       code: 'conflict',

@@ -693,12 +693,16 @@ function WorkbenchSessionSurface({
   function handleForkTurn(messageId: string): void {
     if (graph === undefined || active === null) return;
     const turn = graph.turns.find((candidate) => userRowMessageId(candidate.turnId) === messageId);
-    if (turn === undefined) return;
+    // A settled row can outrun the snapshot by one round trip; the daemon refuses an uncompleted
+    // turn anyway, so a click in that window does nothing rather than raise an error.
+    if (turn?.state !== 'completed') return;
     onClearError();
     void sessions.fork(active.sessionId, turn.turnId, graph.graphRevision).catch(noop);
   }
   const canForkSessions =
-    client.supportsSessionFork && active?.historyCapabilities?.forkAfterTurn === true;
+    client.supportsSessionFork &&
+    active?.historyCapabilities?.forkAfterTurn === true &&
+    !sessions.forking;
 
   function handleDismissElsewhere(): void {
     if (active !== null && graph !== undefined) {
