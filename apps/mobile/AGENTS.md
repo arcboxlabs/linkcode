@@ -61,6 +61,10 @@ Keep a row's normal tap for navigation; rows without a primary action may also o
 tap. Destructive actions belong in these native action surfaces, not permanent trailing buttons.
 Children of `RowActions` must not add their own click handler, which would consume the gesture.
 
+Android question batches open from a compact transcript dock into a Compose modal sheet. Closing
+the sheet preserves drafts; cancelling the request requires confirmation. Keep permission actions
+inline with one-time approval emphasized, and allow the action row to wrap for longer labels.
+
 ## `@expo/ui` (SwiftUI) — its layout rules are not RN's
 
 Settings, terminal appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}`

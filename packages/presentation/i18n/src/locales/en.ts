@@ -1407,6 +1407,8 @@ export const en = {
     },
     chat: {
       allowTitle: 'Allow "{title}"?',
+      answer: 'Answer',
+      close: 'Close',
       skip: 'Skip',
       next: 'Next',
       submitAnswers: 'Submit answers',

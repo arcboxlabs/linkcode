@@ -6,6 +6,7 @@ import {
   RadioButton,
   Row,
   Text,
+  TextButton,
   useNativeState,
 } from '@expo/ui/jetpack-compose';
 import {
@@ -17,15 +18,9 @@ import {
   weight,
 } from '@expo/ui/jetpack-compose/modifiers';
 import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
-import { NativeIconButton } from '@mobile/components/form/icon-button';
-import { ThemedHost } from '@mobile/components/form/themed-host.android';
-import { Text as RNText, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 import type { QuestionPageProps } from './question-page.types';
 
-/** One question page on Android: MD3 radio rows (checkboxes under `multiSelect`), an outlined
- * free-text field, and a filled advance button. Header stays RN so the lucide close glyph and
- * theme tokens match the card chrome. */
 export function QuestionPage({
   question,
   draft,
@@ -38,7 +33,8 @@ export function QuestionPage({
   onPrevious,
   onSelectOption,
   onCancel,
-}: QuestionPageProps): React.ReactNode {
+  onClose,
+}: QuestionPageProps & { onClose: () => void }): React.ReactNode {
   const t = useTranslations('mobile.chat');
   const tQuestion = useTranslations('workbench.question');
   const colors = useAppMaterialColors();
@@ -52,107 +48,117 @@ export function QuestionPage({
   };
 
   return (
-    <View
-      className="gap-2.5 rounded-xl border px-3 py-2.5"
-      style={{ backgroundColor: colors.surfaceContainerLow, borderColor: colors.outlineVariant }}
-    >
-      <View className="flex-row items-center gap-2">
+    <Column verticalArrangement={{ spacedBy: 12 }} modifiers={[fillMaxWidth()]}>
+      <Row verticalAlignment="center" modifiers={[fillMaxWidth()]}>
         {current > 1 ? (
-          <NativeIconButton
-            icon="previous"
-            label={tQuestion('previous')}
-            disabled={responding}
-            onPress={() => onPrevious({ ...draft, customText: customText.get() })}
-          />
-        ) : null}
-        {question.header ? (
-          <RNText className="font-semibold text-caption" style={{ color: colors.onSurfaceVariant }}>
-            {question.header}
-          </RNText>
-        ) : null}
-        <RNText className="flex-1 font-semibold text-subhead" style={{ color: colors.onSurface }}>
-          {question.prompt}
-        </RNText>
-        {total > 1 ? (
-          <RNText className="text-caption" style={{ color: colors.onSurfaceVariant }}>
-            {t('questionProgress', { current, total })}
-          </RNText>
-        ) : null}
-        <NativeIconButton
-          icon="close"
-          label={t('cancel')}
-          disabled={responding}
-          onPress={onCancel}
-        />
-      </View>
-      <ThemedHost matchContents={{ vertical: true }}>
-        <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>
-          <Column
-            verticalArrangement={{ spacedBy: 2 }}
-            modifiers={question.multiSelect ? [] : [selectableGroup()]}
-          >
-            {question.options.map((option) => {
-              const selected = draft.selected.includes(option.optionId);
-              return (
-                <Row
-                  key={option.optionId}
-                  verticalAlignment="center"
-                  horizontalArrangement={{ spacedBy: 8 }}
-                  modifiers={[
-                    fillMaxWidth(),
-                    defaultMinSize({ minHeight: 48 }),
-                    ...(responding
-                      ? []
-                      : [
-                          question.multiSelect
-                            ? toggleable(selected, () => onSelectOption(option.optionId), {
-                                role: 'checkbox',
-                              })
-                            : selectable(
-                                selected,
-                                () => onSelectOption(option.optionId),
-                                'radioButton',
-                              ),
-                        ]),
-                  ]}
-                >
-                  {question.multiSelect ? (
-                    <Checkbox value={selected} enabled={!responding} />
-                  ) : (
-                    <RadioButton selected={selected} />
-                  )}
-                  <Column verticalArrangement={{ spacedBy: 1 }} modifiers={[weight(1)]}>
-                    <Text style={{ typography: 'bodyMedium' }}>{option.label}</Text>
-                    {option.description ? (
-                      <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
-                        {option.description}
-                      </Text>
-                    ) : null}
-                  </Column>
-                </Row>
-              );
-            })}
-          </Column>
-          <OutlinedTextField
-            value={customText}
+          <TextButton
             enabled={!responding}
-            singleLine
-            onValueChange={(text) => {
-              if (text.trim() && draft.selected.length > 0) {
-                onDraftChange({ selected: [], customText: text });
-              }
-            }}
-            modifiers={[fillMaxWidth()]}
+            onClick={() => onPrevious({ ...draft, customText: customText.get() })}
           >
-            <OutlinedTextField.Placeholder>
-              <Text color={colors.onSurfaceVariant}>{t('customAnswerPlaceholder')}</Text>
-            </OutlinedTextField.Placeholder>
-          </OutlinedTextField>
-          <Button enabled={!responding} onClick={advance} modifiers={[fillMaxWidth()]}>
-            <Text>{isLast ? t('submitAnswers') : t('next')}</Text>
-          </Button>
+            <Text>{tQuestion('previous')}</Text>
+          </TextButton>
+        ) : null}
+        <Text
+          style={{ typography: 'labelMedium' }}
+          color={colors.onSurfaceVariant}
+          modifiers={[weight(1)]}
+        >
+          {t('questionProgress', { current, total })}
+        </Text>
+        <TextButton
+          onClick={() => {
+            onDraftChange({ ...draft, customText: customText.get() });
+            onClose();
+          }}
+        >
+          <Text>{t('close')}</Text>
+        </TextButton>
+      </Row>
+      <Text style={{ typography: 'titleLarge' }} color={colors.onSurface}>
+        {question.prompt}
+      </Text>
+      <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+        {question.multiSelect ? tQuestion('instructionMultiple') : tQuestion('instructionSingle')}
+      </Text>
+      <Column verticalArrangement={{ spacedBy: 10 }} modifiers={[fillMaxWidth()]}>
+        <Column
+          verticalArrangement={{ spacedBy: 2 }}
+          modifiers={question.multiSelect ? [] : [selectableGroup()]}
+        >
+          {question.options.map((option) => {
+            const selected = draft.selected.includes(option.optionId);
+            return (
+              <Row
+                key={option.optionId}
+                verticalAlignment="center"
+                horizontalArrangement={{ spacedBy: 8 }}
+                modifiers={[
+                  fillMaxWidth(),
+                  defaultMinSize({ minHeight: 48 }),
+                  ...(responding
+                    ? []
+                    : [
+                        question.multiSelect
+                          ? toggleable(
+                              selected,
+                              () => {
+                                customText.set('');
+                                onSelectOption(option.optionId);
+                              },
+                              {
+                                role: 'checkbox',
+                              },
+                            )
+                          : selectable(
+                              selected,
+                              () => {
+                                customText.set('');
+                                onSelectOption(option.optionId);
+                              },
+                              'radioButton',
+                            ),
+                      ]),
+                ]}
+              >
+                {question.multiSelect ? (
+                  <Checkbox value={selected} enabled={!responding} />
+                ) : (
+                  <RadioButton selected={selected} />
+                )}
+                <Column verticalArrangement={{ spacedBy: 1 }} modifiers={[weight(1)]}>
+                  <Text style={{ typography: 'bodyLarge' }} color={colors.onSurface}>
+                    {option.label}
+                  </Text>
+                  {option.description ? (
+                    <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant}>
+                      {option.description}
+                    </Text>
+                  ) : null}
+                </Column>
+              </Row>
+            );
+          })}
         </Column>
-      </ThemedHost>
-    </View>
+        <OutlinedTextField
+          value={customText}
+          enabled={!responding}
+          singleLine
+          onValueChange={(text) => {
+            onDraftChange({ selected: text.trim() ? [] : draft.selected, customText: text });
+          }}
+          modifiers={[fillMaxWidth()]}
+        >
+          <OutlinedTextField.Placeholder>
+            <Text color={colors.onSurfaceVariant}>{t('customAnswerPlaceholder')}</Text>
+          </OutlinedTextField.Placeholder>
+        </OutlinedTextField>
+        <Button enabled={!responding} onClick={advance} modifiers={[fillMaxWidth()]}>
+          <Text>{isLast ? t('submitAnswers') : t('next')}</Text>
+        </Button>
+        <TextButton enabled={!responding} onClick={onCancel} modifiers={[fillMaxWidth()]}>
+          <Text>{tQuestion('dismiss')}</Text>
+        </TextButton>
+      </Column>
+    </Column>
   );
 }

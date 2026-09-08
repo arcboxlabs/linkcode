@@ -1362,6 +1362,8 @@ export const zhCN = {
       compactedTokens: '{pre} → {post} tokens',
     },
     chat: {
+      answer: '回答',
+      close: '关闭',
       allowTitle: '允许「{title}」？',
       skip: '跳过',
       next: '下一步',
