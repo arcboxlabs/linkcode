@@ -181,12 +181,56 @@ async function fork(
   });
 }
 
+function requestFailed(sent: WirePayload[], replyTo: string) {
+  return vi.waitFor(() => {
+    const reply = sent.find(
+      (payload) => payload.kind === 'request.failed' && payload.replyTo === replyTo,
+    );
+    if (reply?.kind !== 'request.failed') throw new Error(`no request.failed for ${replyTo}`);
+    return reply;
+  });
+}
+
 /** The adapter a fork started, as opposed to the throwaway instances capability lookups mint. */
 function forkedAdapter(h: Harness, source: FakeAdapter): FakeAdapter {
   return nullthrow(
     h.adapters.find((adapter) => adapter !== source && adapter.startedWith !== null),
     'no forked adapter',
   );
+}
+
+/** A settled turn on a live child running on CHILD_HISTORY, checkpointed so a later turn can fork
+ * before it. */
+async function childCheckpointedTurn(
+  h: Harness,
+  adapter: FakeAdapter,
+  sessionId: SessionId,
+  clientReqId: string,
+): Promise<void> {
+  await submitPrompt(h, clientReqId, sessionId, clientReqId);
+  submittedTurnId(h.sent, clientReqId);
+  adapter.emitCheckpoint({ historyId: CHILD_HISTORY, cursor: `cp-${clientReqId}`, turn: 'ending' });
+  adapter.emit({ type: 'status', status: 'idle' });
+  await settleEngineTasks();
+}
+
+/** The live echo of prompt `text` on `sessionId`, carrying the branch cursor a rewrite hands back. */
+function liveCursor(sent: WirePayload[], sessionId: SessionId, text: string) {
+  const event = sent
+    .flatMap((payload) =>
+      payload.kind === 'agent.event' && payload.sessionId === sessionId ? [payload.event] : [],
+    )
+    .findLast(
+      (candidate) =>
+        candidate.type === 'user-message' &&
+        candidate.branchCursor !== undefined &&
+        candidate.content[0]?.type === 'text' &&
+        candidate.content[0].text === text,
+    );
+  if (event?.type !== 'user-message' || event.branchCursor === undefined) {
+    throw new Error(`no live prompt echo for ${text}`);
+  }
+  return { sourceMessageId: event.messageId, branchCursor: event.branchCursor };
 }
 
 afterEach(() => {
@@ -568,6 +612,96 @@ describe('engine managed worktree leases', () => {
         (adapter) => adapter !== source && adapter.startedWith !== null,
       );
       expect(forkedChild).toBeUndefined();
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
+  it('lets only one leaseholder run a turn at a time', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      const turnId = await checkpointedTurn(h, source, sourceId, 't1');
+      const forked = await fork(h, 'fork', sourceId, turnId, 1);
+      if (forked.kind !== 'session.forked') throw new Error(`fork failed: ${forked.message}`);
+      const childId = forked.sessionId;
+
+      await submitPrompt(h, 'source-turn', sourceId, 'keep going');
+      submittedTurnId(h.sent, 'source-turn');
+      source.emit({ type: 'status', status: 'running' });
+
+      await submitPrompt(h, 'child-turn', childId, 'me too');
+      expect(await requestFailed(h.sent, 'child-turn')).toMatchObject({
+        code: 'busy',
+        message: 'Another session on this worktree is running a turn',
+      });
+      await h.inject({
+        kind: 'agent.input',
+        clientReqId: 'child-legacy',
+        sessionId: childId,
+        input: { type: 'prompt', content: [{ type: 'text', text: 'me too' }] },
+      });
+      expect(await requestFailed(h.sent, 'child-legacy')).toMatchObject({ code: 'busy' });
+
+      source.emitCheckpoint({ historyId: SOURCE_HISTORY, cursor: 'cp-3', turn: 'ending' });
+      source.emit({ type: 'status', status: 'idle' });
+      await settleEngineTasks();
+      await submitPrompt(h, 'child-turn-2', childId, 'now');
+      await vi.waitFor(() => submittedTurnId(h.sent, 'child-turn-2'));
+      // The child now holds the worktree's turn: the source is the one refused.
+      forkedAdapter(h, source).emit({ type: 'status', status: 'running' });
+      await submitPrompt(h, 'source-turn-2', sourceId, 'again');
+      expect(await requestFailed(h.sent, 'source-turn-2')).toMatchObject({ code: 'busy' });
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
+  it('refuses to rewrite a prompt on a worktree whose co-leaseholder is running', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      const turnId = await checkpointedTurn(h, source, sourceId, 't1');
+      const forked = await fork(h, 'fork', sourceId, turnId, 1);
+      if (forked.kind !== 'session.forked') throw new Error(`fork failed: ${forked.message}`);
+      const childId = forked.sessionId;
+      const child = forkedAdapter(h, source);
+
+      // The child runs two live turns of its own so its second prompt has a bound cut to rewrite.
+      await childCheckpointedTurn(h, child, childId, 'k1');
+      await childCheckpointedTurn(h, child, childId, 'k2');
+      const rewriteTarget = liveCursor(h.sent, childId, 'k2');
+
+      // The source holds the worktree's running turn.
+      await submitPrompt(h, 'source-run', sourceId, 'keep going');
+      submittedTurnId(h.sent, 'source-run');
+      source.emit({ type: 'status', status: 'running' });
+
+      await h.inject({
+        kind: 'history.branch',
+        clientReqId: 'rewrite',
+        sourceSessionId: childId,
+        ...rewriteTarget,
+        content: [{ type: 'text', text: 'k2, edited' }],
+      });
+      expect(await requestFailed(h.sent, 'rewrite')).toMatchObject({
+        code: 'busy',
+        message: 'Another session on this worktree is running a turn',
+      });
     } finally {
       await h.engine.stop();
     }

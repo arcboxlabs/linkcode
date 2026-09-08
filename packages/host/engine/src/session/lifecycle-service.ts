@@ -412,13 +412,19 @@ export class SessionLifecycleService {
             startAdapter = (adapter) => history.branch(adapter, cut, resolved.options);
           }
           const runId = mintRunId();
-          const intent = yield* turns.persistIntent({
-            sessionId: sourceSessionId,
-            operationId: mintOperationId(),
-            runId,
-            parentTurnId,
-            input: { type: 'prompt', blocks: yield* ingest.promptBlocks(content) },
-          });
+          const blocks = yield* ingest.promptBlocks(content);
+          // The worktree gate: editing a prompt relaunches this session's adapter, so it is a
+          // turn start and must wait for a co-leaseholder's running turn like any other.
+          const intent = yield* sessions.admitTurn(
+            sourceSessionId,
+            turns.persistIntent({
+              sessionId: sourceSessionId,
+              operationId: mintOperationId(),
+              runId,
+              parentTurnId,
+              input: { type: 'prompt', blocks },
+            }),
+          );
           yield* Effect.gen(function* () {
             yield* sessions.stopForReplacement(sourceSessionId);
             yield* launchRun(replyTo, source, resolved, startAdapter, {
@@ -631,153 +637,163 @@ export class SessionLifecycleService {
             new RequestError({ code: 'busy', message: `Session is busy: ${request.sessionId}` }),
           );
         }
-        // Seam: the worktree co-leaseholder busy gate joins this critical section later.
         const { checkpoints, records, sessions, turns } = this;
         const admitAttachments = this.admitPromptBlocks.bind(this);
-        return Effect.gen(function* () {
-          if (yield* turns.hasOpenOperation(request.sessionId)) {
-            return yield* Effect.fail(
-              new RequestError({
-                code: 'busy',
-                message: 'Another operation is open on this session',
-              }),
-            );
-          }
-          let parentTurnId: TurnId | null;
-          let launch: TurnLaunch;
-          if (request.parentTurnId === undefined) {
-            // Plain send: no guards — targets the current active leaf under the busy rules alone.
-            parentTurnId = record.activeLeafTurnId ?? null;
-            launch = { type: 'continue' };
-          } else if (request.parentTurnId === null) {
-            if (request.expectedGraphRevision !== record.graphRevision) {
+        return sessions.admitTurn(
+          request.sessionId,
+          Effect.gen(function* () {
+            if (yield* turns.hasOpenOperation(request.sessionId)) {
               return yield* Effect.fail(
-                new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
+                new RequestError({
+                  code: 'busy',
+                  message: 'Another operation is open on this session',
+                }),
               );
             }
-            parentTurnId = null;
-            // Editing "the first prompt" starts fresh only when nothing can precede a root here.
-            // The session's FIRST root answers that — a later root, relaunched fresh, would read
-            // the earlier runs as hidden history of its own — while the cut anchors on the active
-            // lineage's root, whose history holds whatever the hidden prefix is.
-            const existingTurns = yield* turns.listTurns(request.sessionId);
-            const firstRoot = existingTurns.find(
-              (turn) => turn.parentTurnId === null && turn.siblingOrdinal === 1,
-            );
-            const activeRoot =
-              pathToLeaf(
-                new Map(existingTurns.map((turn) => [turn.turnId, turn])),
-                record.activeLeafTurnId,
-              ).at(0) ?? firstRoot;
-            const nothingPrecedes =
-              firstRoot === undefined
-                ? records.historyId(request.sessionId) === undefined
-                : !hasHiddenPrefix(record, firstRoot);
-            if (nothingPrecedes) {
-              launch = { type: 'fresh' };
-            } else {
-              const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
-              const cut =
-                forkable && activeRoot !== undefined
-                  ? yield* checkpoints.forkCutBefore(record, activeRoot.turnId)
-                  : undefined;
-              if (cut === undefined) {
+            let parentTurnId: TurnId | null;
+            let launch: TurnLaunch;
+            if (request.parentTurnId === undefined) {
+              // Plain send: no guards — targets the current active leaf under the busy rules alone.
+              parentTurnId = record.activeLeafTurnId ?? null;
+              launch = { type: 'continue' };
+            } else if (request.parentTurnId === null) {
+              if (request.expectedGraphRevision !== record.graphRevision) {
                 return yield* Effect.fail(
                   new RequestError({
-                    code: 'unsupported',
-                    message: forkable
-                      ? 'This turn has no provider checkpoint to fork from'
-                      : `${record.kind}: forking from an earlier turn is not supported`,
+                    code: 'conflict',
+                    message: 'The conversation graph has moved',
                   }),
                 );
               }
-              launch = { type: 'fork', cut };
-            }
-          } else {
-            const existingTurns = yield* turns.listTurns(request.sessionId);
-            const parent = existingTurns.find((turn) => turn.turnId === request.parentTurnId);
-            if (!parent) {
-              return yield* Effect.fail(
-                new RequestError({
-                  code: 'not_found',
-                  message: `Unknown turn: ${request.parentTurnId}`,
-                }),
+              parentTurnId = null;
+              // Editing "the first prompt" starts fresh only when nothing can precede a root here.
+              // The session's FIRST root answers that — a later root, relaunched fresh, would read
+              // the earlier runs as hidden history of its own — while the cut anchors on the active
+              // lineage's root, whose history holds whatever the hidden prefix is.
+              const existingTurns = yield* turns.listTurns(request.sessionId);
+              const firstRoot = existingTurns.find(
+                (turn) => turn.parentTurnId === null && turn.siblingOrdinal === 1,
               );
-            }
-            if (parent.state !== 'completed') {
-              return yield* Effect.fail(
-                new RequestError({
-                  code: 'conflict',
-                  message: 'The parent turn has not completed',
-                }),
-              );
-            }
-            if (request.expectedGraphRevision !== record.graphRevision) {
-              return yield* Effect.fail(
-                new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
-              );
-            }
-            parentTurnId = request.parentTurnId;
-            if (request.parentTurnId === record.activeLeafTurnId) {
-              // Tip-continue on the active lineage: the provider history head IS this leaf.
-              launch = { type: 'continue' };
-            } else {
-              // A valid checkpoint forks — including at an inactive tip: pi's fork writes a new
-              // file, and the tip's own history may have grown outside LinkCode (CLI/TUI use), so
-              // a forking harness never continues a tip blind. Only a harness that cannot fork
-              // continues a tip by resuming the history its own run wrote to; an interior turn
-              // is fork-unavailable.
-              const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
-              const cut = forkable
-                ? yield* checkpoints.forkCutAfter(record, parent.turnId)
-                : undefined;
-              if (cut !== undefined) {
-                launch = { type: 'fork', cut };
-              } else if (existingTurns.some((turn) => turn.parentTurnId === parent.turnId)) {
-                return yield* Effect.fail(
-                  new RequestError({
-                    code: 'unsupported',
-                    message: forkable
-                      ? 'This turn has no provider checkpoint to fork from'
-                      : `${record.kind}: forking from an earlier turn is not supported`,
-                  }),
-                );
-              } else if (forkable) {
-                return yield* Effect.fail(
-                  new RequestError({
-                    code: 'unsupported',
-                    message: 'This turn has no provider checkpoint to continue from',
-                  }),
-                );
+              const activeRoot =
+                pathToLeaf(
+                  new Map(existingTurns.map((turn) => [turn.turnId, turn])),
+                  record.activeLeafTurnId,
+                ).at(0) ?? firstRoot;
+              const nothingPrecedes =
+                firstRoot === undefined
+                  ? records.historyId(request.sessionId) === undefined
+                  : !hasHiddenPrefix(record, firstRoot);
+              if (nothingPrecedes) {
+                launch = { type: 'fresh' };
               } else {
-                const historyId = record.runs.find((run) => run.runId === parent.runId)?.historyId;
-                if (historyId === undefined) {
+                const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
+                const cut =
+                  forkable && activeRoot !== undefined
+                    ? yield* checkpoints.forkCutBefore(record, activeRoot.turnId)
+                    : undefined;
+                if (cut === undefined) {
                   return yield* Effect.fail(
                     new RequestError({
                       code: 'unsupported',
-                      message: 'This turn has no provider history to continue',
+                      message: forkable
+                        ? 'This turn has no provider checkpoint to fork from'
+                        : `${record.kind}: forking from an earlier turn is not supported`,
                     }),
                   );
                 }
-                launch = { type: 'resume', historyId };
+                launch = { type: 'fork', cut };
+              }
+            } else {
+              const existingTurns = yield* turns.listTurns(request.sessionId);
+              const parent = existingTurns.find((turn) => turn.turnId === request.parentTurnId);
+              if (!parent) {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'not_found',
+                    message: `Unknown turn: ${request.parentTurnId}`,
+                  }),
+                );
+              }
+              if (parent.state !== 'completed') {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'conflict',
+                    message: 'The parent turn has not completed',
+                  }),
+                );
+              }
+              if (request.expectedGraphRevision !== record.graphRevision) {
+                return yield* Effect.fail(
+                  new RequestError({
+                    code: 'conflict',
+                    message: 'The conversation graph has moved',
+                  }),
+                );
+              }
+              parentTurnId = request.parentTurnId;
+              if (request.parentTurnId === record.activeLeafTurnId) {
+                // Tip-continue on the active lineage: the provider history head IS this leaf.
+                launch = { type: 'continue' };
+              } else {
+                // A valid checkpoint forks — including at an inactive tip: pi's fork writes a new
+                // file, and the tip's own history may have grown outside LinkCode (CLI/TUI use), so
+                // a forking harness never continues a tip blind. Only a harness that cannot fork
+                // continues a tip by resuming the history its own run wrote to; an interior turn
+                // is fork-unavailable.
+                const forkable = sessions.historyCapabilitiesOf(record.kind).forkAfterTurn === true;
+                const cut = forkable
+                  ? yield* checkpoints.forkCutAfter(record, parent.turnId)
+                  : undefined;
+                if (cut !== undefined) {
+                  launch = { type: 'fork', cut };
+                } else if (existingTurns.some((turn) => turn.parentTurnId === parent.turnId)) {
+                  return yield* Effect.fail(
+                    new RequestError({
+                      code: 'unsupported',
+                      message: forkable
+                        ? 'This turn has no provider checkpoint to fork from'
+                        : `${record.kind}: forking from an earlier turn is not supported`,
+                    }),
+                  );
+                } else if (forkable) {
+                  return yield* Effect.fail(
+                    new RequestError({
+                      code: 'unsupported',
+                      message: 'This turn has no provider checkpoint to continue from',
+                    }),
+                  );
+                } else {
+                  const historyId = record.runs.find(
+                    (run) => run.runId === parent.runId,
+                  )?.historyId;
+                  if (historyId === undefined) {
+                    return yield* Effect.fail(
+                      new RequestError({
+                        code: 'unsupported',
+                        message: 'This turn has no provider history to continue',
+                      }),
+                    );
+                  }
+                  launch = { type: 'resume', historyId };
+                }
               }
             }
-          }
-          const liveRunId =
-            launch.type === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
-          if (liveRunId === undefined && launch.type === 'continue') launch = { type: 'resume' };
-          if (request.input.type === 'prompt') {
-            yield* admitAttachments(record.kind, request.input.blocks);
-          }
-          const intent = yield* turns.persistIntent({
-            sessionId: request.sessionId,
-            operationId: request.operationId,
-            runId: liveRunId ?? mintRunId(),
-            parentTurnId,
-            input: request.input,
-          });
-          return { intent, launch };
-        });
+            const liveRunId =
+              launch.type === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
+            if (liveRunId === undefined && launch.type === 'continue') launch = { type: 'resume' };
+            if (request.input.type === 'prompt') {
+              yield* admitAttachments(record.kind, request.input.blocks);
+            }
+            const intent = yield* turns.persistIntent({
+              sessionId: request.sessionId,
+              operationId: request.operationId,
+              runId: liveRunId ?? mintRunId(),
+              parentTurnId,
+              input: request.input,
+            });
+            return { intent, launch };
+          }),
+        );
       }),
     );
   }

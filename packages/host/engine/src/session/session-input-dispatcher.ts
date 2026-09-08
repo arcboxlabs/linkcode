@@ -19,6 +19,12 @@ import type { LiveSession } from './live-session';
 import type { SessionEventProcessor } from './session-event-processor';
 import type { SessionRecordRegistry } from './session-record-registry';
 
+/** The orchestrator's worktree turn gate; see `SessionOrchestrator.admitTurn`. */
+type TurnAdmission = <A, E>(
+  sessionId: SessionId,
+  body: Effect.Effect<A, E>,
+) => Effect.Effect<A, E | RequestError | OperationError>;
+
 /** Validates and dispatches client input while preserving turn and response state transitions. */
 export class SessionInputDispatcher {
   constructor(
@@ -27,6 +33,7 @@ export class SessionInputDispatcher {
     private readonly resources: ResourceService,
     private readonly turns: ConversationTurnService,
     private readonly ingest: AttachmentIngest,
+    private readonly admitTurn: TurnAdmission,
   ) {}
 
   /** `prepared` is a submit-saga intent already persisted for this dispatch; without one, a
@@ -71,11 +78,13 @@ export class SessionInputDispatcher {
       this.events.rejectInput(sessionId, session, error.message);
       return Effect.fail(error);
     }
-    const { events, ingest, records, resources, turns } = this;
+    const { admitTurn, events, ingest, records, resources, turns } = this;
     // Set synchronously, before the first await, so a same-tick second turn input cannot slip
     // past the gate above while this one is still validating; every failure exit releases it.
     if (startsTurn) session.turnInputActive = true;
-    return Effect.gen(function* () {
+    // Validation and the durable intent. A legacy turn input admits itself here, under the
+    // worktree gate a saga-prepared intent has already passed.
+    const prepare = Effect.gen(function* () {
       // A submit operation in flight owns the session; legacy inputs respect the same admit gate.
       if (startsTurn && prepared === undefined && (yield* turns.hasOpenOperation(sessionId))) {
         const error = new RequestError({
@@ -133,7 +142,12 @@ export class SessionInputDispatcher {
               : input,
         });
       }
-      const persisted = intent;
+      return { adapterInput, persisted: intent };
+    });
+    return Effect.gen(function* () {
+      const { adapterInput, persisted } = yield* startsTurn && prepared === undefined
+        ? admitTurn(sessionId, prepare)
+        : prepare;
       const persistedTurnId = startsTurn
         ? nullthrow(persisted, 'turn input without a persisted turn').turn.turnId
         : undefined;
