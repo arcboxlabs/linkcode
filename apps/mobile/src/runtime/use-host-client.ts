@@ -1,4 +1,5 @@
-import type { LinkCodeClient } from '@linkcode/client-core';
+import type { LinkCodeClient, WireIncompatibilityRemedy } from '@linkcode/client-core';
+import { WireIncompatibleError } from '@linkcode/client-core';
 import type { HostProfile } from '@mobile/stores/host-store';
 import NetInfo from '@react-native-community/netinfo';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -17,6 +18,8 @@ interface HostClientBase {
    * tells neither the user nor a triager whether the host is down, unreachable, or speaking a
    * different wire version — the causes need entirely different responses. */
   readonly failure?: string;
+  /** Set when the failure is a wire skew the controller stopped retrying: which side must update. */
+  readonly wireRemedy?: WireIncompatibilityRemedy;
 }
 
 interface HostClientReady extends HostClientBase {
@@ -44,9 +47,15 @@ export function useHostClient(host: HostProfile): HostClientState {
   const snapshot = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
 
   // Both triggers only ever hurry a stalled connection along; neither tears down a healthy one.
+  // An app too old for the host stays put: no foreground or network change can fix that, and
+  // redialing would only flip the update screen back to "connecting". A too-old host may have
+  // been updated meanwhile, so that skew still redials.
   useEffect(() => {
     const hurryAlong = (): void => {
-      if (controller.getSnapshot().status !== 'ready') controller.retry();
+      const { status, error } = controller.getSnapshot();
+      if (status === 'ready') return;
+      if (error instanceof WireIncompatibleError && error.remedy === 'update-app') return;
+      controller.retry();
     };
     const appState = AppState.addEventListener('change', (next) => {
       if (next === 'active') hurryAlong();
@@ -70,6 +79,9 @@ export function useHostClient(host: HostProfile): HostClientState {
         attempt: snapshot.attempt,
         client: null,
         failure: extractErrorMessage(snapshot.error, false) ?? undefined,
+        ...(snapshot.error instanceof WireIncompatibleError && {
+          wireRemedy: snapshot.error.remedy,
+        }),
         retry,
         status: snapshot.status === 'error' ? 'error' : 'connecting',
       };

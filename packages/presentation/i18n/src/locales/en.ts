@@ -1427,6 +1427,12 @@ export const en = {
       connecting: 'Connecting to the host…',
       unavailableTitle: 'Host unavailable',
       error: 'Unable to reach the host at {url}.',
+      updateAppTitle: 'Update LinkCode',
+      updateAppBody:
+        'This version of the app is too old to talk to that host. Update it from the App Store and try again.',
+      updateHostTitle: 'Update the host',
+      updateHostBody:
+        'That host runs a LinkCode version too old for this app. Update LinkCode on the computer and try again.',
       retry: 'Retry',
     },
     settings: {

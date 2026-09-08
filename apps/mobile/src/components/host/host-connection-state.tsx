@@ -5,6 +5,7 @@ import {
   multilineTextAlignment,
   textSelection,
 } from '@expo/ui/swift-ui/modifiers';
+import type { WireIncompatibilityRemedy } from '@linkcode/client-core';
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
 import { useTranslations } from 'use-intl';
 
@@ -16,6 +17,8 @@ export interface HostConnectionStateProps {
   url: string;
   /** The underlying failure, when the controller reported one. */
   failure?: string;
+  /** A wire skew: retrying cannot help, one side has to update. */
+  wireRemedy?: WireIncompatibilityRemedy;
   onRetry: () => void;
 }
 
@@ -24,9 +27,20 @@ export function HostConnectionState({
   status,
   url,
   failure,
+  wireRemedy,
   onRetry,
 }: HostConnectionStateProps): React.ReactNode {
   const t = useTranslations('mobile.connection');
+
+  let title = t('unavailableTitle');
+  let body = t('error', { url });
+  if (wireRemedy === 'update-app') {
+    title = t('updateAppTitle');
+    body = t('updateAppBody');
+  } else if (wireRemedy === 'update-host') {
+    title = t('updateHostTitle');
+    body = t('updateHostBody');
+  }
 
   return (
     <Host style={{ flex: 1 }} useViewportSizeMeasurement>
@@ -38,12 +52,14 @@ export function HostConnectionState({
           </>
         ) : (
           <>
-            <Image systemName="wifi.exclamationmark" size={44} modifiers={[SECONDARY]} />
+            <Image
+              systemName={wireRemedy ? 'arrow.down.circle' : 'wifi.exclamationmark'}
+              size={44}
+              modifiers={[SECONDARY]}
+            />
             <VStack spacing={6}>
-              <Text modifiers={[TITLE, CENTERED]}>{t('unavailableTitle')}</Text>
-              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>
-                {t('error', { url })}
-              </Text>
+              <Text modifiers={[TITLE, CENTERED]}>{title}</Text>
+              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>{body}</Text>
             </VStack>
             <Button
               label={t('retry')}
