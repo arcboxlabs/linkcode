@@ -4,6 +4,8 @@ import {
   AttachmentIdSchema,
   BlobIdSchema,
   MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
   SessionIdSchema,
   UploadIdSchema,
 } from '@linkcode/schema';
@@ -371,6 +373,33 @@ describe('LinkCodeClient attachment guards', () => {
         attachmentKind: 'file',
       }),
     ).rejects.toThrow('exceeds');
+    expect(seen).not.toContain('attachment.upload.begin');
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('rejects an over-long name or MIME type before any frame leaves the client', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const seen: string[] = [];
+    serverTransport.onMessage((message) => {
+      seen.push(message.payload.kind);
+    });
+    const bytes = new Uint8Array(4);
+    await expect(
+      client.putAttachment({
+        bytes,
+        name: 'n'.repeat(MAX_ATTACHMENT_NAME_LENGTH + 1),
+        attachmentKind: 'file',
+      }),
+    ).rejects.toThrow('name exceeds');
+    await expect(
+      client.putAttachment({
+        bytes,
+        name: 'ok.bin',
+        mimeType: `text/${'x'.repeat(MAX_MIME_TYPE_LENGTH)}`,
+        attachmentKind: 'file',
+      }),
+    ).rejects.toThrow('MIME type exceeds');
     expect(seen).not.toContain('attachment.upload.begin');
     client.dispose();
     serverTransport.close();

@@ -33,7 +33,8 @@ export const attachmentWireVariants = [
   z.object({
     kind: z.literal('attachment.upload.begin'),
     clientReqId: WireRequestIdSchema,
-    /** Replay key for a lost begin reply; a second begin with the same id returns the first. */
+    /** Replay key for a lost begin reply: a second begin with the same id and the same declared
+     * fields returns the first; other fields are refused. */
     operationId: OperationIdSchema.optional(),
     declaredSha256: Sha256HexSchema,
     declaredSize: z.number().int().nonnegative().max(MAX_ATTACHMENT_BYTES),
