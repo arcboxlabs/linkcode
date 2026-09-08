@@ -15,7 +15,8 @@ export function orderGroups(
   const unlisted: ThreadGroup[] = [];
   const fixed: ThreadGroup[] = [];
 
-  for (const group of groups) {
+  for (let i = 0, len = groups.length; i < len; i++) {
+    const group = groups[i];
     if (group.isChat || group.workspace === null) fixed.push(group);
     else if (rank.has(group.collapseKey)) listed.push(group);
     else unlisted.push(group);

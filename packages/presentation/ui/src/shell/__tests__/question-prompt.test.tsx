@@ -637,9 +637,10 @@ describe('ConversationPromptDock', () => {
     expect(
       permissionFrame?.querySelector('[data-slot="frame-panel"]')?.classList.contains('rounded-xl'),
     ).toBe(true);
-    const footerLabels = [
-      ...(allow.closest('[data-slot="frame-panel-footer"]')?.querySelectorAll('button') ?? []),
-    ].map((button) => button.textContent);
+    const footerLabels = Array.from(
+      allow.closest('[data-slot="frame-panel-footer"]')?.querySelectorAll('button') ?? [],
+      (button) => button.textContent,
+    );
     expect(footerLabels).toEqual(['Always allow', 'Reject', 'Allow']);
 
     await user.click(allow);

@@ -25,7 +25,9 @@ export const readGitBranches = Effect.fn('Git.readBranches')(function* (cwd: str
   if (result.exitCode !== 0) return { isRepo: false } as const;
 
   const branches: GitBranch[] = [];
-  for (const line of result.stdout.split('\n')) {
+  const lines = result.stdout.split('\n');
+  for (let i = 0, len = lines.length; i < len; i++) {
+    const line = lines[i];
     if (line.length === 0) continue;
     const [name, head, committedAt] = line.split(FIELD_SEPARATOR);
     if (!name) continue;

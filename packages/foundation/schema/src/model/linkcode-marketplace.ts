@@ -1,3 +1,4 @@
+import { split0th } from 'foxts/split-nth';
 import { z } from 'zod';
 import {
   LinkCodeMarketplaceIdSchema,
@@ -38,7 +39,8 @@ export const LinkCodeMarketplaceConfigListSchema = z
   .array(LinkCodeMarketplaceConfigSchema)
   .superRefine((marketplaces, ctx) => {
     const ids = new Set<string>();
-    for (const [index, marketplace] of marketplaces.entries()) {
+    for (let index = 0, len = marketplaces.length; index < len; index++) {
+      const marketplace = marketplaces[index];
       if (ids.has(marketplace.id)) {
         ctx.addIssue({
           code: 'custom',
@@ -56,7 +58,8 @@ function validateMarketplacePlugin(
   ctx: z.RefinementCtx,
 ): void {
   const versions = new Set<string>();
-  for (const [index, release] of plugin.releases.entries()) {
+  for (let index = 0, len = plugin.releases.length; index < len; index++) {
+    const release = plugin.releases[index];
     if (release.manifest.id !== plugin.id) {
       ctx.addIssue({
         code: 'custom',
@@ -64,7 +67,7 @@ function validateMarketplacePlugin(
         path: ['releases', index, 'manifest', 'id'],
       });
     }
-    const precedenceVersion = release.manifest.version.split('+', 1)[0];
+    const precedenceVersion = split0th(release.manifest.version, '+');
     if (versions.has(precedenceVersion)) {
       ctx.addIssue({
         code: 'custom',
@@ -108,7 +111,8 @@ function rejectDuplicatePlugins(
   ctx: z.RefinementCtx,
 ): void {
   const pluginIds = new Set<string>();
-  for (const [pluginIndex, plugin] of index.plugins.entries()) {
+  for (let pluginIndex = 0, len = index.plugins.length; pluginIndex < len; pluginIndex++) {
+    const plugin = index.plugins[pluginIndex];
     if (pluginIds.has(plugin.id)) {
       ctx.addIssue({
         code: 'custom',

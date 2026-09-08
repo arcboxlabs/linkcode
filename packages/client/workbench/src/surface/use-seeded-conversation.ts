@@ -33,7 +33,10 @@ async function readConversationSeed(
       cursor,
       forceRefresh: page === 0,
     });
-    for (const entry of data.events) events.push({ event: entry.event, ts: entry.ts });
+    for (let i = 0, len = data.events.length; i < len; i++) {
+      const entry = data.events[i];
+      events.push({ event: entry.event, ts: entry.ts });
+    }
     cursor = data.cursor;
     if (cursor === undefined) break;
   }

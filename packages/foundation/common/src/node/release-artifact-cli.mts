@@ -85,11 +85,19 @@ function compliance(value: unknown): StoreComplianceDeclaration {
     bail('compliance declaration must contain checklist and disclosedFeatures');
   }
   return {
-    checklist: Object.fromEntries(
-      Object.entries(declaration.checklist).map(([key, entry]) => {
+    checklist: Object.entries(declaration.checklist).reduce<Record<string, boolean>>(
+      (acc, [key, entry]) => {
         if (typeof entry !== 'boolean') bail(`compliance checklist field ${key} must be boolean`);
-        return [key, entry];
-      }),
+        // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the object.
+        Object.defineProperty(acc, key, {
+          configurable: true,
+          enumerable: true,
+          value: entry,
+          writable: true,
+        });
+        return acc;
+      },
+      {},
     ),
     disclosedFeatures: declaration.disclosedFeatures.filter(
       (entry): entry is string => typeof entry === 'string',

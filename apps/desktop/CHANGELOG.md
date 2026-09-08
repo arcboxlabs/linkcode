@@ -1,5 +1,63 @@
 # Changelog
 
+## [0.30.0](https://github.com/arcboxlabs/linkcode/compare/v0.29.0...v0.30.0) (2026-09-03)
+
+
+### Features
+
+* **providers:** resolve LinkCode Gateway as a claude-code-native endpoint ([#503](https://github.com/arcboxlabs/linkcode/issues/503)) ([317b14e](https://github.com/arcboxlabs/linkcode/commit/317b14e6abf6fa8e3a527fb0e98c4f1f7dd8f9ee))
+* **ui:** refine thread hover feedback ([#502](https://github.com/arcboxlabs/linkcode/issues/502)) ([135a556](https://github.com/arcboxlabs/linkcode/commit/135a55655d770caaebf7a2a464cfdce79ba4b065))
+
+
+### Bug Fixes
+
+* **mobile:** surface ambiguous deletion transport ([#498](https://github.com/arcboxlabs/linkcode/issues/498)) ([dee76ee](https://github.com/arcboxlabs/linkcode/commit/dee76eecb7a9ed6dbf39f9ab539fc862c0f44654))
+* **ui:** make command palette instant ([#500](https://github.com/arcboxlabs/linkcode/issues/500)) ([16767b2](https://github.com/arcboxlabs/linkcode/commit/16767b2dbc1d71fa85013519ea2b8795f0911c4d))
+
+## [0.29.0](https://github.com/arcboxlabs/linkcode/compare/v0.28.0...v0.29.0) (2026-08-31)
+
+
+### Features
+
+* **mobile:** add in-app permanent account deletion ([#481](https://github.com/arcboxlabs/linkcode/issues/481)) ([cc5388a](https://github.com/arcboxlabs/linkcode/commit/cc5388a6a97af08b914d90ec376f3d81686018ef))
+
+
+### Bug Fixes
+
+* **codex:** route account providers explicitly ([#497](https://github.com/arcboxlabs/linkcode/issues/497)) ([b18fdc4](https://github.com/arcboxlabs/linkcode/commit/b18fdc477b33769888253930e1e724fa152acfbe))
+
+## [0.28.0](https://github.com/arcboxlabs/linkcode/compare/v0.27.0...v0.28.0) (2026-08-28)
+
+
+### Features
+
+* **mobile:** add remote push notifications ([#386](https://github.com/arcboxlabs/linkcode/issues/386)) ([53b6420](https://github.com/arcboxlabs/linkcode/commit/53b6420734c0fa7a1d77636a52d6764408310d9f))
+
+
+### Bug Fixes
+
+* **desktop:** verify better-sqlite3's shipped prebuild ([#485](https://github.com/arcboxlabs/linkcode/issues/485)) ([2679cb4](https://github.com/arcboxlabs/linkcode/commit/2679cb4fdfdba7c6aee01bcc0b34c3649a68cbc2))
+
+## [0.27.0](https://github.com/arcboxlabs/linkcode/compare/v0.26.1...v0.27.0) (2026-08-27)
+
+
+### Features
+
+* **providers:** resolve LinkCode Gateway as a Codex-native endpoint ([#477](https://github.com/arcboxlabs/linkcode/issues/477)) ([a79b917](https://github.com/arcboxlabs/linkcode/commit/a79b91709eef28386e1618afd2ffdec110f99ebe))
+
+
+### Bug Fixes
+
+* **client-core:** keep image prompts in place ([#464](https://github.com/arcboxlabs/linkcode/issues/464)) ([d46d560](https://github.com/arcboxlabs/linkcode/commit/d46d5602a106a7bd23497bd3fa267c30fe6aa7f1))
+
+## [0.26.1](https://github.com/arcboxlabs/linkcode/compare/v0.26.0...v0.26.1) (2026-08-26)
+
+
+### Bug Fixes
+
+* **agent-adapter,engine:** stream codex rollout reads and evict expired history caches ([#466](https://github.com/arcboxlabs/linkcode/issues/466)) ([fedc6ec](https://github.com/arcboxlabs/linkcode/commit/fedc6ec6ff505ded1dbeabea9bcd818b7a998ffb))
+* **pi:** preserve account model IDs with slashes ([#471](https://github.com/arcboxlabs/linkcode/issues/471)) ([6bb0633](https://github.com/arcboxlabs/linkcode/commit/6bb0633a5edbffe61b4244fa34b73179bd42b175))
+
 ## [0.26.0](https://github.com/arcboxlabs/linkcode/compare/v0.25.2...v0.26.0) (2026-08-24)
 
 

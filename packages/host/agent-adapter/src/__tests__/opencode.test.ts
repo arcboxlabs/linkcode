@@ -284,7 +284,6 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
     client.stream.push({
       id: 'e-tool-completed',
       type: 'message.part.updated',
@@ -354,19 +353,16 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       type: 'message.part.updated',
       properties: { sessionID: 'sess-1', time: 0, part: part('prt-mcp-1', 'linear_list_issues') },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
     client.stream.push({
       id: 'e-mcp-configured',
       type: 'message.part.updated',
       properties: { sessionID: 'sess-1', time: 1, part: part('prt-mcp-2', 'notion_search_pages') },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
     client.stream.push({
       id: 'e-builtin',
       type: 'message.part.updated',
       properties: { sessionID: 'sess-1', time: 2, part: part('prt-builtin', 'bash') },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- FakeEventStream.push accepts one provider event at a time
     client.stream.push({
       id: 'e-mcp-ambiguous',
       type: 'message.part.updated',
@@ -412,7 +408,6 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-user-part',
       type: 'message.part.updated',
@@ -428,7 +423,6 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-msg',
       type: 'message.updated',
@@ -450,7 +444,6 @@ describe('OpenCodeAdapter.consumeEvents', () => {
         },
       },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- not array
     client.stream.push({
       id: 'e-assistant-part',
       type: 'message.part.updated',

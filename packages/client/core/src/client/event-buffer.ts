@@ -73,7 +73,12 @@ export class EventBuffer {
     set.add(cb);
     // Replay buffered events with their original seqs so a late subscriber sees the full timeline.
     const buf = this.events.get(sessionId);
-    if (buf) for (const { event, seq } of buf) cb(event, seq);
+    if (buf) {
+      for (let i = 0, len = buf.length; i < len; i++) {
+        const { event, seq } = buf[i];
+        cb(event, seq);
+      }
+    }
     return () => set.delete(cb);
   }
 

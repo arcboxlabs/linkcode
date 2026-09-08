@@ -59,7 +59,11 @@ async function managedWorktree(store: WorktreeStore = new InMemoryWorktreeStore(
 }
 
 afterEach(() => {
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  const drained = roots.splice(0);
+  for (let i = 0, len = drained.length; i < len; i++) {
+    const root = drained[i];
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 describe('WorktreeService', () => {

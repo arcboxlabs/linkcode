@@ -72,7 +72,7 @@ export class AssetManager {
   /** Drop superseded versions and tmp orphans. Best-effort; never throws. */
   gcAtBoot(): GcReport {
     return collectGarbage(
-      [...this.descriptors.values()].map((descriptor) => {
+      Array.from(this.descriptors.values(), (descriptor) => {
         const wanted = this.wanted.get(managedAssetKey(descriptor.id));
         return {
           id: descriptor.id,
@@ -101,7 +101,7 @@ export class AssetManager {
 
   /** Live snapshot for the `asset.list` wire resource. */
   statuses(): ManagedAssetStatus[] {
-    return [...this.descriptors.values()].map((descriptor) => {
+    return Array.from(this.descriptors.values(), (descriptor) => {
       const version = this.wanted.get(managedAssetKey(descriptor.id))?.version;
       const path = version ? installedPath(descriptor, version) : undefined;
       return {

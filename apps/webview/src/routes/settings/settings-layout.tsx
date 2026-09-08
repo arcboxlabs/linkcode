@@ -16,7 +16,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
-const SETTINGS_ROUTES: Record<string, string> = {
+const SETTINGS_ROUTES = {
   general: '/settings',
   appearance: '/settings/appearance',
   terminal: '/settings/terminal',
@@ -28,7 +28,31 @@ const SETTINGS_ROUTES: Record<string, string> = {
   messaging: '/settings/messaging',
   developer: '/settings/developer',
 };
+/** The routes table is the one place the tab-key set is written down. */
+type SettingsTabKey = keyof typeof SETTINGS_ROUTES;
+// One table for the sidebar items and the page header — a tab whose message key differs
+// from its route key (messaging → imChannel) stays consistent in both by construction,
+// and the `SettingsTabKey` bound makes drift against the routes a typecheck error.
+const SETTINGS_TAB_LABEL_KEYS: Record<SettingsTabKey, string> = {
+  general: 'tabs.general',
+  appearance: 'tabs.appearance',
+  terminal: 'tabs.terminal',
+  notifications: 'tabs.notifications',
+  billing: 'tabs.billing',
+  agents: 'tabs.agents',
+  providers: 'tabs.providers',
+  plugins: 'tabs.plugins',
+  messaging: 'tabs.imChannel',
+  developer: 'tabs.developer',
+};
 const RE_TRAILING_SLASH = /\/$/;
+// Inverted once at module scope: the active tab is a single O(1) lookup per navigation.
+// Object.entries widens keys to string, so restore the key type for typed lookups below.
+const SETTINGS_TAB_BY_PATH = new Map(
+  (Object.entries(SETTINGS_ROUTES) as Array<[SettingsTabKey, string]>).map(
+    ([key, route]) => [route, key] as const,
+  ),
+);
 
 export function SettingsLayout(): React.ReactNode {
   const t = useTranslations('settings');
@@ -36,6 +60,7 @@ export function SettingsLayout(): React.ReactNode {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
   const searchKeywords = useSettingsSearchKeywords();
+  const activeKey = SETTINGS_TAB_BY_PATH.get(pathname.replace(RE_TRAILING_SLASH, ''));
 
   const navGroups = [
     {
@@ -45,41 +70,41 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'general',
           icon: <SettingsIcon className="size-4" />,
-          label: t('tabs.general'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.general),
           keywords: searchKeywords.general,
-          active: isActive(pathname, ''),
+          active: activeKey === 'general',
           render: <Link to="/settings" />,
         },
         {
           key: 'appearance',
           icon: <SunMoonIcon className="size-4" />,
-          label: t('tabs.appearance'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.appearance),
           keywords: searchKeywords.appearance,
-          active: isActive(pathname, 'appearance'),
+          active: activeKey === 'appearance',
           render: <Link to="/settings/appearance" />,
         },
         {
           key: 'terminal',
           icon: <TerminalIcon className="size-4" />,
-          label: t('tabs.terminal'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.terminal),
           keywords: searchKeywords.terminal,
-          active: isActive(pathname, 'terminal'),
+          active: activeKey === 'terminal',
           render: <Link to="/settings/terminal" />,
         },
         {
           key: 'notifications',
           icon: <BellIcon className="size-4" />,
-          label: t('tabs.notifications'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.notifications),
           keywords: searchKeywords.notifications,
-          active: isActive(pathname, 'notifications'),
+          active: activeKey === 'notifications',
           render: <Link to="/settings/notifications" />,
         },
         {
           key: 'billing',
           icon: <CreditCardIcon className="size-4" />,
-          label: t('tabs.billing'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.billing),
           keywords: searchKeywords.billing,
-          active: isActive(pathname, 'billing'),
+          active: activeKey === 'billing',
           render: <Link to="/settings/billing" />,
         },
       ],
@@ -91,33 +116,33 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'agents',
           icon: <BotIcon className="size-4" />,
-          label: t('tabs.agents'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.agents),
           keywords: searchKeywords.agents,
-          active: isActive(pathname, 'agents'),
+          active: activeKey === 'agents',
           render: <Link to="/settings/agents" />,
         },
         {
           key: 'providers',
           icon: <KeyRoundIcon className="size-4" />,
-          label: t('tabs.providers'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.providers),
           keywords: searchKeywords.providers,
-          active: isActive(pathname, 'providers'),
+          active: activeKey === 'providers',
           render: <Link to="/settings/providers" />,
         },
         {
           key: 'plugins',
           icon: <PuzzleIcon className="size-4" />,
-          label: t('tabs.plugins'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.plugins),
           keywords: searchKeywords.plugins,
-          active: isActive(pathname, 'plugins'),
+          active: activeKey === 'plugins',
           render: <Link to="/settings/plugins" />,
         },
         {
           key: 'messaging',
           icon: <SendIcon className="size-4" />,
-          label: t('tabs.imChannel'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.messaging),
           keywords: searchKeywords.imChannel,
-          active: isActive(pathname, 'messaging'),
+          active: activeKey === 'messaging',
           render: <Link to="/settings/messaging" />,
         },
       ],
@@ -129,17 +154,16 @@ export function SettingsLayout(): React.ReactNode {
         {
           key: 'developer',
           icon: <CodeXmlIcon className="size-4" />,
-          label: t('tabs.developer'),
+          label: t(SETTINGS_TAB_LABEL_KEYS.developer),
           keywords: searchKeywords.developer,
-          active: isActive(pathname, 'developer'),
+          active: activeKey === 'developer',
           render: <Link to="/settings/developer" />,
         },
       ],
     },
   ];
   const visibleGroups = filterSettingsNavGroups(navGroups, searchQuery);
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- a handful of static nav items scanned once per render; a Map would be needless ceremony
-  const activeLabel = navGroups.flatMap((group) => group.items).find((item) => item.active)?.label;
+  const activeLabel = activeKey === undefined ? undefined : t(SETTINGS_TAB_LABEL_KEYS[activeKey]);
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -153,7 +177,8 @@ export function SettingsLayout(): React.ReactNode {
             onSearchChange={setSearchQuery}
             onSearchSubmit={() => {
               const first = visibleGroups.flatMap((group) => group.items).at(0);
-              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key]);
+              // The shared nav type widens item keys to string; ours are authored from the table.
+              if (first !== undefined) void navigate(SETTINGS_ROUTES[first.key as SettingsTabKey]);
             }}
             searchEmptyLabel={t('searchNoResults')}
             groups={visibleGroups}
@@ -172,21 +197,4 @@ export function SettingsLayout(): React.ReactNode {
       </main>
     </div>
   );
-}
-
-function isActive(
-  pathname: string,
-  section:
-    | ''
-    | 'appearance'
-    | 'terminal'
-    | 'developer'
-    | 'notifications'
-    | 'billing'
-    | 'providers'
-    | 'plugins'
-    | 'agents'
-    | 'messaging',
-): boolean {
-  return pathname.replace(RE_TRAILING_SLASH, '') === `/settings${section ? `/${section}` : ''}`;
 }

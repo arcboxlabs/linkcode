@@ -47,13 +47,22 @@ class FakeChild implements SidecarChildProcess {
     this.signal = signal;
   }
   emitStdout(text: string): void {
-    for (const listener of this.dataListeners) listener(text);
+    for (let i = 0, len = this.dataListeners.length; i < len; i++) {
+      const listener = this.dataListeners[i];
+      listener(text);
+    }
   }
   emitError(error: Error): void {
-    for (const listener of this.errorListeners) listener(error);
+    for (let i = 0, len = this.errorListeners.length; i < len; i++) {
+      const listener = this.errorListeners[i];
+      listener(error);
+    }
   }
   emitExit(code: number | null): void {
-    for (const listener of this.exitListeners) listener(code);
+    for (let i = 0, len = this.exitListeners.length; i < len; i++) {
+      const listener = this.exitListeners[i];
+      listener(code);
+    }
   }
 }
 

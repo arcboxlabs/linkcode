@@ -100,7 +100,7 @@ export function HighlightedCode({
       const plugin = createCodePlugin({ themes: [lightTheme, darkTheme] });
       const apply = (result: HighlightResult): void => {
         if (signal.aborted) return;
-        // eslint-disable-next-line @eslint-react/set-state-in-effect, sukka/react-no-use-effect-watching -- Shiki resolves through this callback; the abort signal and tagged state reject stale results.
+        // eslint-disable-next-line @eslint-react/set-state-in-effect, vibe-proof/react-no-use-effect-watching -- Shiki resolves through this callback; the abort signal and tagged state reject stale results.
         setHighlighted({ code, language: normalizedLanguage, lightTheme, darkTheme, result });
       };
       const immediate = plugin.highlight(

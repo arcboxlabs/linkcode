@@ -262,7 +262,6 @@ describe('ClaudeCodeAdapter approval policy', () => {
         ],
       },
     });
-    // eslint-disable-next-line sukka/unicorn/prefer-single-call -- AsyncMessageQueue.push takes ONE message; the merge autofix silently drops this one
     q.push({
       type: 'system',
       subtype: 'permission_denied',

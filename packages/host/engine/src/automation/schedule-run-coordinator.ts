@@ -92,7 +92,8 @@ export class ScheduleRunCoordinator {
         'Failed to recover schedule runs',
         () => store.loadRunningRuns(),
       );
-      for (const run of running) {
+      for (let i = 0, len = running.length; i < len; i++) {
+        const run = running[i];
         yield* saveRun({
           ...run,
           status: 'failed',

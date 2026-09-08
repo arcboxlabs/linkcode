@@ -15,10 +15,12 @@ vi.mock('use-intl', () => ({ useTranslations: () => translateKey }));
 /** jsdom lays nothing out, so both metrics read 0 and the card can never look overflowing.
  * Stub the pair the overflow check reads to drive each branch deterministically. */
 function stubPanelMetrics(scrollHeight: number, clientHeight: number): void {
-  for (const [name, value] of [
+  const metrics = [
     ['scrollHeight', scrollHeight],
     ['clientHeight', clientHeight],
-  ] as const) {
+  ] as const;
+  for (let i = 0, len = metrics.length; i < len; i++) {
+    const [name, value] = metrics[i];
     vi.spyOn(HTMLElement.prototype, name, 'get').mockReturnValue(value);
   }
 }

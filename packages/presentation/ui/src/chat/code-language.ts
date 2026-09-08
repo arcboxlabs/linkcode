@@ -1,3 +1,4 @@
+import { split0th } from 'foxts/split-nth';
 import { fileExtension } from './artifacts/file-kind';
 
 const LANGUAGE_BY_MIME_TYPE: Readonly<Record<string, string>> = {
@@ -23,7 +24,8 @@ const RE_URI_SUFFIX = /[?#]/;
 
 /** Best-effort language hint for an embedded text resource. MIME wins because URIs may be opaque. */
 export function codeLanguageForResource(uri: string, mimeType?: string): string | undefined {
-  const normalizedMime = mimeType?.split(';', 1)[0]?.trim().toLowerCase();
+  const normalizedMime =
+    mimeType === undefined ? undefined : split0th(mimeType, ';').trim().toLowerCase();
   if (normalizedMime) {
     const mimeLanguage = LANGUAGE_BY_MIME_TYPE[normalizedMime];
     if (mimeLanguage) return mimeLanguage;

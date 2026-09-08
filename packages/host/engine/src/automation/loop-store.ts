@@ -24,7 +24,7 @@ export class InMemoryLoopStore implements LoopStore {
   private readonly iterations = new Map<string, LoopIteration>();
 
   load(): Promise<LoopRecord[]> {
-    return Promise.resolve([...this.loops.values()].map((loop) => structuredClone(loop)));
+    return Promise.resolve(Array.from(this.loops.values(), (loop) => structuredClone(loop)));
   }
 
   save(loop: LoopRecord): Promise<void> {

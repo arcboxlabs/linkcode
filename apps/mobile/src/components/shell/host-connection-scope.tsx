@@ -17,7 +17,10 @@ export function HostConnectionScope({ children }: React.PropsWithChildren): Reac
     const keep = new Set(
       keepHostsConnected ? hosts.map((entry) => entry.id) : host ? [host.id] : [],
     );
-    for (const entry of hosts) if (keep.has(entry.id)) connectionFor(entry);
+    for (let i = 0, len = hosts.length; i < len; i++) {
+      const entry = hosts[i];
+      if (keep.has(entry.id)) connectionFor(entry);
+    }
     pruneConnections(keep);
   }, [host, hosts, keepHostsConnected]);
 

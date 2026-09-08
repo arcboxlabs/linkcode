@@ -53,7 +53,10 @@ class FakeWebSocket {
   }
 
   emit(type: string, event: unknown): void {
-    for (const cb of this.listeners.get(type) ?? []) cb(event);
+    const callbacks = this.listeners.get(type);
+    if (callbacks != null) {
+      for (const cb of callbacks) cb(event);
+    }
   }
 }
 
@@ -106,7 +109,9 @@ describe('TunnelTransportServer', () => {
     const inbound: unknown[] = [];
     connection.onMessage((message) => inbound.push(message));
     const request = createWireMessage({ kind: 'session.list', clientReqId: 'r1' });
-    for (const data of new TunnelChunkEncoder(1).encode(JSON.stringify(request))) {
+    const chunks = new TunnelChunkEncoder(1).encode(JSON.stringify(request));
+    for (let i = 0, len = chunks.length; i < len; i++) {
+      const data = chunks[i];
       socket.emit('message', {
         data: encodeTunnelPeerFrame({ kind: 'peer.data', peerId: 'peer-1', data }),
       });
@@ -115,7 +120,8 @@ describe('TunnelTransportServer', () => {
 
     connection.send(createWireMessage({ kind: 'request.succeeded', replyTo: 'r1' }));
     let outbound: TunnelPeerFrame | null = null;
-    for (const sent of socket.sent) {
+    for (let i = 0, len = socket.sent.length; i < len; i++) {
+      const sent = socket.sent[i];
       if (!(sent instanceof ArrayBuffer)) continue;
       const frame = decodeTunnelPeerFrame(sent);
       if (frame?.kind === 'peer.data') {
@@ -330,7 +336,9 @@ describe('TunnelTransportServer', () => {
       candidate.emit('message', {
         data: encodeTunnelPeerFrame({ kind: 'peer.join', peerId: 'peer-1' }),
       });
-      for (const data of chunks.slice(1)) {
+      const remainingChunks = chunks.slice(1);
+      for (let i = 0, len = remainingChunks.length; i < len; i++) {
+        const data = remainingChunks[i];
         candidate.emit('message', {
           data: encodeTunnelPeerFrame({ kind: 'peer.data', peerId: 'peer-1', data }),
         });
@@ -346,7 +354,8 @@ describe('TunnelTransportServer', () => {
       expect(inbound).toEqual([request]);
       await vi.waitFor(() => {
         let outbound = 0;
-        for (const sent of candidate.sent) {
+        for (let i = 0, len = candidate.sent.length; i < len; i++) {
+          const sent = candidate.sent[i];
           if (!(sent instanceof ArrayBuffer)) continue;
           if (decodeTunnelPeerFrame(sent)?.kind === 'peer.data') outbound += 1;
         }
@@ -401,7 +410,9 @@ describe('TunnelTransportServer', () => {
       candidate.emit('message', {
         data: encodeTunnelPeerFrame({ kind: 'peer.join', peerId: 'peer-1' }),
       });
-      for (const data of new TunnelChunkEncoder(2).encode(JSON.stringify(request))) {
+      const chunks = new TunnelChunkEncoder(2).encode(JSON.stringify(request));
+      for (let i = 0, len = chunks.length; i < len; i++) {
+        const data = chunks[i];
         candidate.emit('message', {
           data: encodeTunnelPeerFrame({ kind: 'peer.data', peerId: 'peer-1', data }),
         });

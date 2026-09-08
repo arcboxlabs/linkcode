@@ -186,7 +186,10 @@ class FakeQuery {
 }
 
 function pushMessages(query: FakeQuery, ...messages: WireMessage[]): void {
-  for (const message of messages) query.push(message);
+  for (let i = 0, len = messages.length; i < len; i++) {
+    const message = messages[i];
+    query.push(message);
+  }
 }
 
 const queries: FakeQuery[] = [];

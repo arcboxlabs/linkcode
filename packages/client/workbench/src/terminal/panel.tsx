@@ -67,7 +67,7 @@ export function TerminalPanel({
     const unsubscribe = client.subscribeTerminalError(terminalId, () => {
       setInputLost(true);
       clearTimeout(inputLostTimerRef.current);
-      inputLostTimerRef.current = setTimeout(() => setInputLost(false), INPUT_LOST_BANNER_MS);
+      inputLostTimerRef.current = setTimeout(setInputLost, INPUT_LOST_BANNER_MS, false);
     });
     return () => {
       clearTimeout(inputLostTimerRef.current);
@@ -100,7 +100,7 @@ export function TerminalPanel({
     void client.takeTerminalControl(terminalId).catch(() => {
       setInputLost(true);
       clearTimeout(inputLostTimerRef.current);
-      inputLostTimerRef.current = setTimeout(() => setInputLost(false), INPUT_LOST_BANNER_MS);
+      inputLostTimerRef.current = setTimeout(setInputLost, INPUT_LOST_BANNER_MS, false);
     });
   };
   return (

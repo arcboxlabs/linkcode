@@ -48,7 +48,9 @@ const crypto: ConfigCrypto = {
 
 describe('configuration contract v1 golden fixture', () => {
   it('locks exact snapshot bytes, size, and SHA-256', () => {
-    for (const name of ['current', 'previous'] as const) {
+    const snapshotNames = ['current', 'previous'] as const;
+    for (let i = 0, len = snapshotNames.length; i < len; i++) {
+      const name = snapshotNames[i];
       const vector = snapshots[name];
       const document = parseIJson(encoder.encode(vector.canonicalPayload));
       assertConfigSnapshot(document);
@@ -188,14 +190,16 @@ describe('configuration contract v1 golden fixture', () => {
   });
 
   it('verifies pointer signatures while retaining additive root fields', () => {
-    for (const name of [
+    const pointerNames = [
       'normal',
       'rollback',
       'rotationWithoutBump',
       'rotation',
       'additive',
       'schemaTooNew',
-    ]) {
+    ];
+    for (let i = 0, len = pointerNames.length; i < len; i++) {
+      const name = pointerNames[i];
       const vector = pointers[name];
       assertConfigPointer(vector.document);
       const payload = canonicalSignedPayloadBytes(vector.document);
@@ -220,7 +224,9 @@ describe('configuration contract v1 golden fixture', () => {
   });
 
   it('verifies independent emergency signatures and rejects tampering', () => {
-    for (const name of ['active', 'clear', 'equivocation']) {
+    const emergencyNames = ['active', 'clear', 'equivocation'];
+    for (let i = 0, len = emergencyNames.length; i < len; i++) {
+      const name = emergencyNames[i];
       const vector = emergencies[name];
       assertEmergencyDocument(vector.document);
       const payload = canonicalSignedPayloadBytes(vector.document);
@@ -244,7 +250,8 @@ describe('configuration contract v1 golden fixture', () => {
   });
 
   it('freezes normal and emergency anti-replay decisions', () => {
-    for (const entry of fixture.cases.pointerAntiReplay) {
+    for (let i = 0, len = fixture.cases.pointerAntiReplay.length; i < len; i++) {
+      const entry = fixture.cases.pointerAntiReplay[i];
       const candidate = pointers[entry.candidate];
       const accepted = entry.accepted === null ? null : pointers[entry.accepted];
       expect(
@@ -255,7 +262,8 @@ describe('configuration contract v1 golden fixture', () => {
         entry.name,
       ).toBe(entry.expectedDecision);
     }
-    for (const entry of fixture.cases.emergencyAntiReplay) {
+    for (let i = 0, len = fixture.cases.emergencyAntiReplay.length; i < len; i++) {
+      const entry = fixture.cases.emergencyAntiReplay[i];
       const candidate = emergencies[entry.candidate];
       const accepted = entry.accepted === null ? null : emergencies[entry.accepted];
       expect(
@@ -267,7 +275,8 @@ describe('configuration contract v1 golden fixture', () => {
       ).toBe(entry.expectedDecision);
     }
     expect(compareMonotonicVersions('9007199254740993', '9007199254740992')).toBeGreaterThan(0);
-    for (const value of fixture.cases.monotonicVersionErrors) {
+    for (let i = 0, len = fixture.cases.monotonicVersionErrors.length; i < len; i++) {
+      const value = fixture.cases.monotonicVersionErrors[i];
       expect(() => assertMonotonicVersion(value), value).toThrow('uint64');
     }
   });
@@ -291,7 +300,8 @@ describe('configuration contract v1 golden fixture', () => {
     expect(
       conditionMatches({ locale: 'k' }, { appVersion: '2.4.0', locale: 'K', os: 'windows' }),
     ).toBe(false);
-    for (const entry of fixture.cases.conditions) {
+    for (let i = 0, len = fixture.cases.conditions.length; i < len; i++) {
+      const entry = fixture.cases.conditions[i];
       expect(
         conditionMatches(
           entry.condition as OverrideCondition,
@@ -309,7 +319,8 @@ describe('configuration contract v1 golden fixture', () => {
   it('pins MurmurHash3 x86_32 UTF-8 and rollout boundaries', () => {
     expect(murmur3X86_32('', 0)).toBe(0);
     expect(murmur3X86_32('foo', 0)).toBe(4_138_058_784);
-    for (const entry of fixture.cases.rollouts) {
+    for (let i = 0, len = fixture.cases.rollouts.length; i < len; i++) {
+      const entry = fixture.cases.rollouts[i];
       expect(rolloutBucket(entry.salt, entry.deviceId), entry.salt).toBe(entry.expectedBucket);
       expect(rolloutMatches(entry.salt, entry.deviceId, entry.expectedBucket)).toBe(
         entry.expectedHitAtBoundary,

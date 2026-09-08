@@ -179,12 +179,15 @@ function CustomServerDialog({
 
   const submit = handleSubmit((form) => {
     const secretRows: Array<{ key: string; value: string; remove: boolean }> = [];
-    for (const row of form.secrets) {
+    for (let i = 0, len = form.secrets.length; i < len; i++) {
+      const row = form.secrets[i];
       const key = row.key.trim();
       if (key !== '') secretRows.push({ key, value: row.value, remove: row.remove });
     }
     const args: string[] = [];
-    for (const line of form.args.split('\n')) {
+    const argLines = form.args.split('\n');
+    for (let i = 0, len = argLines.length; i < len; i++) {
+      const line = argLines[i];
       const trimmed = line.trim();
       if (trimmed !== '') args.push(trimmed);
     }

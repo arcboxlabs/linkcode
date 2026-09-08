@@ -74,7 +74,10 @@ function fakeUtilityProcess(): FakeUtilityProcess {
       return this.on(event, listener);
     },
     emitExit(code) {
-      for (const listener of exitListeners) listener(code);
+      for (let i = 0, len = exitListeners.length; i < len; i++) {
+        const listener = exitListeners[i];
+        listener(code);
+      }
     },
   };
 }

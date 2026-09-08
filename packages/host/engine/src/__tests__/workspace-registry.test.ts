@@ -29,7 +29,10 @@ function makeTempDir(): string {
 }
 
 afterAll(() => {
-  for (const dir of tempRoots) rmSync(dir, { recursive: true, force: true });
+  for (let i = 0, len = tempRoots.length; i < len; i++) {
+    const dir = tempRoots[i];
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 beforeEach(() => {

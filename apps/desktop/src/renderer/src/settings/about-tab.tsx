@@ -2,8 +2,7 @@ import type { UpdaterStatus } from '@linkcode/ipc';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldLabel } from 'coss-ui/components/field';
 import { Progress, ProgressIndicator, ProgressTrack } from 'coss-ui/components/progress';
-import { useEffect } from 'foxact/use-abortable-effect';
-import { useState } from 'react';
+import useSWRImmutable from 'swr/immutable';
 import { useTranslations } from 'use-intl';
 import { systemBridge } from '../ipc';
 import { useUpdaterState } from '../updater';
@@ -19,14 +18,11 @@ const STATUS_KEYS = {
 
 export function AboutTab(): React.ReactNode {
   const t = useTranslations('settings.about');
-  const [version, setVersion] = useState('');
+  // The app version is constant for the process lifetime — fetch once, cache forever.
+  const { data: version } = useSWRImmutable('desktop:app-version', () =>
+    systemBridge.app.version(),
+  );
   const { progress, status } = useUpdaterState();
-
-  useEffect((signal) => {
-    void systemBridge.app.version().then((value) => {
-      if (!signal.aborted) setVersion(value);
-    });
-  }, []);
 
   const statusKey = status === 'idle' ? null : STATUS_KEYS[status];
   const progressPercent = progress === null ? null : Math.round(progress);

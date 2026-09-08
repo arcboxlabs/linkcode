@@ -26,7 +26,8 @@ export class WorkspaceRegistry {
     const records = await storeOperation('workspace.load', 'Failed to load workspaces', () =>
       this.store.load(),
     );
-    for (const record of records) {
+    for (let i = 0, len = records.length; i < len; i++) {
+      const record = records[i];
       this.index(record);
     }
   }

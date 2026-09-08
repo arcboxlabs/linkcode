@@ -146,7 +146,7 @@ async function verifyActivityRunHierarchy(page: Page): Promise<void> {
     );
     if (!(body instanceof HTMLElement)) throw new Error('Missing expanded activity body');
 
-    const children = [...body.children].map((row) => {
+    const children = Array.from(body.children, (row) => {
       const child = row.firstElementChild;
       if (!(child instanceof HTMLElement)) throw new Error('Missing activity child header');
       return {
@@ -192,7 +192,8 @@ async function verifyLongThreadVirtualization(page: Page): Promise<void> {
         }
       };
       const process = (records: MutationRecord[]): void => {
-        for (const record of records) {
+        for (let i = 0, len = records.length; i < len; i++) {
+          const record = records[i];
           for (const node of record.addedNodes) collect(node);
         }
       };

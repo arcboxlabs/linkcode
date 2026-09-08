@@ -6,6 +6,32 @@ function envelope(payload: unknown) {
 }
 
 describe('config wire schema — custom MCP servers', () => {
+  it('round-trips model protocol availability on config.get.result', () => {
+    const parsed = parseWireMessage(
+      envelope({
+        kind: 'config.get.result',
+        replyTo: 'request-1',
+        providers: {},
+        accounts: [
+          {
+            id: 'account-1',
+            label: 'Gateway',
+            credential: { type: 'api-key', key: 'sk-test' },
+            models: [
+              {
+                id: 'gpt-5',
+                protocols: ['openai-chat', 'openai-responses'],
+              },
+            ],
+            createdAt: 1,
+          },
+        ],
+        customMcpServers: [],
+      }),
+    );
+    expect(parsed.ok).toBe(true);
+  });
+
   it('round-trips a masked read projection on config.get.result', () => {
     const parsed = parseWireMessage(
       envelope({

@@ -56,7 +56,7 @@ function $pointFlatOffset(point: PointType): number {
   if (!$isElementNode(node)) throw new Error('Element selection point must reference an element');
   let offset = $flatOffsetOfNode(node);
   const children = node.getChildren();
-  for (let i = 0; i < point.offset && i < children.length; i++) {
+  for (let i = 0, len = children.length; i < point.offset && i < len; i++) {
     offset += flatTextContribution(children[i], i < children.length - 1);
   }
   return offset;
@@ -210,7 +210,11 @@ function $collectDirectives(node: LexicalNode, output: EditorDirective[]): void 
     return;
   }
   if (!$isElementNode(node)) return;
-  for (const child of node.getChildren()) $collectDirectives(child, output);
+  const children = node.getChildren();
+  for (let i = 0, len = children.length; i < len; i++) {
+    const child = children[i];
+    $collectDirectives(child, output);
+  }
 }
 
 /** Classify directive placement independently from catalog validity. AgentInput can represent
@@ -218,7 +222,11 @@ function $collectDirectives(node: LexicalNode, output: EditorDirective[]): void 
 export function $analyzeDirectives(): DirectiveAnalysis {
   const root = $getRoot();
   const directives: EditorDirective[] = [];
-  for (const child of root.getChildren()) $collectDirectives(child, directives);
+  const rootChildren = root.getChildren();
+  for (let i = 0, len = rootChildren.length; i < len; i++) {
+    const child = rootChildren[i];
+    $collectDirectives(child, directives);
+  }
 
   if (directives.length === 0) {
     return { blockedKeys: [], composition: { kind: 'none' }, leading: null };

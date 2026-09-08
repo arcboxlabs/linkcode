@@ -59,7 +59,7 @@ export async function importHistoryGroup({
   inFlight.add(inFlightKey);
   try {
     const settled: Array<PromiseSettledResult<SessionId>> = [];
-    for (let start = 0; start < entries.length; start += GROUP_IMPORT_CONCURRENCY) {
+    for (let start = 0, len = entries.length; start < len; start += GROUP_IMPORT_CONCURRENCY) {
       const batch = entries.slice(start, start + GROUP_IMPORT_CONCURRENCY);
       appendArrayInPlace(
         settled,
@@ -67,7 +67,8 @@ export async function importHistoryGroup({
       );
     }
     const result: HistoryGroupImportResult = { imported: [], failures: [] };
-    for (const [index, outcome] of settled.entries()) {
+    for (let index = 0, len = settled.length; index < len; index++) {
+      const outcome = settled[index];
       const entry = entries[index];
       if (outcome.status === 'fulfilled') result.imported.push(entry.historyId);
       else result.failures.push({ historyId: entry.historyId, error: outcome.reason });
@@ -169,7 +170,8 @@ function currentImportingIds(
   importingKeys: ReadonlySet<string>,
 ): ReadonlySet<AgentHistoryId> {
   const ids = new Set<AgentHistoryId>();
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (importingKeys.has(importKey(entry.kind, entry.historyId))) ids.add(entry.historyId);
   }
   return ids;
@@ -181,7 +183,8 @@ function currentImportingCwds(
   importingGroupKeys: ReadonlySet<string>,
 ): ReadonlySet<string> {
   const cwds = new Set<string>();
-  for (const entry of entries) {
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const entry = entries[i];
     if (entry.cwd && importingGroupKeys.has(importKey(kind, entry.cwd))) cwds.add(entry.cwd);
   }
   return cwds;

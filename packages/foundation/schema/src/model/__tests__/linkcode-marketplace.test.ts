@@ -58,7 +58,9 @@ describe('LinkCode marketplace contracts', () => {
   });
 
   it('rejects insecure remote sources and duplicate local marketplace ids', () => {
-    for (const url of ['http://example.com/index.json', 'https:example.com/index.json']) {
+    const insecureUrls = ['http://example.com/index.json', 'https:example.com/index.json'];
+    for (let i = 0, len = insecureUrls.length; i < len; i++) {
+      const url = insecureUrls[i];
       expect(
         LinkCodeMarketplaceConfigListSchema.safeParse([marketplace('community', url)]).success,
       ).toBe(false);

@@ -9,6 +9,7 @@ export {
   endpointServiceById,
   LINKCODE_GATEWAY_SERVICE_ID,
   modelListSource,
+  modelListSourceForProtocol,
   SERVICE_CATALOG,
   serviceById,
 } from './catalog';

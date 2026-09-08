@@ -19,7 +19,8 @@ export function reflectedStartupSelection(
 ): NewSessionSelection {
   let reflectedModel: string | undefined;
   let reflectedEffort: EffortLevel | undefined;
-  for (const { event } of events) {
+  for (let i = 0, len = events.length; i < len; i++) {
+    const { event } = events[i];
     if (event.type === 'model-update') reflectedModel = event.model;
     else if (event.type === 'effort-update') reflectedEffort = event.effort;
   }

@@ -32,7 +32,9 @@ describe('executableSearchLocations', () => {
 
   it('yields only absolute candidate paths', () => {
     vi.stubEnv('PATH', ['relative/bin', ''].join(delimiter));
-    for (const location of executableSearchLocations('tool')) {
+    const locations = executableSearchLocations('tool');
+    for (let i = 0, len = locations.length; i < len; i++) {
+      const location = locations[i];
       expect(isAbsolute(location)).toBe(true);
     }
   });

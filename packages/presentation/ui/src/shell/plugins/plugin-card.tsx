@@ -187,7 +187,8 @@ function ComponentSummary({
 }): React.ReactNode {
   const t = useTranslations('settings.plugins');
   const parts: string[] = [];
-  for (const kind of COMPONENT_KIND_ORDER) {
+  for (let i = 0, len = COMPONENT_KIND_ORDER.length; i < len; i++) {
+    const kind = COMPONENT_KIND_ORDER[i];
     const count = counts[kind];
     if (count !== undefined && count > 0) {
       parts.push(t(`componentCount.${kind}`, { count }));

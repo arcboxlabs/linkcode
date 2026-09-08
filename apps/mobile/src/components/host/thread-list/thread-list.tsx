@@ -5,7 +5,7 @@ import type { ThreadGroup } from '@linkcode/ui/native';
 import { useEffect, useState } from 'react';
 import { ThreadRow } from './thread-row';
 
-const MINUTE = 60_000;
+const MINUTE = 60000;
 
 /** The thread inbox body: one collapsible section per group. Grouping is decided by the
  *  caller — this only renders it. Collapsed keys live here because the state is presentational:

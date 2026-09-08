@@ -6,6 +6,7 @@ import process from 'node:process';
 import { promisify } from 'node:util';
 import { executableSearchLocations } from '@linkcode/common/node';
 import type { AgentAuthStatus } from '@linkcode/schema';
+import { split0th } from 'foxts/split-nth';
 
 const execFileAsync = promisify(execFile);
 
@@ -43,7 +44,7 @@ export abstract class AgentCliProbe {
    * because the SDKs' `exports` maps reject bare CJS resolution outright.
    */
   sdkPlatformPackagePresent(): boolean {
-    const scope = this.sdkPackage.split('/', 1)[0];
+    const scope = split0th(this.sdkPackage, '/');
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
     return paths.some((dir) => existsSync(join(dir, scope, this.platformPackageBase())));
   }
@@ -54,9 +55,10 @@ export abstract class AgentCliProbe {
    * is nested elsewhere (codex vendors under `vendor/` and resolves its own path).
    */
   sdkPlatformBinaryPath(): string | undefined {
-    const scope = this.sdkPackage.split('/', 1)[0];
+    const scope = split0th(this.sdkPackage, '/');
     const paths = createRequire(import.meta.url).resolve.paths(this.sdkPackage) ?? [];
-    for (const dir of paths) {
+    for (let i = 0, len = paths.length; i < len; i++) {
+      const dir = paths[i];
       const candidate = join(dir, scope, this.platformPackageBase(), this.binaryName());
       if (existsSync(candidate)) return candidate;
     }
@@ -100,7 +102,9 @@ export abstract class AgentCliProbe {
 
   /** Probe the known install locations in order; the first verified install wins. */
   async detect(): Promise<DetectedAgentRuntime | undefined> {
-    for (const location of this.knownLocations()) {
+    const locations = this.knownLocations();
+    for (let i = 0, len = locations.length; i < len; i++) {
+      const location = locations[i];
       // eslint-disable-next-line no-await-in-loop -- locations are a precedence list; the first verified install wins
       const runtime = await this.probeAt(location);
       if (runtime) return runtime;

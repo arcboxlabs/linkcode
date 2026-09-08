@@ -59,7 +59,8 @@ export function useHistoryImportSurface(
   const imported = importedSessionByHistoryId(sessions.sessions);
   const importErrors = new Map<AgentHistoryId, string>();
   const groupImportFailures = new Map<string, { imported: number; total: number }>();
-  for (const entry of history.entries) {
+  for (let i = 0, len = history.entries.length; i < len; i++) {
+    const entry = history.entries[i];
     const entryError = importErrorsByKey.get(historyStateKey(entry.kind, entry.historyId));
     if (entryError !== undefined) importErrors.set(entry.historyId, entryError);
     if (!entry.cwd) continue;
@@ -130,7 +131,8 @@ export function useHistoryImportSurface(
       if (result.failures.length === 0) return;
       setImportErrorsByKey((current) => {
         const next = new Map(current);
-        for (const failure of result.failures) {
+        for (let i = 0, len = result.failures.length; i < len; i++) {
+          const failure = result.failures[i];
           next.set(historyStateKey(kind, failure.historyId), errorMessage(failure.error));
         }
         return next;
@@ -198,7 +200,10 @@ function withoutMapKey<K, V>(map: ReadonlyMap<K, V>, key: K): ReadonlyMap<K, V> 
 function withoutMapKeys<K, V>(map: ReadonlyMap<K, V>, keys: readonly K[]): ReadonlyMap<K, V> {
   if (!keys.some((key) => map.has(key))) return map;
   const next = new Map(map);
-  for (const key of keys) next.delete(key);
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const key = keys[i];
+    next.delete(key);
+  }
   return next;
 }
 

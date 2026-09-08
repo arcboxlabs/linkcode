@@ -66,6 +66,31 @@ describe('enabledAccountModels', () => {
     expect(enabledAccountModels([sub], {}, 'claude-code')).toHaveLength(1);
   });
 
+  it("narrows a picked model to the protocols it is known to answer, for the agent's actual binding", () => {
+    const gateway = account('acc_gw', {
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-test' },
+      models: [
+        { id: 'openai/gpt-5.6', protocols: ['openai-chat', 'openai-responses'] },
+        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat', 'anthropic'] },
+        // Probed before `protocols` existed, or never probed — absence must still offer it.
+        { id: 'openai/gpt-4.1' },
+      ],
+    });
+    // codex binds this account on openai-responses: only the model tagged for it survives, plus
+    // the one with no protocol data at all.
+    expect(enabledAccountModels([gateway], {}, 'codex').map(({ model }) => model.id)).toEqual([
+      'openai/gpt-5.6',
+      'openai/gpt-4.1',
+    ]);
+    // opencode falls through to the account's own native anthropic wire (no knownProvider pins it
+    // elsewhere), so only the model actually tagged for it, plus the untagged one, survive.
+    expect(enabledAccountModels([gateway], {}, 'opencode').map(({ model }) => model.id)).toEqual([
+      'anthropic/claude-sonnet-5',
+      'openai/gpt-4.1',
+    ]);
+  });
+
   it('reports an account with no picked model as offering nothing, not as unavailable', () => {
     expect(enabledAccountModels([account('acc_empty')], {}, 'opencode')).toEqual([]);
     expect(accountEnabledFor({}, 'opencode', 'acc_empty')).toBe(true);

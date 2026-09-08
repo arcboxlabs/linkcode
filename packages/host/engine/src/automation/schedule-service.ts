@@ -405,7 +405,7 @@ export class ScheduleService {
   }
 
   private settleTasks(): Effect.Effect<void> {
-    return Effect.asVoid(Effect.all([...this.inFlight].map((fiber) => Fiber.await(fiber))));
+    return Effect.asVoid(Effect.all(Array.from(this.inFlight, (fiber) => Fiber.await(fiber))));
   }
 
   /** Bookkeeping once a run settles: count scheduled runs toward maxRuns; record lastRunAt. */

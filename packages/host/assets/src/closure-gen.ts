@@ -24,6 +24,8 @@ export interface GenerateClosureOptions {
   entry: string;
 }
 
+const collator = new Intl.Collator();
+
 interface LockfileSnapshot {
   dependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
@@ -79,11 +81,17 @@ function collectNodes(lockfile: Lockfile, rootKey: string): Map<string, ClosureN
     if (!integrity) throw new Error(`no integrity recorded for ${name}@${version}`);
     const snapshot = snapshots[key] ?? {};
     const deps = new Map<string, string>();
-    for (const source of [snapshot.dependencies, snapshot.optionalDependencies]) {
-      for (const [depName, depVersion] of Object.entries(source ?? {})) {
-        const childKey = `${depName}@${depVersion}`;
-        deps.set(depName, childKey);
-        queue.push(childKey);
+    const depSources = [snapshot.dependencies, snapshot.optionalDependencies];
+    for (let i = 0, len = depSources.length; i < len; i++) {
+      const source = depSources[i];
+      if (source != null) {
+        const depEntries = Object.entries(source);
+        for (let j = 0, entryCount = depEntries.length; j < entryCount; j++) {
+          const [depName, depVersion] = depEntries[j];
+          const childKey = `${depName}@${depVersion}`;
+          deps.set(depName, childKey);
+          queue.push(childKey);
+        }
       }
     }
     nodes.set(key, {
@@ -171,7 +179,7 @@ export function generateClosure(options: GenerateClosureOptions): NpmClosure {
   const closure = {
     version: parseSnapshotKey(rootKeys[0]).version,
     entry: options.entry,
-    packages: [...placements.values()].sort((a, b) => a.path.localeCompare(b.path)),
+    packages: [...placements.values()].sort((a, b) => collator.compare(a.path, b.path)),
   };
   return {
     ...closure,

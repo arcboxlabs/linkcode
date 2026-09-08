@@ -16,7 +16,8 @@ function itemParentId(item: ConversationItem): string | undefined {
 
 export function partitionSubagentItems(items: readonly ConversationItem[]): SubagentPartition {
   const taskIds = new Set<string>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     if (item.kind === 'tool' && item.toolCall.kind === 'task') {
       taskIds.add(item.toolCall.toolCallId);
     }
@@ -24,7 +25,8 @@ export function partitionSubagentItems(items: readonly ConversationItem[]): Suba
 
   const topLevel: ConversationItem[] = [];
   const childrenByParent = new Map<string, ConversationItem[]>();
-  for (const item of items) {
+  for (let i = 0, len = items.length; i < len; i++) {
+    const item = items[i];
     const parent = itemParentId(item);
     if (parent === undefined || !taskIds.has(parent)) {
       topLevel.push(item);

@@ -519,7 +519,8 @@ describe('engine interactive requests', () => {
         }),
       ),
     );
-    for (const [index, testCase] of invalid.entries()) {
+    for (let index = 0, len = invalid.length; index < len; index++) {
+      const testCase = invalid[index];
       const replyTo = `invalid-${index}`;
       const failure = sent.find(
         (payload) => payload.kind === 'request.failed' && payload.replyTo === replyTo,

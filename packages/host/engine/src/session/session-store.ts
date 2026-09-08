@@ -12,7 +12,7 @@ export class InMemorySessionStore implements SessionStore {
   private readonly records = new Map<SessionId, SessionRecord>();
 
   load(): Promise<SessionRecord[]> {
-    return Promise.resolve([...this.records.values()].map((record) => structuredClone(record)));
+    return Promise.resolve(Array.from(this.records.values(), (record) => structuredClone(record)));
   }
 
   save(record: SessionRecord): Promise<void> {

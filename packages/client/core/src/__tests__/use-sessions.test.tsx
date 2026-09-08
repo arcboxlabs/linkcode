@@ -4,7 +4,6 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage, pong } from '@linkcode/transport';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { noop } from 'foxact/noop';
-import type * as React from 'react';
 import { expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
 import { LinkCodeProvider, useSessions } from '../react';
@@ -148,7 +147,9 @@ it('coalesces a burst of changes into one refetch behind the one in flight', asy
   const afterSeed = transport.listCalls;
 
   transport.sessions = [session('sess-a', 1), session('sess-b', 2)];
-  for (const reason of ['created', 'updated', 'updated'] as const) {
+  const reasons = ['created', 'updated', 'updated'] as const;
+  for (let i = 0, len = reasons.length; i < len; i++) {
+    const reason = reasons[i];
     transport.receive({ kind: 'session.changed', sessionId: 'sess-b' as SessionId, reason });
   }
 

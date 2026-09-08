@@ -30,18 +30,26 @@ interface DetailRow {
  * fields through `locations`/`content`, and the model keeps the rest. */
 function detailRows(toolCall: ToolCallUpdate): DetailRow[] {
   const rows: DetailRow[] = [];
-  for (const location of toolCall.locations ?? []) {
-    rows.push({ key: `loc:${location.path}`, value: location.path });
+  if (toolCall.locations != null) {
+    for (let i = 0, len = toolCall.locations.length; i < len; i++) {
+      const location = toolCall.locations[i];
+      rows.push({ key: `loc:${location.path}`, value: location.path });
+    }
   }
-  for (const content of toolCall.content ?? []) {
-    if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
-      rows.push({ key: `diff:${content.path}`, value: content.path });
+  if (toolCall.content != null) {
+    for (let i = 0, len = toolCall.content.length; i < len; i++) {
+      const content = toolCall.content[i];
+      if (content.type === 'diff' && !rows.some((row) => row.value === content.path)) {
+        rows.push({ key: `diff:${content.path}`, value: content.path });
+      }
     }
   }
   const input = toolCall.rawInput;
   if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
     const record = input as Record<string, unknown>;
-    for (const key of ['file_path', 'path', 'notebook_path', 'filePath']) {
+    const pathKeys = ['file_path', 'path', 'notebook_path', 'filePath'];
+    for (let i = 0, len = pathKeys.length; i < len; i++) {
+      const key = pathKeys[i];
       const value = record[key];
       if (typeof value === 'string' && !rows.some((row) => row.value === value)) {
         rows.push({ key: `path:${key}`, value });

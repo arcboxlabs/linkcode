@@ -50,7 +50,7 @@ export function useSimulatorAgentActivity(
         const at = { x: activity.x, y: activity.y };
         setPoint(at);
         clearTimeout(pointTimer);
-        pointTimer = setTimeout(() => setPoint(null), POINTER_MS);
+        pointTimer = setTimeout(setPoint, POINTER_MS, null);
       }
       if (activity.phase === 'started') {
         inflight += 1;
@@ -61,7 +61,7 @@ export function useSimulatorAgentActivity(
       inflight = Math.max(0, inflight - 1);
       if (inflight === 0) {
         clearTimeout(clearTimer);
-        clearTimer = setTimeout(() => setActive(false), LINGER_MS);
+        clearTimer = setTimeout(setActive, LINGER_MS, false);
       }
     });
     return () => {

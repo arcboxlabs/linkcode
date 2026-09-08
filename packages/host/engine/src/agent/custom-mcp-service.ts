@@ -44,7 +44,8 @@ export class CustomMcpServerService {
   applyPatch(ops: CustomMcpServerPatchOp[]): Effect.Effect<void, RequestError | OperationError> {
     return Effect.suspend((): Effect.Effect<void, RequestError | OperationError> => {
       let next = [...this.store.getCustomMcpServers()];
-      for (const op of ops) {
+      for (let i = 0, len = ops.length; i < len; i++) {
+        const op = ops[i];
         switch (op.op) {
           case 'add': {
             if (next.some((entry) => entry.id === op.server.id)) {
@@ -178,7 +179,9 @@ function applySecretPatch(
   if (!patch) return current;
   const removed = new Set(patch.remove);
   const next: Record<string, string> = {};
-  for (const [key, value] of Object.entries({ ...current, ...patch.set })) {
+  const merged = Object.entries({ ...current, ...patch.set });
+  for (let i = 0, len = merged.length; i < len; i++) {
+    const [key, value] = merged[i];
     if (!removed.has(key)) next[key] = value;
   }
   return isObjectEmpty(next) ? undefined : next;

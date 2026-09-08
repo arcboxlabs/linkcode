@@ -4,7 +4,7 @@ import { relativeTimeLabel } from '../shell/relative-time';
 
 describe('repositoryLabel', () => {
   it('uses the final path segment for POSIX and Windows repository labels', () => {
-    const backslash = String.fromCodePoint(92);
+    const backslash = String.fromCharCode(92);
     const windowsAppPath = ['C:', 'repo', 'app'].join(backslash);
     const windowsAppPathWithTrailingSeparator = `${windowsAppPath}${backslash}`;
     const windowsRoot = `C:${backslash}`;

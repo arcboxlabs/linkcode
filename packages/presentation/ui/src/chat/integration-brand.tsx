@@ -69,7 +69,9 @@ const RE_SERVER_TOKEN_BOUNDARY = /[^a-z0-9]+/;
 /** MCP server names are user-chosen config keys (`linear`, `claude_ai_Gmail`, opaque ids) —
  * token-match them against the known brands; no match means no branding. */
 export function integrationBrand(server: string): IntegrationBrand | undefined {
-  for (const token of server.toLowerCase().split(RE_SERVER_TOKEN_BOUNDARY)) {
+  const tokens = server.toLowerCase().split(RE_SERVER_TOKEN_BOUNDARY);
+  for (let i = 0, len = tokens.length; i < len; i++) {
+    const token = tokens[i];
     // Own-key check: `in` would also match prototype keys ("constructor" is a valid token).
     if (Object.hasOwn(INTEGRATION_GLYPHS, token)) return token as IntegrationBrand;
   }

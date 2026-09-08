@@ -1,6 +1,7 @@
+import { useEffect } from 'foxact/use-abortable-effect';
 import { useLayoutEffect } from 'foxact/use-isomorphic-layout-effect';
 import { useStableHandler } from 'foxact/use-stable-handler-only-when-you-know-what-you-are-doing-or-you-will-be-fired';
-import { useEffect, useEffectEvent, useSyncExternalStore } from 'react';
+import { useEffectEvent, useSyncExternalStore } from 'react';
 import type { KeyboardPlatform, KeyboardShortcuts } from './registry';
 import { createKeyboardShortcutRegistry } from './registry';
 
@@ -19,19 +20,15 @@ export function setKeyboardShortcutPlatform(platform: KeyboardPlatform): void {
 }
 
 export function useKeyboardShortcutListener(): void {
-  useEffect(() => {
+  useEffect((signal) => {
     const capture = (event: KeyboardEvent): void => {
       keyboardShortcutRegistry.dispatch(event, true);
     };
     const bubble = (event: KeyboardEvent): void => {
       keyboardShortcutRegistry.dispatch(event, false);
     };
-    window.addEventListener('keydown', capture, { capture: true });
-    window.addEventListener('keydown', bubble);
-    return () => {
-      window.removeEventListener('keydown', capture, { capture: true });
-      window.removeEventListener('keydown', bubble);
-    };
+    window.addEventListener('keydown', capture, { capture: true, signal });
+    window.addEventListener('keydown', bubble, { signal });
   }, []);
 }
 

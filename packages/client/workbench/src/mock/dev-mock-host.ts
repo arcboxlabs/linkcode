@@ -263,7 +263,9 @@ export class DevMockHost {
   /** Staged download: throttled progress → settled → correlated reply → runtime re-probe push. */
   private async ensureAsset(clientReqId: string, id: ManagedAssetId): Promise<void> {
     const totalBytes = 66 * 1_048_576;
-    for (const fraction of [0.04, 0.19, 0.42, 0.68, 0.91]) {
+    const fractions = [0.04, 0.19, 0.42, 0.68, 0.91];
+    for (let i = 0, len = fractions.length; i < len; i++) {
+      const fraction = fractions[i];
       this.send({
         kind: 'asset.progress',
         id,
@@ -300,7 +302,8 @@ export class DevMockHost {
       void this.handle(msg);
     });
     const now = Date.now();
-    for (const { ageMs, resources, workspaceKind, ...seed } of SEED_SESSIONS) {
+    for (let i = 0, len = SEED_SESSIONS.length; i < len; i++) {
+      const { ageMs, resources, workspaceKind, ...seed } = SEED_SESSIONS[i];
       const createdAt = now - ageMs;
       const session = this.addSession({ ...seed, createdAt, updatedAt: createdAt });
       this.seedResources(session.sessionId, now, resources ?? []);
@@ -322,7 +325,7 @@ export class DevMockHost {
         this.send({
           kind: 'session.listed',
           replyTo: p.clientReqId,
-          sessions: [...this.sessions.values()].map((session) => toSessionInfo(session)),
+          sessions: Array.from(this.sessions.values(), (session) => toSessionInfo(session)),
         });
         // Start after the list reply so the UI can subscribe before scripted frames arrive.
         this.startShowcase();
@@ -443,7 +446,8 @@ export class DevMockHost {
           this.sendFailure(p.clientReqId, 'plugin management is not supported');
           break;
         }
-        for (const installation of plugin.installations) {
+        for (let i = 0, len = plugin.installations.length; i < len; i++) {
+          const installation = plugin.installations[i];
           if (p.scope === undefined || installation.scope === p.scope) {
             installation.enabled = p.enabled;
           }
@@ -530,7 +534,7 @@ export class DevMockHost {
                   ...branchList,
                   branches: [
                     ...branchList.branches,
-                    ...[...created].map((name) => ({
+                    ...Array.from(created, (name) => ({
                       name,
                       isCurrent: false,
                       lastCommitAt: Date.now(),
@@ -705,7 +709,7 @@ export class DevMockHost {
         this.send({
           kind: 'terminal.listed',
           replyTo: p.clientReqId,
-          terminals: [...this.terminals.values()].map((terminal) => terminal.metadata),
+          terminals: Array.from(this.terminals.values(), (terminal) => terminal.metadata),
         });
         break;
       case 'terminal.open':
@@ -780,7 +784,8 @@ export class DevMockHost {
     now: number,
     seeds: readonly SeedSessionResource[],
   ): void {
-    for (const { ageMs, ...seed } of seeds) {
+    for (let i = 0, len = seeds.length; i < len; i++) {
+      const { ageMs, ...seed } = seeds[i];
       const timestamp = now - ageMs;
       const resource: SessionResource = {
         ...seed,
@@ -1282,17 +1287,20 @@ export class DevMockHost {
 
     const messageId = this.nextMessageId('mock-message');
     const reply = `${MOCK_REPLY}\n\nModel: ${session.model ?? 'mock-default'}\nYou said: ${text || '(empty prompt)'}`;
-    for (const chunk of reply.match(WORD_CHUNK_PATTERN) ?? []) {
-      // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
-      if (await cancelledAfter(CHUNK_LATENCY_MS)) {
-        this.sendSuccess(replyTo);
-        return;
+    const chunks = reply.match(WORD_CHUNK_PATTERN);
+    if (chunks != null) {
+      for (let i = 0, len = chunks.length; i < len; i++) {
+        // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
+        if (await cancelledAfter(CHUNK_LATENCY_MS)) {
+          this.sendSuccess(replyTo);
+          return;
+        }
+        this.emit(session.sessionId, {
+          type: 'agent-message-chunk',
+          messageId,
+          content: textBlock(chunks[i]),
+        });
       }
-      this.emit(session.sessionId, {
-        type: 'agent-message-chunk',
-        messageId,
-        content: textBlock(chunk),
-      });
     }
     this.emit(session.sessionId, {
       type: 'token-usage',
@@ -1312,7 +1320,9 @@ export class DevMockHost {
     for (const session of this.sessions.values()) {
       if (!session.longThread || session.longThreadSeeded) continue;
       session.longThreadSeeded = true;
-      for (const event of createLongThreadScript((slug) => this.nextMessageId(slug))) {
+      const script = createLongThreadScript((slug) => this.nextMessageId(slug));
+      for (let i = 0, len = script.length; i < len; i++) {
+        const event = script[i];
         this.emit(session.sessionId, event);
       }
     }
@@ -1428,10 +1438,10 @@ export class DevMockHost {
       ...toolEvents(bursts.activityRun.afterTask),
     ];
 
-    for (const event of script) {
+    for (let i = 0, len = script.length; i < len; i++) {
       // eslint-disable-next-line no-await-in-loop -- the showcase script emits step by step on purpose.
       if (!(await waitForShowcaseStep(session, epoch))) return false;
-      this.emit(session.sessionId, event);
+      this.emit(session.sessionId, script[i]);
     }
     if (!(await waitForShowcaseStep(session, epoch))) return false;
     this.writeTerminal(terminalId, SHOWCASE_TERMINAL_START_OUTPUT);
@@ -1440,7 +1450,8 @@ export class DevMockHost {
       toolCall: SHOWCASE_QUESTION.toolCall,
     });
     if (!(await this.emitShowcaseEvent(session, epoch, SHOWCASE_QUESTION))) return false;
-    for (const permission of SHOWCASE_PERMISSIONS) {
+    for (let i = 0, len = SHOWCASE_PERMISSIONS.length; i < len; i++) {
+      const permission = SHOWCASE_PERMISSIONS[i];
       this.permissions.set(permission.requestId, {
         sessionId: session.sessionId,
         toolCall: permission.toolCall,
@@ -1509,15 +1520,18 @@ export class DevMockHost {
       content: SHOWCASE_STREAM_THOUGHT_CONTENT,
     });
 
-    for (const chunk of SHOWCASE_STREAM_REPLY.match(WORD_CHUNK_PATTERN) ?? []) {
-      // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
-      await wait(SHOWCASE_STREAM_CHUNK_LATENCY_MS);
-      if (!isRunningTurn(session, epoch)) return;
-      this.emit(session.sessionId, {
-        type: 'agent-message-chunk',
-        messageId,
-        content: textBlock(chunk),
-      });
+    const streamChunks = SHOWCASE_STREAM_REPLY.match(WORD_CHUNK_PATTERN);
+    if (streamChunks != null) {
+      for (let i = 0, len = streamChunks.length; i < len; i++) {
+        // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
+        await wait(SHOWCASE_STREAM_CHUNK_LATENCY_MS);
+        if (!isRunningTurn(session, epoch)) return;
+        this.emit(session.sessionId, {
+          type: 'agent-message-chunk',
+          messageId,
+          content: textBlock(streamChunks[i]),
+        });
+      }
     }
     this.writeTerminal(terminalId, SHOWCASE_TERMINAL_EXIT_OUTPUT);
     this.emit(session.sessionId, {
@@ -1759,7 +1773,8 @@ function applyCustomMcpPatches(
   ops: readonly CustomMcpServerPatchOp[],
 ): CustomMcpServer[] {
   let next = structuredClone(current);
-  for (const op of ops) {
+  for (let i = 0, len = ops.length; i < len; i++) {
+    const op = ops[i];
     switch (op.op) {
       case 'add':
         next.push(structuredClone(op.server));
@@ -1797,7 +1812,9 @@ function applyMockSecretPatch(
   if (!patch) return current;
   const removed = new Set(patch.remove);
   const next: Record<string, string> = {};
-  for (const [key, value] of Object.entries({ ...current, ...patch.set })) {
+  const entries = Object.entries({ ...current, ...patch.set });
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, value] = entries[i];
     if (!removed.has(key)) next[key] = value;
   }
   return next;

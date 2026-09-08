@@ -30,7 +30,10 @@ class FakePtyProcess implements PtyProcess {
   }
   write(data: string): void {
     this.writes.push(data);
-    for (const cb of this.dataCbs) cb(data);
+    for (let i = 0, len = this.dataCbs.length; i < len; i++) {
+      const cb = this.dataCbs[i];
+      cb(data);
+    }
   }
   resize(cols: number, rows: number): void {
     this.resizes.push({ cols, rows });
@@ -40,15 +43,24 @@ class FakePtyProcess implements PtyProcess {
   }
   kill(): void {
     this.killed = true;
-    for (const cb of this.exitCbs) cb(0);
+    for (let i = 0, len = this.exitCbs.length; i < len; i++) {
+      const cb = this.exitCbs[i];
+      cb(0);
+    }
   }
 
   emitData(data: string): void {
-    for (const cb of this.dataCbs) cb(data);
+    for (let i = 0, len = this.dataCbs.length; i < len; i++) {
+      const cb = this.dataCbs[i];
+      cb(data);
+    }
   }
 
   emitExit(exitCode: number | null): void {
-    for (const cb of this.exitCbs) cb(exitCode);
+    for (let i = 0, len = this.exitCbs.length; i < len; i++) {
+      const cb = this.exitCbs[i];
+      cb(exitCode);
+    }
   }
 }
 

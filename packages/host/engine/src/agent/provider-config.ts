@@ -88,6 +88,7 @@ function accountConfigBundle(
   if (binding.baseUrl !== undefined) bundle.baseUrl = binding.baseUrl;
   if (binding.protocol !== undefined) bundle.protocol = binding.protocol;
   if (binding.knownProvider !== undefined) bundle.knownProvider = binding.knownProvider;
+  if (binding.providerEnv !== undefined) bundle.providerEnv = binding.providerEnv;
   if (extraEnv) bundle.extraEnv = extraEnv;
   return { bundle };
 }

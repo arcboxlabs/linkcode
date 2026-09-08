@@ -135,12 +135,16 @@ export function editorTargets(
 ): EditorTarget[] {
   const targets: EditorTarget[] = [];
   if (platform !== 'win32' && candidate.cli !== undefined) {
-    for (const file of executableSearchLocations(candidate.cli)) {
+    const files = executableSearchLocations(candidate.cli);
+    for (let i = 0, len = files.length; i < len; i++) {
+      const file = files[i];
       targets.push({ kind: 'executable', file });
     }
   }
   if (platform === 'darwin' && candidate.macApp !== undefined) {
-    for (const root of ['/Applications', join(homedir(), 'Applications')]) {
+    const roots = ['/Applications', join(homedir(), 'Applications')];
+    for (let i = 0, len = roots.length; i < len; i++) {
+      const root = roots[i];
       targets.push({
         kind: 'mac-app',
         bundle: join(root, candidate.macApp),
@@ -149,7 +153,9 @@ export function editorTargets(
     }
   }
   if (platform === 'win32' && candidate.windowsExe !== undefined) {
-    for (const root of windowsProgramRoots()) {
+    const roots = windowsProgramRoots();
+    for (let i = 0, len = roots.length; i < len; i++) {
+      const root = roots[i];
       targets.push({ kind: 'executable', file: join(root, candidate.windowsExe) });
     }
   }

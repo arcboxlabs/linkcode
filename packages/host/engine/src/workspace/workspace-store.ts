@@ -12,7 +12,7 @@ export class InMemoryWorkspaceStore implements WorkspaceStore {
   private readonly records = new Map<WorkspaceId, WorkspaceRecord>();
 
   load(): Promise<WorkspaceRecord[]> {
-    return Promise.resolve([...this.records.values()].map((record) => structuredClone(record)));
+    return Promise.resolve(Array.from(this.records.values(), (record) => structuredClone(record)));
   }
 
   save(record: WorkspaceRecord): Promise<void> {

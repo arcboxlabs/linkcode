@@ -148,13 +148,17 @@ describe('model probe network boundary', () => {
   });
 
   it('re-permits only the ranges a fake-IP tunnel mints from', () => {
-    for (const address of ['198.18.16.15', '198.19.255.255', '203.0.113.9']) {
+    const permitted = ['198.18.16.15', '198.19.255.255', '203.0.113.9'];
+    for (let i = 0, len = permitted.length; i < len; i++) {
+      const address = permitted[i];
       expect(PROBE_POLICY.allowedAddresses.check(address, 'ipv4')).toBe(true);
     }
     expect(PROBE_POLICY.allowedAddresses.check('fc00::1', 'ipv6')).toBe(true);
     // Real ULA is assigned out of `fd00::/8` (Tailscale, Docker) and must stay unreachable.
     expect(PROBE_POLICY.allowedAddresses.check('fd00::1', 'ipv6')).toBe(false);
-    for (const address of ['127.0.0.1', '192.168.1.1', '169.254.169.254', '168.63.129.16']) {
+    const denied = ['127.0.0.1', '192.168.1.1', '169.254.169.254', '168.63.129.16'];
+    for (let i = 0, len = denied.length; i < len; i++) {
+      const address = denied[i];
       expect(PROBE_POLICY.allowedAddresses.check(address, 'ipv4')).toBe(false);
       expect(PROBE_POLICY.deniedAddresses.check(address, 'ipv4')).toBe(true);
     }

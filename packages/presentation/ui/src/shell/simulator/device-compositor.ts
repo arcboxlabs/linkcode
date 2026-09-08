@@ -57,12 +57,14 @@ export function paintChassis(
   // Side buttons first, so the chassis paints over their inner halves.
   context.fillStyle = RIM_COLOR;
   const buttonWidth = buttonDepth * 3;
-  for (const [top, size] of LEFT_BUTTONS) {
+  for (let i = 0, len = LEFT_BUTTONS.length; i < len; i++) {
+    const [top, size] = LEFT_BUTTONS[i];
     context.beginPath();
     context.roundRect(0, pad + top * screenH, buttonWidth, size * screenH, buttonDepth);
     context.fill();
   }
-  for (const [top, size] of RIGHT_BUTTONS) {
+  for (let i = 0, len = RIGHT_BUTTONS.length; i < len; i++) {
+    const [top, size] = RIGHT_BUTTONS[i];
     context.beginPath();
     context.roundRect(
       width - buttonWidth,

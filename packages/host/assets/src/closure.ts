@@ -5,6 +5,8 @@
  * out; it never resolves versions, never runs install scripts, never mutates an installed tree.
  */
 
+import { split1st } from 'foxts/split-nth';
+
 /** One package of the closure: exact bytes (lockfile SRI) at a fixed layout position. */
 export interface ClosurePackage {
   name: string;
@@ -57,7 +59,7 @@ export function npmTarballUrls(
   version: string,
   registries: readonly string[] = CLOSURE_REGISTRIES,
 ): string[] {
-  const basename = name[0] === '@' ? name.split('/', 2)[1] : name;
+  const basename = name[0] === '@' ? split1st(name, '/') : name;
   const tail = `${name}/-/${basename}-${version}.tgz`;
   return registries.map((registry) => `${registry.replace(TRAILING_SLASH_RE, '')}/${tail}`);
 }

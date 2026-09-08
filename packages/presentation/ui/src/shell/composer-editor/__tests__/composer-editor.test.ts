@@ -142,13 +142,17 @@ describe('directive tokenizer', () => {
   it('chips a leading $ only with a horizontal separator and shell payload', () => {
     const editor = createEditor();
 
-    for (const draft of ['$ ls -la', '$   pnpm test', '$\techo']) {
+    const shellDrafts = ['$ ls -la', '$   pnpm test', '$\techo'];
+    for (let i = 0, len = shellDrafts.length; i < len; i++) {
+      const draft = shellDrafts[i];
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['composer-shell', 'text']);
       expect(draftText(editor)).toBe(draft);
     }
 
-    for (const draft of ['$ls', '$HOME', '$100', '$', '$   ']) {
+    const proseDrafts = ['$ls', '$HOME', '$100', '$', '$   '];
+    for (let i = 0, len = proseDrafts.length; i < len; i++) {
+      const draft = proseDrafts[i];
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['text']);
     }
@@ -192,14 +196,16 @@ describe('directive tokenizer', () => {
 
   it('keeps mid-line slash and dollar-sign tokens as prose', () => {
     const editor = createEditor();
-    for (const draft of [
+    const midLineDrafts = [
       'run /usage now',
       'run /typo now',
       'run $ now',
       'pay $5',
       'echo $HOME',
       ' $ls',
-    ]) {
+    ];
+    for (let i = 0, len = midLineDrafts.length; i < len; i++) {
+      const draft = midLineDrafts[i];
       setDraft(editor, draft);
       expect(draftShape(editor)).toEqual(['text']);
       expect(draftText(editor)).toBe(draft);
@@ -276,7 +282,9 @@ describe('directive tokenizer', () => {
       () => {
         const paragraph = $getRoot().getFirstChild();
         if (!$isElementNode(paragraph)) throw new Error('expected paragraph');
-        for (const child of paragraph.getChildren()) {
+        const children = paragraph.getChildren();
+        for (let i = 0, len = children.length; i < len; i++) {
+          const child = children[i];
           if (child.getType() !== 'composer-command') continue;
           const converted = $convertDirectiveToText(child.getKey());
           if (converted) suppressed.add(converted);
@@ -495,10 +503,12 @@ describe('$draftDirective', () => {
 
   it('moves a lone misplaced directive to the start without doubling separator whitespace', () => {
     const editor = createEditor();
-    for (const [before, after, expected] of [
+    const moveCases = [
       ['please ', ' now', '/review please now'],
       [' ', ' now', '/review now'],
-    ]) {
+    ];
+    for (let i = 0, len = moveCases.length; i < len; i++) {
+      const [before, after, expected] = moveCases[i];
       setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {
@@ -517,12 +527,14 @@ describe('$draftDirective', () => {
 
   it('normalizes boundary whitespace when removing a directive', () => {
     const editor = createEditor();
-    for (const [before, after, expected] of [
+    const removalCases = [
       ['please ', ' now', 'please now'],
       ['', ' now', 'now'],
       ['please ', ' ', 'please'],
       ['', ' ', ''],
-    ]) {
+    ];
+    for (let i = 0, len = removalCases.length; i < len; i++) {
+      const [before, after, expected] = removalCases[i];
       setStructuredCommandDraft(editor, before, after);
       editor.update(
         () => {

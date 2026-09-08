@@ -76,7 +76,8 @@ function assertReleaseBinding(bundle: ConfigBuildBundle, manifest: ReleaseManife
     ['configRevisionId', bundle.provenance.configRevisionId, manifest.configRevisionId],
     ['expectedSnapshotSha256', bundle.snapshot.sha256, manifest.expectedSnapshotSha256],
   ] as const;
-  for (const [field, actual, expected] of checks) {
+  for (let i = 0, len = checks.length; i < len; i++) {
+    const [field, actual, expected] = checks[i];
     if (actual !== expected) {
       throw new Error(`release manifest ${field} does not match the rendered bundle`);
     }
@@ -88,7 +89,9 @@ async function artifactFile(
   path: string,
 ): Promise<{ path: string; sha256: string; sizeBytes: number }> {
   const absoluteRoot = await realpath(root);
-  const absolutePath = resolve(root, path);
+  // Resolve against the canonicalized root: a symlinked root (macOS /var → /private/var)
+  // would otherwise make every legitimate path read as an escape.
+  const absolutePath = resolve(absoluteRoot, path);
   const relativePath = relative(absoluteRoot, absolutePath);
   if (relativePath === '' || relativePath.startsWith('..') || relativePath.includes('\\')) {
     throw new TypeError(`artifact path escapes its isolated root: ${path}`);
@@ -217,7 +220,8 @@ function releaseArtifactProvenance(value: unknown): ReleaseArtifactProvenance {
   }
   const paths = new Set<string>();
   const artifacts: Array<ReleaseArtifactProvenance['artifacts'][number]> = [];
-  for (const [index, value] of provenance.artifacts.entries()) {
+  for (let index = 0, len = provenance.artifacts.length; index < len; index++) {
+    const value = provenance.artifacts[index];
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
       throw new TypeError(`release provenance artifact ${index} must be an object`);
     }
@@ -354,7 +358,9 @@ export async function writeReleaseArtifactProvenance(
   artifactRoot: string,
 ): Promise<void> {
   const absoluteRoot = await realpath(artifactRoot);
-  const absolutePath = resolve(artifactRoot, path);
+  // Resolve against the canonicalized root: a symlinked root (macOS /var → /private/var)
+  // would otherwise make every legitimate path read as an escape.
+  const absolutePath = resolve(absoluteRoot, path);
   const relativePath = relative(absoluteRoot, absolutePath);
   if (relativePath === '' || relativePath.startsWith('..') || relativePath.includes('\\')) {
     throw new TypeError(`provenance path escapes its isolated root: ${path}`);
@@ -380,7 +386,16 @@ function jsonValue(value: unknown): JsonValue {
   if (typeof value !== 'object') {
     throw new TypeError('release provenance must contain only JSON values');
   }
-  return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, jsonValue(entry)]));
+  return Object.entries(value).reduce<Record<string, JsonValue>>((acc, [key, entry]) => {
+    // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the clone.
+    Object.defineProperty(acc, key, {
+      configurable: true,
+      enumerable: true,
+      value: jsonValue(entry),
+      writable: true,
+    });
+    return acc;
+  }, {});
 }
 
 export function parseReleaseArtifactInputs(

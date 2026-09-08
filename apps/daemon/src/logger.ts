@@ -56,7 +56,7 @@ export function createDaemonLogger(
       name: 'linkcode-daemon',
       hooks: {
         logMethod(args, method) {
-          for (let index = 0; index < args.length; index += 1) {
+          for (let index = 0, len = args.length; index < len; index += 1) {
             args[index] = sanitizeDiagnostic(args[index]);
           }
           method.apply(this, args);
@@ -78,9 +78,11 @@ export const logger = createDaemonLogger();
 
 function effectBindings(messages: readonly unknown[]): Record<string, string | number> {
   const bindings: Record<string, string | number> = { source: 'effect' };
-  for (const message of messages) {
+  for (let i = 0, len = messages.length; i < len; i++) {
+    const message = messages[i];
     if (typeof message !== 'object' || message === null) continue;
-    for (const key of EFFECT_BINDING_KEYS) {
+    for (let j = 0, keyCount = EFFECT_BINDING_KEYS.length; j < keyCount; j++) {
+      const key = EFFECT_BINDING_KEYS[j];
       const value = Reflect.get(message, key);
       if (typeof value === 'string' || typeof value === 'number') bindings[key] = value;
     }

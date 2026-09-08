@@ -55,10 +55,9 @@ function SessionScreen(): React.ReactNode {
   const autoResumeSuppressed = autoResume === 'false';
   const parsed = SessionIdSchema.safeParse(rawSessionId);
   const sessionId: SessionId | null = parsed.success ? parsed.data : null;
-  const { sessions, refresh } = useSessions();
+  const { sessionsById, refresh } = useSessions();
 
-  // eslint-disable-next-line sukka/react-no-performance-impacting-array-find -- one lookup against the thread list; the Map the rule asks for costs the same walk to build each render
-  const session = sessions.find((entry) => entry.sessionId === sessionId);
+  const session = sessionId === null ? undefined : sessionsById.get(sessionId);
   // A deep link or a notification can open a thread the snapshot has never listed. Without its
   // record there is no `kind`/`historyId`, so the seed reads nothing and the past renders as empty
   // rather than as loading. Deduped per id so a genuinely gone session doesn't spin.

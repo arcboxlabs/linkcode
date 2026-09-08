@@ -45,7 +45,8 @@ export class WorktreeService {
     ).pipe(
       Effect.tap((records) =>
         Effect.sync(() => {
-          for (const record of records) {
+          for (let i = 0, len = records.length; i < len; i++) {
+            const record = records[i];
             this.bySession.set(record.sessionId, record);
             this.byRepoBranch.set(repoBranchKey(record.repoRoot, record.branch), record);
           }
@@ -310,9 +311,11 @@ export class WorktreeService {
     const root = this.root;
     return Effect.gen({ self: this }, function* () {
       const groups = yield* readChildDirectories(root);
-      for (const group of groups) {
+      for (let i = 0, len = groups.length; i < len; i++) {
+        const group = groups[i];
         const candidates = yield* readChildDirectories(group);
-        for (const candidate of candidates) {
+        for (let j = 0, candidateCount = candidates.length; j < candidateCount; j++) {
+          const candidate = candidates[j];
           if (this.hasPath(candidate)) continue;
           const identity = yield* identifyManagedWorktree(candidate).pipe(
             Effect.catch((error) =>

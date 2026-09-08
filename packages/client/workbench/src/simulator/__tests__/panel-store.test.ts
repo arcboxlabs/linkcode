@@ -5,10 +5,12 @@ import { selectDeviceTabs, useSimulatorPanelStore } from '../panel-store';
 const A = 'thread-a';
 const B = 'thread-b';
 
-const tabsOf = (key: string): { udids: readonly string[]; activeUdid: string | null } =>
-  selectDeviceTabs(useSimulatorPanelStore.getState(), key);
-const open = (key: string, udid: string): void =>
-  useSimulatorPanelStore.getState().openDevice(key, udid);
+function tabsOf(key: string): { udids: readonly string[]; activeUdid: string | null } {
+  return selectDeviceTabs(useSimulatorPanelStore.getState(), key);
+}
+function open(key: string, udid: string): void {
+  return useSimulatorPanelStore.getState().openDevice(key, udid);
+}
 
 describe('simulator device tabs', () => {
   beforeEach(() => {

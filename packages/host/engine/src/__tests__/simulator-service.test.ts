@@ -90,7 +90,9 @@ describe('SimulatorService', () => {
     const backend = fakeBackend([]);
     const service = new SimulatorService(backend);
 
-    for (const udid of ['A', 'B', 'C', 'D']) {
+    const udids = ['A', 'B', 'C', 'D'];
+    for (let i = 0, len = udids.length; i < len; i++) {
+      const udid = udids[i];
       await service.openUrl(S1, udid, 'https://example.com');
     }
     await expect(service.openUrl(S1, 'E', 'https://example.com')).rejects.toMatchObject({

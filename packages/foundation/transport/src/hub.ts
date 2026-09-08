@@ -126,14 +126,25 @@ export class Hub implements Transport {
         bestEffort(() => conn.send(createWireMessage(pong())));
         return;
       }
-      if (p.kind === 'session.attach') subscription.attached.add(p.sessionId);
-      else if (p.kind === 'session.detach') subscription.attached.delete(p.sessionId);
-      else if (p.kind === 'terminal.detach') {
-        const attachments = subscription.terminals.get(p.terminalId);
-        if (attachments?.get(p.attachmentId) === p.attachmentSecret) {
-          attachments.delete(p.attachmentId);
-          if (attachments.size === 0) subscription.terminals.delete(p.terminalId);
+      switch (p.kind) {
+        case 'session.attach': {
+          subscription.attached.add(p.sessionId);
+          break;
         }
+        case 'session.detach': {
+          subscription.attached.delete(p.sessionId);
+          break;
+        }
+        case 'terminal.detach': {
+          const attachments = subscription.terminals.get(p.terminalId);
+          if (attachments?.get(p.attachmentId) === p.attachmentSecret) {
+            attachments.delete(p.attachmentId);
+            if (attachments.size === 0) subscription.terminals.delete(p.terminalId);
+          }
+
+          break;
+        }
+        // no default
       }
     }
     if ('clientReqId' in p) {

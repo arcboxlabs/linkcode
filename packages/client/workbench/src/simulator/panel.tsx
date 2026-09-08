@@ -4,7 +4,6 @@ import type {
   SimulatorButton,
   SimulatorDevice,
   SimulatorOrientation,
-  SimulatorStatus,
 } from '@linkcode/schema';
 import type {
   SimulatorKeyPress,
@@ -31,7 +30,9 @@ import {
   UnplugIcon,
   VideoIcon,
 } from 'lucide-react';
-import { useCallback, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import useSWR from 'swr';
+import useSWRImmutable from 'swr/immutable';
 import { useTranslations } from 'use-intl';
 import { useSimulatorAgentActivity } from './agent-activity';
 import { useBackgroundSimulatorStreams } from './background-streams';
@@ -41,6 +42,7 @@ import { SimulatorDeviceTabs } from './device-tabs';
 import { selectDeviceTabs, simulatorSessionKey, useSimulatorPanelStore } from './panel-store';
 import { SimulatorSetupChecklist } from './setup-checklist';
 import { useSimulatorShortcuts } from './shortcuts';
+import { useSimulatorStatus } from './status';
 import type { SimulatorStreamLease } from './stream-registry';
 import {
   acquireSimulatorStream,
@@ -55,6 +57,8 @@ import {
 } from './stream-settings-store';
 
 const BUSY_BANNER_MS = 3000;
+
+const SCREEN_MASK_KEY = 'simulator-screen-mask';
 
 /** How often to re-probe while the host is still missing a provisioning step. Slow on purpose: the
  * thing being waited on is a multi-gigabyte download or a human in Xcode, not a fast operation. */
@@ -167,17 +171,22 @@ function QuietSelect({
 export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): React.ReactNode {
   const t = useTranslations('workbench.panel');
   const client = useLinkCodeClient();
-  const [status, setStatus] = useState<SimulatorStatus | null>(null);
+  // While the host is still being provisioned, keep asking: a step finished in Xcode (or by the
+  // download this panel started) should tick itself off without the user restarting anything.
+  // The engine only caches a fully-ready probe, so this really does re-read the host.
+  const { data: status = null } = useSimulatorStatus(client, {
+    refreshInterval: SETUP_REPROBE_MS,
+  });
   /** True between clicking "download the runtime" and the runtime appearing in a later probe. */
   const [installingRuntime, setInstallingRuntime] = useState(false);
-  const [devices, setDevices] = useState<SimulatorDevice[] | null>(null);
+  const { data: devices = null, mutate: mutateDevices } = useSWR('simulator-devices', () =>
+    client.simulatorList().catch((): SimulatorDevice[] => []),
+  );
   const sessionKey = simulatorSessionKey(sessionId);
   const tabs = useSimulatorPanelStore((state) => selectDeviceTabs(state, sessionKey));
   const openDevice = useSimulatorPanelStore((state) => state.openDevice);
   const closeDevice = useSimulatorPanelStore((state) => state.closeDevice);
   const selectDevice = useSimulatorPanelStore((state) => state.selectDevice);
-  /** Screen-outline masks by udid as base64 PNGs; `null` = the host has none (generic rounding). */
-  const [masks, setMasks] = useState<Readonly<Record<string, string | null>>>({});
   const [busy, setBusy] = useState(false);
   const busyTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   /** Shortcut owner: the chords below only fire while this panel is on screen. */
@@ -197,39 +206,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const [detached, setDetached] = useState<Readonly<Record<string, boolean>>>({});
 
   useEffect(
-    (signal) => {
-      const probe = (): void => {
-        void client
-          .simulatorStatus()
-          .then((value) => {
-            if (!signal.aborted) setStatus(value);
-          })
-          .catch(() => {
-            if (!signal.aborted) setStatus({ available: false });
-          });
-      };
-      probe();
-      // While the host is still being provisioned, keep asking: a step finished in Xcode (or by the
-      // download this panel started) should tick itself off without the user restarting anything.
-      // The engine only caches a fully-ready probe, so this really does re-read the host.
-      const reprobe = setInterval(probe, SETUP_REPROBE_MS);
-      void client
-        .simulatorList()
-        .then((value) => {
-          if (!signal.aborted) setDevices(value);
-        })
-        .catch(() => {
-          if (!signal.aborted) setDevices([]);
-        });
-      const unsubscribe = client.subscribeSimulatorDevicesChanged(setDevices);
-      return () => {
-        clearInterval(reprobe);
-        unsubscribe();
-        clearTimeout(busyTimerRef.current);
-      };
-    },
-    [client],
+    () =>
+      client.subscribeSimulatorDevicesChanged((next) => {
+        // update value directly and avoid re-fetch
+        mutateDevices(next, { revalidate: false });
+      }),
+    [client, mutateDevices],
   );
+  useEffect(() => () => clearTimeout(busyTimerRef.current), []);
 
   // Until the user opens a second device the panel shows one implicitly, so a fresh thread needs no
   // setup click. Opening another materializes that implicit tab first (see `addDevice`).
@@ -237,7 +221,18 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const openUdids =
     tabs.udids.length > 0 ? tabs.udids : defaultUdid === null ? EMPTY_UDIDS : [defaultUdid];
   const activeUdid = tabs.activeUdid ?? defaultUdid;
-  const device = devices?.find((item) => item.udid === activeUdid) ?? null;
+  // Keyed once per device-list change: the panel re-renders per stream frame, the list rarely moves.
+  const devicesByUdid = useMemo(() => {
+    const byUdid = new Map<string, SimulatorDevice>();
+    if (devices !== null) {
+      for (let i = 0, len = devices.length; i < len; i++) {
+        const item = devices[i];
+        byUdid.set(item.udid, item);
+      }
+    }
+    return byUdid;
+  }, [devices]);
+  const device = (activeUdid === null ? undefined : devicesByUdid.get(activeUdid)) ?? null;
   const udid = device?.udid ?? null;
   const booted = device?.state === 'Booted';
   // Optimistic until the probe resolves: assume interactive so a capable host streams immediately.
@@ -247,18 +242,14 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const isDetached = udid !== null && (detached[udid] ?? false);
   const canStream = sessionId !== null && udid !== null && booted && interactive && !isDetached;
 
-  // Fetch bookkeeping lives in a ref (not `masks`) so the effect never loops on its own writes;
-  // the cache write itself is deliberately not abort-gated — a udid switch mid-fetch must still
-  // land the result for the next switch back.
-  const maskFetchedRef = useRef(new Set<string>());
-  useEffect(() => {
-    if (udid === null || maskFetchedRef.current.has(udid)) return;
-    maskFetchedRef.current.add(udid);
-    void client
-      .simulatorScreenMask(udid)
-      .then((data) => setMasks((prev) => ({ ...prev, [udid]: data })))
-      .catch(() => setMasks((prev) => ({ ...prev, [udid]: null })));
-  }, [client, udid]);
+  // The screen-outline mask (a base64 PNG) is static per device, so it is a keyed fetch-and-cache
+  // that must never revalidate — switching back to a seen device serves the cache, full stop.
+  // A fetch failure means the host has none and the screen falls back to generic rounding.
+  const { data: maskPng } = useSWRImmutable(
+    udid === null ? null : [SCREEN_MASK_KEY, udid],
+    ([, maskUdid]: [string, string]) => client.simulatorScreenMask(maskUdid),
+    { shouldRetryOnError: false },
+  );
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => {
@@ -325,7 +316,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
   const flagBusy = useCallback(() => {
     setBusy(true);
     clearTimeout(busyTimerRef.current);
-    busyTimerRef.current = setTimeout(() => setBusy(false), BUSY_BANNER_MS);
+    busyTimerRef.current = setTimeout(setBusy, BUSY_BANNER_MS, false);
   }, []);
 
   const handleTouch = (phase: SimulatorScreenTouchPhase, point: SimulatorScreenPoint): void => {
@@ -582,7 +573,7 @@ export function SimulatorPanel({ sessionId }: { sessionId: SessionId | null }): 
               onPinch={handlePinch}
               onKey={handleKey}
               onText={handleText}
-              maskPng={masks[udid] ?? null}
+              maskPng={maskPng ?? null}
               onScreenCanvas={setScreenCanvas}
               agentPointer={agentActivity.point}
               placeholder={

@@ -25,8 +25,9 @@ const noKeyring = (): MasterKey | null => null;
  * Secrets are only reachable through a namespace, so every case goes through one. On disk the same
  * entry is the full `cloud:session` ref — asserting against that is what proves the prefixing.
  */
-const open = (file: string, loadKey: () => MasterKey | null): SecretStore =>
-  createSecretVault(file, loadKey).namespace('cloud');
+function open(file: string, loadKey: () => MasterKey | null): SecretStore {
+  return createSecretVault(file, loadKey).namespace('cloud');
+}
 
 let file: string;
 const realPlatform = process.platform;

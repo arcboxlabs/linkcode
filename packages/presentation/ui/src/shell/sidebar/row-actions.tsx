@@ -16,6 +16,15 @@ export const ROW_HOVER_PE_WIDE_CLASS =
 export const ROW_ACTION_CLASS =
   'opacity-0 transition-opacity hover:bg-transparent data-pressed:bg-transparent group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100 group-has-data-popup-open/menu-item:opacity-100';
 
+export const THREAD_ROW_HOVER_PE_CLASS =
+  'group-hover/menu-item:pe-15 group-has-[:focus-visible]/menu-item:pe-15 sm:group-hover/menu-item:pe-13 sm:group-has-[:focus-visible]/menu-item:pe-13';
+
+export const THREAD_ROW_HOVER_PE_WIDE_CLASS =
+  'group-hover/menu-item:pe-21 group-has-[:focus-visible]/menu-item:pe-21 sm:group-hover/menu-item:pe-19 sm:group-has-[:focus-visible]/menu-item:pe-19';
+
+export const THREAD_ROW_ACTION_CLASS =
+  'opacity-0 hover:bg-transparent data-pressed:bg-transparent group-hover/menu-item:opacity-100 group-has-[:focus-visible]/menu-item:opacity-100';
+
 /** Anchors a row's action buttons over the space `ROW_HOVER_PE_CLASS` frees up on hover. */
 export function RowActionsCluster({
   children,

@@ -24,7 +24,8 @@ function attachmentData(block: ContentBlock): string | undefined {
  * keeps a prompt's base64 under the transport's frame buffer, whose overflow kills the connection. */
 export function assertAttachmentContentAllowed(content: ContentBlock[]): void {
   let totalBytes = 0;
-  for (const block of content) {
+  for (let i = 0, len = content.length; i < len; i++) {
+    const block = content[i];
     if (block.type === 'image' && !isSupportedAttachmentImageMimeType(block.mimeType)) {
       throw new RequestError({
         code: 'invalid_request',

@@ -114,7 +114,8 @@ export class SessionStartOptionsResolver {
     const enabled = this.customMcp?.listEnabled() ?? [];
     if (enabled.length === 0) return Effect.succeed({ options, warnings });
     if (!MCP_CAPABLE_AGENT_KINDS.has(options.kind)) {
-      for (const entry of enabled) {
+      for (let i = 0, len = enabled.length; i < len; i++) {
+        const entry = enabled[i];
         warnings.push({ serverName: entry.server.name, reason: 'agent-unsupported' });
       }
       return Effect.succeed({ options, warnings });
@@ -128,7 +129,8 @@ export class SessionStartOptionsResolver {
     return pluginNames.pipe(
       Effect.map((names) => {
         const servers = [...(options.mcpServers ?? [])];
-        for (const entry of enabled) {
+        for (let i = 0, len = enabled.length; i < len; i++) {
+          const entry = enabled[i];
           if (names === null) {
             warnings.push({
               serverName: entry.server.name,

@@ -34,7 +34,10 @@ beforeEach(() => {
   fetchMock.mockReset();
   win32Mock.mockReset();
   darwinMock.mockReset();
-  for (const key of PROXY_ENV_KEYS) delete process.env[key];
+  for (let i = 0, len = PROXY_ENV_KEYS.length; i < len; i++) {
+    const key = PROXY_ENV_KEYS[i];
+    delete process.env[key];
+  }
   setPlatform('win32');
 });
 
@@ -43,7 +46,8 @@ afterEach(() => {
 });
 
 afterAll(() => {
-  for (const key of PROXY_ENV_KEYS) {
+  for (let i = 0, len = PROXY_ENV_KEYS.length; i < len; i++) {
+    const key = PROXY_ENV_KEYS[i];
     const value = originalProxyEnv.get(key);
     if (value === undefined) delete process.env[key];
     else process.env[key] = value;

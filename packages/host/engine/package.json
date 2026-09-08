@@ -21,7 +21,7 @@
     "acorn": "^8.17.0",
     "croner": "^10.0.1",
     "effect": "4.0.0-beta.98",
-    "foxts": "^5.8.0",
+    "foxts": "^5.9.1",
     "restty": "^0.2.6",
     "zod": "catalog:"
   },

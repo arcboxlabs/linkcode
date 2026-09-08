@@ -228,6 +228,13 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/@earendil-works/pi-coding-agent',
   },
   {
+    name: 'minimatch',
+    version: '10.2.5',
+    integrity:
+      'sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==',
+    path: 'node_modules/@earendil-works/pi-coding-agent/node_modules/minimatch',
+  },
+  {
     name: '@earendil-works/pi-tui',
     version: '0.80.6',
     integrity:
@@ -240,13 +247,6 @@ const packages: NpmClosure['packages'] = [
     integrity:
       'sha512-gwSvbpiN/17O9TbsqSsE/OzZcpv5Fo4RQjdngGgogtuB9RsyJ8ZHhX5KjHj1bp5N9snN2eK8LDGXSaWW2hof8Q==',
     path: 'node_modules/@google/genai',
-  },
-  {
-    name: 'ws',
-    version: '8.21.0',
-    integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
-    path: 'node_modules/@google/genai/node_modules/ws',
   },
   {
     name: '@hono/node-server',
@@ -359,13 +359,6 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/@mistralai/mistralai',
   },
   {
-    name: 'ws',
-    version: '8.21.0',
-    integrity:
-      'sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==',
-    path: 'node_modules/@mistralai/mistralai/node_modules/ws',
-  },
-  {
     name: '@modelcontextprotocol/sdk',
     version: '1.30.0',
     integrity:
@@ -395,9 +388,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: '@opentelemetry/semantic-conventions',
-    version: '1.41.1',
+    version: '1.43.0',
     integrity:
-      'sha512-/UhIkaZgPutTFmQ7RnIJGgDXZmtEJ7Dvi86xNTFWcnRxVRNk/aotsqDJYeEvDP+FSMB2SdW+pQzNMcWP0rwuNA==',
+      'sha512-eSYWTm620tTk45EKSedaUL8MFYI8hW164hIXsgIHyxu3VobUB3fFCu5t0hQby6OoWRPsG1KkKUG2M5UadiLiVg==',
     path: 'node_modules/@opentelemetry/semantic-conventions',
   },
   {
@@ -619,9 +612,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'brace-expansion',
-    version: '5.0.8',
+    version: '5.0.9',
     integrity:
-      'sha512-JZyDyq3D4AUifKTPOB7DELf6XsB3WdPuNxCtob1vFXPsSXhdAiHBWJ/tJ8HAc9aH84BK+5JFZLNkJKx3G9kzQg==',
+      'sha512-ScQ4IuvIEF1TMlP7Zt+vjJ//9zlPb2SDcxWxM3bk8s6t6GGdJ7KO1dCcTidOPJKePW30LE/2cT7wCyPho9/Wxg==',
     path: 'node_modules/brace-expansion',
   },
   {
@@ -975,6 +968,13 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/graceful-fs',
   },
   {
+    name: 'has-flag',
+    version: '4.0.0',
+    integrity:
+      'sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==',
+    path: 'node_modules/has-flag',
+  },
+  {
     name: 'has-symbols',
     version: '1.1.0',
     integrity:
@@ -1193,9 +1193,9 @@ const packages: NpmClosure['packages'] = [
   },
   {
     name: 'minimatch',
-    version: '10.2.5',
+    version: '10.2.6',
     integrity:
-      'sha512-MULkVLfKGYDFYejP07QOurDLLQpcjk7Fw+7jXS2R2czRQzR56yHRveU5NDJEOviH+hETZKSkIk5c+T23GjFUMg==',
+      'sha512-vpLQEs+VLCr1nU0BXS07maYoFwlDAH0gngQuuttxIwutDFEMHq2blX+8vpgxDdK3J1PwjCJiep77OitTZ4Ll1A==',
     path: 'node_modules/minimatch',
   },
   {
@@ -1500,6 +1500,13 @@ const packages: NpmClosure['packages'] = [
     path: 'node_modules/strnum',
   },
   {
+    name: 'supports-color',
+    version: '8.1.1',
+    integrity:
+      'sha512-MpUEN2OodtUzxvKQl72cUF7RQ5EiHsGvSsVG0ia9c5RbWGL2CI4C7EpPS8UTBIplnlzZiNuV56w+FuNxy3ty2Q==',
+    path: 'node_modules/supports-color',
+  },
+  {
     name: 'toidentifier',
     version: '1.0.1',
     integrity:
@@ -1622,7 +1629,7 @@ const packages: NpmClosure['packages'] = [
 
 export const PI_CLOSURE: NpmClosure = {
   version: '0.80.6',
-  revision: 'd6ff0228b84fa10c',
+  revision: '6fdb7aeb2039774d',
   entry: 'node_modules/@earendil-works/pi-coding-agent/dist/index.js',
   packages,
 };

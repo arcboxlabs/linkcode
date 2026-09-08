@@ -28,7 +28,10 @@ function git(cwd: string, ...args: string[]): void {
 }
 
 afterAll(() => {
-  for (const dir of roots) rmSync(dir, { recursive: true, force: true });
+  for (let i = 0, len = roots.length; i < len; i++) {
+    const dir = roots[i];
+    rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 describe('FileSuggestService', () => {

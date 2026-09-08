@@ -104,7 +104,9 @@ export function $normalizeDirectiveTokens(
     // `/name` inside command arguments or shell syntax as a second action.
     if ($hasLeadingDirective()) return;
     changed = false;
-    for (const node of $nodesOfType(TextNode)) {
+    const textNodes = $nodesOfType(TextNode);
+    for (let i = 0, len = textNodes.length; i < len; i++) {
+      const node = textNodes[i];
       const candidate = $findDirectiveCandidate(node, state, opts.force ?? false);
       if (!candidate) continue;
       $replaceCandidate(node, candidate);

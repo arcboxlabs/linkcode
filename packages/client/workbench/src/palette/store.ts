@@ -24,9 +24,12 @@ export const useCommandPaletteStore = create<CommandPaletteState>()((set) => ({
     set((state) => ({ commandsByOwner: { ...state.commandsByOwner, [owner]: commands } })),
   unregisterCommands: (owner) =>
     set((state) => ({
-      commandsByOwner: Object.fromEntries(
-        Object.entries(state.commandsByOwner).filter(([key]) => key !== owner),
-      ),
+      commandsByOwner: Object.entries(state.commandsByOwner).reduce<
+        Record<string, readonly PaletteCommand[]>
+      >((acc, [key, commands]) => {
+        if (key !== owner) acc[key] = commands;
+        return acc;
+      }, {}),
     })),
 }));
 

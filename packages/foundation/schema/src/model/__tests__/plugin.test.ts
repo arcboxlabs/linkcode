@@ -219,7 +219,7 @@ describe('LinkCode plugin package contracts', () => {
     String.raw`skills\latex\SKILL.md`,
     'C:/SKILL.md',
     'skills/latex./SKILL.md',
-    `skills/latex${String.fromCodePoint(0)}/SKILL.md`,
+    `skills/latex${String.fromCharCode(0)}/SKILL.md`,
     'skills/latex/readme.md',
     'skills/latex/skill.md',
   ])('rejects invalid skill package entry %s', (entry) => {

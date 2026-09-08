@@ -11,6 +11,6 @@
   },
   "dependencies": {
     "@linkcode/schema": "workspace:*",
-    "foxts": "^5.8.1"
+    "foxts": "^5.9.1"
   }
 }

@@ -33,7 +33,7 @@ export function useAnalyticsPreferenceHydrated(): boolean {
       setHydrated(true),
     );
     if (useAnalyticsPreferenceStore.persist.hasHydrated()) {
-      const timer = setTimeout(() => setHydrated(true), 0);
+      const timer = setTimeout(setHydrated, 0, true);
       return () => {
         clearTimeout(timer);
         unsubscribe();

@@ -165,9 +165,9 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
   materializes a self-contained dir at `apps/daemon/standalone` (gitignored; pass an explicit path as
   argv for CI) via `pnpm --prod deploy` — the tsup bundle plus its runtime externals flat in the dir's
   own `node_modules`, runnable anywhere as `node --import ./dist/instrument.js dist/index.js`. This is
-  distinct from the desktop bundle: it targets **plain Node** (better-sqlite3 keeps its prebuild-install
-  binary — a **same-platform** artifact, build per target), and it prunes the host-arch agent CLI
-  platform packages (the daemon downloads them at runtime via `@linkcode/assets`, as the desktop
+  distinct from the desktop bundle: it targets **plain Node** (still a **same-platform** artifact — the
+  napi-rs optional deps and @sentry's profiler resolve host-only — build per target), and it prunes
+  the host-arch agent CLI platform packages (the daemon downloads them at runtime via `@linkcode/assets`, as the desktop
   does). The pi npm closure needs no prune (CODE-219): its SDK is a devDependency of
   agent-adapter, so the `--prod` deploy never materializes it — the daemon downloads the managed
   closure on first use.

@@ -43,7 +43,8 @@ export async function fetchNpmDist(
   const registries = options.registries ?? DEFAULT_REGISTRIES;
   const retry = options.retry ?? DEFAULT_RETRY;
   const failures: string[] = [];
-  for (const registry of registries) {
+  for (let i = 0, len = registries.length; i < len; i++) {
+    const registry = registries[i];
     // eslint-disable-next-line no-await-in-loop -- registries are an ordered fallback list
     const dist = await fetchDist(`${registry}/${pkg}/${version}`, retry, failures);
     if (dist) return dist;

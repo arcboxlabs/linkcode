@@ -22,7 +22,8 @@ class FakeElement implements DiagramElement {
     this.attrs = attrs;
     this.text = text ?? null;
     this.childElements = children.map((child) => new FakeElement(child));
-    for (const [i, child] of this.childElements.entries()) {
+    for (let i = 0, len = this.childElements.length; i < len; i++) {
+      const child = this.childElements[i];
       child.parentElement = this;
       child.nextElementSibling = this.childElements[i + 1] ?? null;
     }

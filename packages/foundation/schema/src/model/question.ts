@@ -18,7 +18,8 @@ const QuestionOptionsSchema = z
   .min(1)
   .superRefine((options, ctx) => {
     const optionIds = new Set<string>();
-    for (const [index, option] of options.entries()) {
+    for (let index = 0, len = options.length; index < len; index++) {
+      const option = options[index];
       if (optionIds.has(option.optionId)) {
         ctx.addIssue({
           code: 'custom',
@@ -48,7 +49,8 @@ const QuestionsSchema = z
   .min(1)
   .superRefine((questions, ctx) => {
     const questionIds = new Set<string>();
-    for (const [index, question] of questions.entries()) {
+    for (let index = 0, len = questions.length; index < len; index++) {
+      const question = questions[index];
       if (questionIds.has(question.questionId)) {
         ctx.addIssue({
           code: 'custom',

@@ -24,7 +24,11 @@ describe('FrameDecoder', () => {
     ]);
     const frames = [];
     for (const byte of encoded) {
-      for (const decoded of decoder.feed(Buffer.from([byte]))) frames.push(decoded);
+      const fed = decoder.feed(Buffer.from([byte]));
+      for (let i = 0, len = fed.length; i < len; i++) {
+        const decoded = fed[i];
+        frames.push(decoded);
+      }
     }
     expect(frames.map((f) => f.body.toString())).toEqual(['{"a":1}', '{"b":2}']);
   });

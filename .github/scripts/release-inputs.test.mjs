@@ -110,25 +110,26 @@ describe('validateReleaseInputs', () => {
   });
 
   it('rejects malformed desktop notarization key material', () => {
-    const env = Object.fromEntries(
-      [
-        'APPLE_API_KEY_BASE64',
-        'APPLE_API_KEY_ID',
-        'APPLE_API_ISSUER',
-        'APPLE_TEAM_ID',
-        'AZURE_CERTIFICATE_PROFILE',
-        'AZURE_CLIENT_ID',
-        'AZURE_CODE_SIGNING_ACCOUNT',
-        'AZURE_PUBLISHER_NAME',
-        'AZURE_SIGN_ENDPOINT',
-        'AZURE_TENANT_ID',
-        'MACOS_CSC_KEY_PASSWORD',
-        'MACOS_CSC_LINK',
-        'POSTHOG_HOST',
-        'POSTHOG_PROJECT_TOKEN',
-        'SENTRY_DSN_DESKTOP',
-      ].map((name) => [name, 'set']),
-    );
+    const env = [
+      'APPLE_API_KEY_BASE64',
+      'APPLE_API_KEY_ID',
+      'APPLE_API_ISSUER',
+      'APPLE_TEAM_ID',
+      'AZURE_CERTIFICATE_PROFILE',
+      'AZURE_CLIENT_ID',
+      'AZURE_CODE_SIGNING_ACCOUNT',
+      'AZURE_PUBLISHER_NAME',
+      'AZURE_SIGN_ENDPOINT',
+      'AZURE_TENANT_ID',
+      'MACOS_CSC_KEY_PASSWORD',
+      'MACOS_CSC_LINK',
+      'POSTHOG_HOST',
+      'POSTHOG_PROJECT_TOKEN',
+      'SENTRY_DSN_DESKTOP',
+    ].reduce((acc, name) => {
+      acc[name] = 'set';
+      return acc;
+    }, {});
     expect(() => validateReleaseInputs({ env, phase: 'sign', platform: 'desktop' })).toThrow(
       RE_INVALID_KEY,
     );

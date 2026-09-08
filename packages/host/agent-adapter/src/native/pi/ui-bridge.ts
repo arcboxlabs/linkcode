@@ -96,24 +96,20 @@ function text(
   placeholder?: string,
   opts?: ExtensionUIDialogOptions,
 ) {
-  return guarded(
-    opts,
-    undefined,
-    async (signal) =>
-      (
-        await ask(
-          host,
-          title,
-          {
-            questionId: 'input',
-            prompt: title,
-            multiSelect: false,
-            options: [{ optionId: 'skip', label: 'Skip', description: placeholder }],
-          },
-          signal,
-        )
-      )?.customText?.trim() || undefined,
-  );
+  return guarded(opts, undefined, async (signal) => {
+    const answer = await ask(
+      host,
+      title,
+      {
+        questionId: 'input',
+        prompt: title,
+        multiSelect: false,
+        options: [{ optionId: 'skip', label: 'Skip', description: placeholder }],
+      },
+      signal,
+    );
+    return answer?.customText?.trim() || undefined;
+  });
 }
 function guarded<T>(
   opts: ExtensionUIDialogOptions | undefined,

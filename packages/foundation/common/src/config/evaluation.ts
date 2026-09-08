@@ -27,7 +27,9 @@ export function defaultValues<Definitions extends ConfigDefinitions>(
   definitions: Definitions,
 ): ConfigValues<Definitions> {
   const values: Record<string, ConfigValue> = {};
-  for (const [key, definition] of Object.entries(definitions)) {
+  const definitionEntries = Object.entries(definitions);
+  for (let i = 0, len = definitionEntries.length; i < len; i++) {
+    const [key, definition] = definitionEntries[i];
     if (!isConfigKey(key)) throw new ConfigCoreError('schema-invalid', `Invalid known key ${key}`);
     values[key] = parseDefinitionValue(definition, key, definition.defaultValue, `default.${key}`);
     if (key.startsWith('feature.')) {
@@ -56,19 +58,24 @@ export function evaluateSnapshot<Definitions extends ConfigDefinitions>(
   }
 
   let evaluated: Record<string, JsonValue> = { ...snapshot.values };
-  for (const override of snapshot.overrides) {
+  for (let i = 0, len = snapshot.overrides.length; i < len; i++) {
+    const override = snapshot.overrides[i];
     if (conditionMatches(override.when, context)) {
       evaluated = applyConfigPatch(evaluated, override.set);
     }
   }
-  for (const [key, rollout] of Object.entries(snapshot.rollouts)) {
+  const rolloutEntries = Object.entries(snapshot.rollouts);
+  for (let i = 0, len = rolloutEntries.length; i < len; i++) {
+    const [key, rollout] = rolloutEntries[i];
     if (rolloutMatches(rollout.salt, deviceId, rollout.basisPoints)) {
       evaluated[key] = rollout.value;
     }
   }
 
   const values = defaultValues(definitions) as Record<string, ConfigValue>;
-  for (const [key, value] of Object.entries(evaluated)) {
+  const evaluatedEntries = Object.entries(evaluated);
+  for (let i = 0, len = evaluatedEntries.length; i < len; i++) {
+    const [key, value] = evaluatedEntries[i];
     const definition = definitionFor(definitions, key);
     if (!definition) continue;
     values[key] = parseDefinitionValue(definition, key, value, key);
@@ -82,7 +89,9 @@ export function applyEmergency<Definitions extends ConfigDefinitions>(
   definitions: Definitions,
 ): ConfigValues<Definitions> {
   const projected = cloneJson(values as ConfigValue) as Record<string, ConfigValue>;
-  for (const key of emergency?.disabledFeatures ?? []) {
+  const disabledFeatures = emergency?.disabledFeatures ?? [];
+  for (let i = 0, len = disabledFeatures.length; i < len; i++) {
+    const key = disabledFeatures[i];
     if (definitionFor(definitions, key)) projected[key] = false;
   }
   return projected as ConfigValues<Definitions>;
@@ -120,7 +129,9 @@ function validateKnownValues(
   definitions: ConfigDefinitions,
   label: string,
 ): void {
-  for (const [key, value] of Object.entries(values)) {
+  const valueEntries = Object.entries(values);
+  for (let i = 0, len = valueEntries.length; i < len; i++) {
+    const [key, value] = valueEntries[i];
     const definition = definitionFor(definitions, key);
     if (definition) parseDefinitionValue(definition, key, value, `${label}.${key}`);
   }

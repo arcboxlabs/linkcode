@@ -279,9 +279,18 @@ export async function loadEffectiveDefaults(
     const parsed = JSON.parse(await readFile(overridePath, 'utf8')) as unknown;
     if (!isRecord(parsed)) throw new TypeError('Local config override must be an object');
     const patched = applyConfigPatch(defaults, parsed as Readonly<Record<string, JsonValue>>);
-    return Object.fromEntries(
-      Object.entries(patched).filter((entry) => entry[1] !== null),
-    ) as Record<string, ConfigValue>;
+    return Object.entries(patched).reduce<Record<string, ConfigValue>>((acc, [key, value]) => {
+      if (value !== null) {
+        // Own data property, never a prototype write: `acc.__proto__ = …` would mutate the object.
+        Object.defineProperty(acc, key, {
+          configurable: true,
+          enumerable: true,
+          value,
+          writable: true,
+        });
+      }
+      return acc;
+    }, {});
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') return cloneSnapshot(defaults);
     log.warn('Ignoring invalid local config override');
@@ -367,7 +376,9 @@ function parseEndpoint(value: unknown): string | null {
 function parseKeyring(value: unknown): Readonly<Record<string, string>> {
   if (!isRecord(value)) throw new TypeError('Config keyrings must contain strings');
   const keyring: Record<string, string> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     if (typeof entry !== 'string') throw new TypeError('Config keyrings must contain strings');
     keyring[key] = entry;
   }
@@ -376,7 +387,9 @@ function parseKeyring(value: unknown): Readonly<Record<string, string>> {
 
 function parseConfigValues(value: Record<string, unknown>): Readonly<Record<string, ConfigValue>> {
   const defaults: Record<string, ConfigValue> = {};
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     if (!isConfigValue(entry)) throw new TypeError('Config defaults must contain JSON values');
     defaults[key] = structuredClone(entry);
   }

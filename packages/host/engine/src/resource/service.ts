@@ -182,7 +182,8 @@ export class ResourceService {
     return this.list(sessionId).pipe(
       Effect.map((items) => {
         const locators: string[] = [];
-        for (const resource of items) {
+        for (let i = 0, len = items.length; i < len; i++) {
+          const resource = items[i];
           if (resource.direction === 'source' && resource.status === 'ready') {
             locators.push(
               resource.locator.type === 'url' ? resource.locator.url : resource.locator.path,
@@ -287,7 +288,8 @@ export class ResourceService {
     }).pipe(
       Effect.tap((removed) =>
         Effect.sync(() => {
-          for (const resource of removed) {
+          for (let i = 0, len = removed.length; i < len; i++) {
+            const resource = removed[i];
             this.transport.send(
               createWireMessage({
                 kind: 'resource.removed',

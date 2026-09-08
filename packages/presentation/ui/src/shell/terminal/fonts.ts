@@ -56,7 +56,8 @@ const COLOR_EMOJI_FAMILIES = ['apple color emoji'];
 const MONO_FAMILIES = ['sf mono', 'menlo', 'monaco', 'consolas', 'dejavu sans mono'];
 
 function pickLocalFamily(fonts: readonly LocalFontData[], matchers: string[]): string | null {
-  for (const matcher of matchers) {
+  for (let i = 0, len = matchers.length; i < len; i++) {
+    const matcher = matchers[i];
     const hit = fonts.find((font) =>
       `${font.family} ${font.fullName} ${font.postscriptName}`.toLowerCase().includes(matcher),
     );

@@ -181,7 +181,7 @@ function conversationViewPipeline(conversation: ConversationViewModel): number {
   );
   const segments = splitTurnSegments(conversationFlowItems(items));
   let entryCount = 0;
-  for (let index = 0; index < segments.length; index += 1) {
+  for (let index = 0, len = segments.length; index < len; index += 1) {
     const segment = segments[index];
     const ended = index < segments.length - 1 || !isThinking;
     const { topLevel } = partitionSubagentItems(segment.items);
@@ -198,7 +198,8 @@ function conversationViewPipelineNoEdits(conversation: ConversationViewModel): n
   declinedToolCallIds(items);
   const segments = splitTurnSegments(conversationFlowItems(items));
   let entryCount = 0;
-  for (const segment of segments) {
+  for (let i = 0, len = segments.length; i < len; i++) {
+    const segment = segments[i];
     const { topLevel } = partitionSubagentItems(segment.items);
     entryCount += groupTimeline(topLevel).length + (assistantTurnText(topLevel) ? 1 : 0);
   }
@@ -207,7 +208,8 @@ function conversationViewPipelineNoEdits(conversation: ConversationViewModel): n
 
 function allEditDiffStats(conversation: ConversationViewModel): number {
   let total = 0;
-  for (const item of conversation.items) {
+  for (let i = 0, len = conversation.items.length; i < len; i++) {
+    const item = conversation.items[i];
     if (item.kind !== 'tool' || item.toolCall.kind !== 'edit') continue;
     const stats = toolCallDiffStats(item.toolCall);
     total += stats.additions + stats.deletions;

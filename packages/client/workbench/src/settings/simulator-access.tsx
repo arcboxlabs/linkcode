@@ -1,11 +1,9 @@
 import { useLinkCodeClient } from '@linkcode/client-core';
 import { SettingsCard } from '@linkcode/ui';
 import { Switch } from 'coss-ui/components/switch';
-import { useEffect } from 'foxact/use-abortable-effect';
-import { noop } from 'foxts/noop';
-import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSimulatorConsent } from '../simulator/consent';
+import { useSimulatorStatus } from '../simulator/status';
 
 /**
  * The global simulator kill switch (CODE-420): one bit that refuses every simulator MCP tool,
@@ -18,22 +16,10 @@ export function SimulatorAgentAccessCard(): React.ReactNode {
   const t = useTranslations('settings.agents');
   const client = useLinkCodeClient();
   const consent = useSimulatorConsent(client);
-  const [available, setAvailable] = useState(false);
+  // No simulator surface at all (the probe rejects) reads as unavailable — leave the card hidden.
+  const { data: status } = useSimulatorStatus(client);
 
-  useEffect(
-    (signal) => {
-      void client
-        .simulatorStatus()
-        .then((status) => {
-          if (!signal.aborted) setAvailable(status.available);
-        })
-        // No simulator surface at all — leave the card hidden.
-        .catch(noop);
-    },
-    [client],
-  );
-
-  if (!available) return null;
+  if (status?.available !== true) return null;
 
   return (
     <SettingsCard>

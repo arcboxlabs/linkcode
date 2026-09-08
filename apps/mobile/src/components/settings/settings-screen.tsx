@@ -1,15 +1,20 @@
 import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
-import { font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { disabled, font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
+import {
+  disableDeviceNotifications,
+  enableDeviceNotifications,
+} from '@mobile/runtime/notifications';
 import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
 import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
 import type { ThemePreference } from '@mobile/stores/settings-store';
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { Stack, useRouter } from 'expo-router';
-import { View } from 'react-native';
+import { useRef, useState } from 'react';
+import { Alert, Linking, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 const THEME_PREFERENCES: readonly ThemePreference[] = ['system', 'light', 'dark'];
@@ -37,9 +42,39 @@ export function SettingsScreen(): React.ReactNode {
   const hostMenuItems = useHostMenuItems();
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const themePreference = useSettingsStore((state) => state.themePreference);
+  const notificationsEnabled = useSettingsStore((state) => state.notificationsEnabled);
   const setThemePreference = useSettingsStore((state) => state.setThemePreference);
   const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
   const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
+  const [notificationUpdatePending, setNotificationUpdatePending] = useState(false);
+  const notificationUpdatePendingRef = useRef(false);
+
+  const updateNotifications = async (enabled: boolean) => {
+    if (account.status !== 'signed-in' || notificationUpdatePendingRef.current) return;
+    notificationUpdatePendingRef.current = true;
+    setNotificationUpdatePending(true);
+    try {
+      if (!enabled) {
+        await disableDeviceNotifications();
+        return;
+      }
+      if (await enableDeviceNotifications(account.user.id)) return;
+      Alert.alert(t('notificationsDeniedTitle'), t('notificationsDenied'), [
+        { text: t('cancel'), style: 'cancel' },
+        {
+          text: t('openSettings'),
+          onPress() {
+            void Linking.openSettings();
+          },
+        },
+      ]);
+    } catch {
+      Alert.alert(t('notificationsErrorTitle'), t('notificationsError'));
+    } finally {
+      notificationUpdatePendingRef.current = false;
+      setNotificationUpdatePending(false);
+    }
+  };
 
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
   // proposed the whole window and paints straight over the large title.
@@ -100,6 +135,24 @@ export function SettingsScreen(): React.ReactNode {
               isOn={productAnalyticsEnabled}
               onIsOnChange={setMobileProductAnalyticsEnabled}
               label={t('analytics')}
+            />
+          </Section>
+
+          <Section
+            title={t('notifications')}
+            footer={
+              <Text>
+                {account.status === 'signed-in'
+                  ? t('notificationsHint')
+                  : t('notificationsRequiresCloud')}
+              </Text>
+            }
+          >
+            <Toggle
+              isOn={notificationsEnabled}
+              onIsOnChange={updateNotifications}
+              label={t('notifications')}
+              modifiers={[disabled(account.status !== 'signed-in' || notificationUpdatePending)]}
             />
           </Section>
 

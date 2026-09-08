@@ -14,7 +14,10 @@ function makeTempDir(): string {
 }
 
 afterAll(() => {
-  for (const root of roots) rmSync(root, { recursive: true, force: true });
+  for (let i = 0, len = roots.length; i < len; i++) {
+    const root = roots[i];
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 function runReadWorkspaceFile(cwd: string, path: string) {

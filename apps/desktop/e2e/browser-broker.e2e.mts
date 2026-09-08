@@ -61,11 +61,11 @@ function createWireClient(): {
 } {
   const socket = io(`http://127.0.0.1:${PORT}`, { transports: ['websocket'] });
   let seq = 0;
-  const backlog: Record<string, unknown>[] = [];
-  const waiters: {
+  const backlog: Array<Record<string, unknown>> = [];
+  const waiters: Array<{
     predicate: (payload: Record<string, unknown>) => boolean;
     resolve: (payload: Record<string, unknown>) => void;
-  }[] = [];
+  }> = [];
   socket.on('frame', (frame: WireFrame) => {
     const index = waiters.findIndex((waiter) => waiter.predicate(frame.payload));
     if (index === -1) {
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
       url: 'https://example.com/',
     });
     if (opened.ok !== true) fail(`tabs.open failed: ${JSON.stringify(opened)}`);
-    const tabs = opened.data as { id: string; url: string | null; active: boolean }[];
+    const tabs = opened.data as Array<{ id: string; url: string | null; active: boolean }>;
     const active = tabs.find((tab) => tab.active);
     if (active?.url !== 'https://example.com/') {
       fail(`expected an active example.com tab, got ${JSON.stringify(tabs)}`);

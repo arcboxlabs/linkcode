@@ -71,7 +71,8 @@ describe('mobile configuration adapters', () => {
           'ui.theme.primary': 'atomic-dotted-key',
         },
       });
-      for (const { key, value } of storage.writes) {
+      for (let i = 0, len = storage.writes.length; i < len; i++) {
+        const { key, value } = storage.writes[i];
         if (!key.includes(':normal:')) continue;
         expect(() => JSON.parse(value)).not.toThrow();
       }

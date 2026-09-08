@@ -9,10 +9,14 @@ export function jsonValueEqual(a: unknown, b: unknown): boolean {
   if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false;
   const left = a as Record<string, unknown>;
   const right = b as Record<string, unknown>;
-  for (const key of Object.keys(left)) {
+  const leftKeys = Object.keys(left);
+  for (let i = 0, len = leftKeys.length; i < len; i++) {
+    const key = leftKeys[i];
     if (!jsonValueEqual(left[key], right[key])) return false;
   }
-  for (const key of Object.keys(right)) {
+  const rightKeys = Object.keys(right);
+  for (let i = 0, len = rightKeys.length; i < len; i++) {
+    const key = rightKeys[i];
     if (!(key in left) && right[key] !== undefined) return false;
   }
   return true;

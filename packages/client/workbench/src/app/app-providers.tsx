@@ -3,7 +3,6 @@ import { defaultLocale, getMessages, resolveLocale } from '@linkcode/i18n';
 import { useKeyboardShortcutListener } from '@linkcode/ui';
 import { AnchoredToastProvider, ToastProvider } from 'coss-ui/components/toast';
 import { ComposeContextProvider } from 'foxact/compose-context-provider';
-import type * as React from 'react';
 import { useMemo } from 'react';
 import { IntlProvider } from 'use-intl';
 import { AppearanceRenderPrefsProvider } from '../settings/appearance-render-prefs';

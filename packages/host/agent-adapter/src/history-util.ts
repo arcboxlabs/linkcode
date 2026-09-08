@@ -52,7 +52,8 @@ export function sliceHistoryEventPage(
 ): { events: AgentHistoryEvent[]; cursor: string | undefined } {
   const page: AgentHistoryEvent[] = [];
   let pageByteLength = 0;
-  for (let index = offset; index < events.length && page.length < limit; index += 1) {
+  for (let index = offset, len = events.length; index < len; index += 1) {
+    if (page.length >= limit) break;
     const eventLength = eventSerializedByteLength(events[index]);
     if (page.length > 0 && pageByteLength + eventLength > MAX_ATTACHMENT_TOTAL_BASE64_LENGTH) {
       break;

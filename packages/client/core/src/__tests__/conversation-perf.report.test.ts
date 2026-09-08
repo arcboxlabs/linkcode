@@ -154,7 +154,10 @@ function fmt(ms: number): string {
 
 function foldHistory(history: readonly AgentEvent[]): Conversation {
   const builder = createConversationBuilder();
-  for (const event of history) builder.advance(event);
+  for (let i = 0, len = history.length; i < len; i++) {
+    const event = history[i];
+    builder.advance(event);
+  }
   return builder.snapshot();
 }
 
@@ -178,8 +181,12 @@ function reportShape(shape: LoadShape): string {
 
   const streamFold = measure(() => {
     const builder = createConversationBuilder();
-    for (const event of history) builder.advance(event);
-    for (const event of stream) {
+    for (let i = 0, len = history.length; i < len; i++) {
+      const event = history[i];
+      builder.advance(event);
+    }
+    for (let i = 0, len = stream.length; i < len; i++) {
+      const event = stream[i];
       builder.advance(event);
       builder.snapshot();
     }
@@ -188,10 +195,14 @@ function reportShape(shape: LoadShape): string {
   const storeStream = measure(() => {
     const sessionId = 'sess-perf' as SessionId;
     const buffer = new EventBuffer();
-    for (const event of history) buffer.ingest(sessionId, event);
+    for (let i = 0, len = history.length; i < len; i++) {
+      const event = history[i];
+      buffer.ingest(sessionId, event);
+    }
     const store = createConversationStore(bufferClient(buffer), sessionId);
     store.getSnapshot();
-    for (const event of stream) {
+    for (let i = 0, len = stream.length; i < len; i++) {
+      const event = stream[i];
       buffer.ingest(sessionId, event);
       store.getSnapshot();
     }

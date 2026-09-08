@@ -2,6 +2,7 @@ import { once } from 'node:events';
 import type { Server as HttpServer, IncomingMessage, ServerResponse } from 'node:http';
 import type { DaemonIdentity } from '@linkcode/schema';
 import { DAEMON_IDENTITY_PATH } from '@linkcode/schema';
+import { split0th } from 'foxts/split-nth';
 
 /** Shared HTTP plumbing for the Node server transports: the `GET /linkcode` identity endpoint
  * (tells a linkcode daemon apart from a foreign process holding the port) and a `listen` that
@@ -11,7 +12,7 @@ export function createIdentityRequestHandler(
   identity: DaemonIdentity | undefined,
 ): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
-    if (identity && req.method === 'GET' && req.url?.split('?', 1)[0] === DAEMON_IDENTITY_PATH) {
+    if (identity && req.method === 'GET' && split0th(req.url ?? '', '?') === DAEMON_IDENTITY_PATH) {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify(identity));
       return;

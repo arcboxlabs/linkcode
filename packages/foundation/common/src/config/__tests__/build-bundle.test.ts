@@ -25,7 +25,10 @@ const RE_SOURCE_GIT_SHA = /^[0-9a-f]{40}$/;
 
 function toHex(bytes: Uint8Array): string {
   let hex = '';
-  for (const byte of bytes) hex += byte.toString(16).padStart(2, '0');
+  for (let i = 0, len = bytes.length; i < len; i++) {
+    const byte = bytes[i];
+    hex += byte.toString(16).padStart(2, '0');
+  }
   return hex;
 }
 
@@ -39,7 +42,9 @@ function mutate(change: (bundle: Record<string, any>) => void): unknown {
 
 describe('build bundle v1 vendored fixtures', () => {
   it('matches the frozen publisher bytes exactly', async () => {
-    for (const [name, digest] of Object.entries(FIXTURE_SHA256)) {
+    const fixtureDigests = Object.entries(FIXTURE_SHA256);
+    for (let i = 0, len = fixtureDigests.length; i < len; i++) {
+      const [name, digest] = fixtureDigests[i];
       const suffix = name === 'desktop' ? '' : `-${name}`;
       // eslint-disable-next-line no-await-in-loop -- three small reads
       const bytes = await readFile(
@@ -50,11 +55,13 @@ describe('build bundle v1 vendored fixtures', () => {
   });
 
   it('validates every platform fixture and extracts its defaults', () => {
-    for (const [raw, platform] of [
+    const fixtureCases = [
       [fixture, 'desktop'],
       [fixtureIos, 'ios'],
       [fixtureAndroid, 'android'],
-    ] as const) {
+    ] as const;
+    for (let i = 0, len = fixtureCases.length; i < len; i++) {
+      const [raw, platform] = fixtureCases[i];
       const bundle = parseConfigBuildBundle(structuredClone(raw));
       expect(bundle.platform).toBe(platform);
       expect(bundle.brandId).toBe('acme');

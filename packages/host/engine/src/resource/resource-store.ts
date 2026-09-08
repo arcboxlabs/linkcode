@@ -59,7 +59,10 @@ export class InMemoryResourceStore implements ResourceStore {
   async deleteSession(sessionId: SessionId): Promise<SessionResource[]> {
     const values = await this.list(sessionId);
     const removals: Array<Promise<SessionResource | undefined>> = [];
-    for (const value of values) removals.push(this.remove(value.resourceId));
+    for (let i = 0, len = values.length; i < len; i++) {
+      const value = values[i];
+      removals.push(this.remove(value.resourceId));
+    }
     await Promise.all(removals);
     return values;
   }

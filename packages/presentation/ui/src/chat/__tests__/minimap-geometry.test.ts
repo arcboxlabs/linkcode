@@ -25,7 +25,9 @@ describe('fisheyeFactor', () => {
   it('decreases monotonically across the falloff', () => {
     const step = MINIMAP_FISHEYE_SPREAD / 6;
     const samples = createFixedArray(7).map((_, i) => fisheyeFactor(i * step));
-    for (let i = 1; i < samples.length; i++) expect(samples[i]).toBeLessThan(samples[i - 1]);
+    for (let i = 1, len = samples.length; i < len; i++) {
+      expect(samples[i]).toBeLessThan(samples[i - 1]);
+    }
   });
 
   it('eases out — the near half of the falloff keeps most of the magnification', () => {

@@ -183,7 +183,7 @@ function conversationViewPipeline(conversation: ConversationViewModel): number {
   const allSubagentChildren = partitionSubagentItems(items).childrenByParent;
 
   let entryCount = 0;
-  for (let index = 0; index < segments.length; index += 1) {
+  for (let index = 0, len = segments.length; index < len; index += 1) {
     const segment = segments[index];
     const ended = index < segments.length - 1 || !isThinking;
     const { topLevel } = partitionSubagentItems(segment.items);

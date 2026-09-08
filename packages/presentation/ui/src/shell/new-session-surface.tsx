@@ -127,7 +127,8 @@ function workspaceById(
   workspaceId: WorkspaceId | null,
 ): WorkspaceRecord | null {
   if (workspaceId === null) return null;
-  for (const workspace of workspaces) {
+  for (let i = 0, len = workspaces.length; i < len; i++) {
+    const workspace = workspaces[i];
     if (workspace.workspaceId === workspaceId) return workspace;
   }
   return null;

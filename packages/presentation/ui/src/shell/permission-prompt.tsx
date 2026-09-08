@@ -157,16 +157,24 @@ function permissionDetails(item: PermissionConversationItem): PermissionDetail[]
   const showRawArguments = toolCall.kind === 'other' && raw !== undefined;
 
   const files = new Set<string>();
-  for (const item of toolCall.content ?? []) {
-    if (item.type === 'diff') files.add(item.path);
+  if (toolCall.content != null) {
+    for (let i = 0, len = toolCall.content.length; i < len; i++) {
+      const item = toolCall.content[i];
+      if (item.type === 'diff') files.add(item.path);
+    }
   }
-  for (const location of toolCall.locations ?? []) files.add(location.path);
+  if (toolCall.locations != null) {
+    for (let i = 0, len = toolCall.locations.length; i < len; i++) {
+      const location = toolCall.locations[i];
+      files.add(location.path);
+    }
+  }
   if (!showRawArguments) {
     const rawPath = stringField(raw, 'path') ?? stringField(raw, 'file_path');
     if (rawPath) files.add(rawPath);
   }
 
-  const details: PermissionDetail[] = [...files].map((value) => ({ label: 'file', value }));
+  const details: PermissionDetail[] = Array.from(files, (value) => ({ label: 'file', value }));
   if (showRawArguments) {
     details.push({ label: 'arguments', value: JSON.stringify(raw, null, 2) });
   } else {

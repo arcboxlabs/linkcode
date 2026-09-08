@@ -48,7 +48,7 @@ async function treeRowLabels(win: Page): Promise<string[]> {
   return win.evaluate(() => {
     const host = document.querySelector('file-tree-container');
     const rows = host?.shadowRoot?.querySelectorAll('button[data-type="item"]') ?? [];
-    return [...rows].map((row) => row.getAttribute('aria-label') ?? '');
+    return Array.from(rows, (row) => row.getAttribute('aria-label') ?? '');
   });
 }
 
@@ -196,7 +196,7 @@ async function run(win: Page): Promise<void> {
       if (!shadow?.textContent?.includes('tree-fixture-config')) continue;
       const html = shadow.innerHTML;
       return {
-        // eslint-disable-next-line sukka/no-regex-in-function -- runs in the page: a hoisted module-scope regex is out of scope for the serialized closure
+        // eslint-disable-next-line vibe-proof/prefer-hoisted-regex -- runs in the page: a hoisted module-scope regex is out of scope for the serialized closure
         tokens: /color:\s*#|--shiki/.test(html),
         sample: html.slice(html.indexOf('tree-fixture-config') - 200, 300),
       };

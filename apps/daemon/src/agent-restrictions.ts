@@ -13,7 +13,9 @@ export function filterAgentRuntimes(
 ): AgentRuntimes {
   if (allowedAgents === null) return runtimes;
   const filtered: AgentRuntimes = { ...runtimes };
-  for (const kind of Object.keys(filtered) as AgentKind[]) {
+  const kinds = Object.keys(filtered) as AgentKind[];
+  for (let i = 0, len = kinds.length; i < len; i++) {
+    const kind = kinds[i];
     if (!allowedAgents.includes(kind)) filtered[kind] = { status: 'missing' };
   }
   return filtered;

@@ -28,7 +28,9 @@ export function withCustomMcpSecrets(
   }
   const values = { ...(server[field] as Record<string, unknown>) };
   let migrated = false;
-  for (const [key, value] of Object.entries(values)) {
+  const valueEntries = Object.entries(values);
+  for (let i = 0, len = valueEntries.length; i < len; i++) {
+    const [key, value] = valueEntries[i];
     if (typeof value === 'string') {
       store.set(secretKey(generation, entry.id, field, key), value);
       migrated = true;
@@ -52,7 +54,9 @@ export function detachCustomMcpSecrets(
     const values = entry.server.type === 'stdio' ? entry.server.env : entry.server.headers;
     if (values === undefined) return entry;
     const placeholders: Record<string, null> = {};
-    for (const [key, value] of Object.entries(values)) {
+    const valueEntries = Object.entries(values);
+    for (let i = 0, len = valueEntries.length; i < len; i++) {
+      const [key, value] = valueEntries[i];
       secrets.set(secretKey(generation, entry.id, field, key), value);
       placeholders[key] = null;
     }

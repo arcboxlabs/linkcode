@@ -247,7 +247,9 @@ describe('account binding at session start', () => {
 
 describe('custom MCP injection at session start', () => {
   it('folds enabled custom servers in for claude-code, codex, and opencode', async () => {
-    for (const kind of ['claude-code', 'codex', 'opencode'] as const) {
+    const kinds = ['claude-code', 'codex', 'opencode'] as const;
+    for (let i = 0, len = kinds.length; i < len; i++) {
+      const kind = kinds[i];
       const resolver = new SessionStartOptionsResolver(
         new InMemoryProviderConfigStore(),
         undefined,

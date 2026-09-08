@@ -57,13 +57,16 @@ function assertSafeConfigurationValue(
     throw new TypeError(`${path} looks like executable code or an executable-code URL`);
   }
   if (Array.isArray(value)) {
-    for (const [index, entry] of value.entries()) {
+    for (let index = 0, len = value.length; index < len; index++) {
+      const entry = value[index];
       assertSafeConfigurationValue(entry, `${path}[${index}]`, disclosedFeatures);
     }
     return;
   }
   if (typeof value !== 'object' || value === null) return;
-  for (const [key, entry] of Object.entries(value)) {
+  const entries = Object.entries(value);
+  for (let i = 0, len = entries.length; i < len; i++) {
+    const [key, entry] = entries[i];
     const tokens = configurationKeyTokens(key);
     if (tokens.some((token) => EXECUTABLE_KEY_TOKENS.has(token))) {
       throw new TypeError(`${path}.${key} declares an executable-code surface`);
@@ -90,7 +93,8 @@ export function assertStoreCompliance(
       `compliance checklist must contain exactly: ${STORE_CHECKLIST_KEYS.join(', ')}`,
     );
   }
-  for (const key of STORE_CHECKLIST_KEYS) {
+  for (let i = 0, len = STORE_CHECKLIST_KEYS.length; i < len; i++) {
+    const key = STORE_CHECKLIST_KEYS[i];
     if (!declaration.checklist[key]) {
       throw new TypeError(`compliance checklist ${key} must be true`);
     }
@@ -104,7 +108,8 @@ export function assertStoreCompliance(
       `disclosedFeatures must exactly match configurable feature/module keys: ${configurableFeatures.join(', ')}`,
     );
   }
-  for (const key of keys) {
+  for (let i = 0, len = keys.length; i < len; i++) {
+    const key = keys[i];
     if (configurationKeyTokens(key).some((token) => EXECUTABLE_KEY_TOKENS.has(token))) {
       throw new TypeError(`configuration key ${key} declares an executable-code surface`);
     }

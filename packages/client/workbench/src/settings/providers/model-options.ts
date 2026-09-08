@@ -25,7 +25,8 @@ export function accountModelOptions(
 ): Partial<Record<AgentKind, ModelOption[]>> {
   const pool = accounts ?? [];
   const options: Partial<Record<AgentKind, ModelOption[]>> = {};
-  for (const kind of AgentKindSchema.options) {
+  for (let i = 0, len = AgentKindSchema.options.length; i < len; i++) {
+    const kind = AgentKindSchema.options[i];
     const bindable = pool.some((account) => resolveBinding(account, kind).tier !== 'unavailable');
     if (!bindable) continue;
     options[kind] = enabledAccountModels(pool, providers, kind).map(({ account, model }) => ({

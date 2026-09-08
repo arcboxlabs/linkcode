@@ -110,13 +110,15 @@ describe('release artifact provenance', () => {
       'executable code',
     );
 
-    for (const [key, value, expected] of [
+    const bypassCases = [
       ['content.pluginUrl', 'https://example.invalid/content', 'executable'],
       ['modules.wasmLoader', false, 'must exactly match'],
       ['content.scriptPath', '/content/banner', 'executable'],
       ['content.inline', '<div><script>alert(1)</script></div>', 'executable'],
       ['content.source', 'data:text/javascript,alert(1)', 'executable'],
-    ] as const) {
+    ] as const;
+    for (let i = 0, len = bypassCases.length; i < len; i++) {
+      const [key, value, expected] = bypassCases[i];
       const bypass = structuredClone(bundleFixture);
       const bypassSnapshot = JSON.parse(
         Buffer.from(bypass.snapshot.base64Url, 'base64url').toString(),

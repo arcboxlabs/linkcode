@@ -151,7 +151,8 @@ export class LoopIterationRunner {
     const { reporter } = this;
     const saveEffect = this.saveEffect.bind(this);
     return Effect.gen(function* () {
-      for (const command of loop.spec.verifyChecks) {
+      for (let i = 0, len = loop.spec.verifyChecks.length; i < len; i++) {
+        const command = loop.spec.verifyChecks[i];
         const result = yield* runShellCheck(command, {
           cwd: loop.spec.cwd,
           timeoutMs: loop.spec.turnTimeoutMs,

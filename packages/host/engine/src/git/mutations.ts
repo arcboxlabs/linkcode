@@ -166,7 +166,7 @@ export const commitGitChanges = Effect.fn('Git.commitChanges')(function* (
 function parseStatusPaths(output: string): Set<string> {
   const entries = splitNul(output);
   const paths = new Set<string>();
-  for (let index = 0; index < entries.length; index += 1) {
+  for (let index = 0, len = entries.length; index < len; index += 1) {
     const entry = entries[index];
     paths.add(entry.slice(3));
     if (entry[0] === 'R' || entry[0] === 'C' || entry[1] === 'R' || entry[1] === 'C') {

@@ -41,7 +41,8 @@ export async function downloadVerified(
 ): Promise<void> {
   const failures: string[] = [];
   let integrityFailed = false;
-  for (const url of artifact.urls) {
+  for (let i = 0, len = artifact.urls.length; i < len; i++) {
+    const url = artifact.urls[i];
     try {
       // eslint-disable-next-line no-await-in-loop -- urls are an ordered fallback list
       await downloadFrom(url, destFile, artifact, options);

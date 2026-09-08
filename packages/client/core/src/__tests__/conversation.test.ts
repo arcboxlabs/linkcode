@@ -808,7 +808,10 @@ describe('createConversationBuilder', () => {
 
   it('advancing event-by-event equals a single fold', () => {
     const builder = createConversationBuilder();
-    for (const event of scenario) builder.advance(event);
+    for (let i = 0, len = scenario.length; i < len; i++) {
+      const event = scenario[i];
+      builder.advance(event);
+    }
     expect(builder.snapshot()).toEqual(buildConversation(scenario));
   });
 
@@ -823,11 +826,19 @@ describe('createConversationBuilder', () => {
 
   it('never mutates previously returned snapshots (copy-on-write)', () => {
     const builder = createConversationBuilder();
-    for (const event of scenario.slice(0, 5)) builder.advance(event);
+    const firstFive = scenario.slice(0, 5);
+    for (let i = 0, len = firstFive.length; i < len; i++) {
+      const event = firstFive[i];
+      builder.advance(event);
+    }
     const before = builder.snapshot();
     const frozen = structuredClone(before);
 
-    for (const event of scenario.slice(5)) builder.advance(event);
+    const rest = scenario.slice(5);
+    for (let i = 0, len = rest.length; i < len; i++) {
+      const event = rest[i];
+      builder.advance(event);
+    }
     builder.snapshot();
     // The earlier snapshot still shows the pending tool call and the streaming message.
     expect(before).toEqual(frozen);

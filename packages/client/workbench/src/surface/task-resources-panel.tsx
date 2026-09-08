@@ -18,11 +18,11 @@ function resourceItem(resource: SessionResource, localFileLabel: string): Resour
     kind: resource.kind,
     status: resource.status,
     source:
-      resource.direction !== 'source'
-        ? undefined
-        : resource.locator.type === 'url'
+      resource.direction === 'source'
+        ? resource.locator.type === 'url'
           ? new URL(resource.locator.url).hostname
-          : localFileLabel,
+          : localFileLabel
+        : undefined,
     updatedAt: resource.updatedAt,
     error: resource.error,
     canOpen: resource.status === 'ready',
@@ -70,7 +70,8 @@ export function RuntimeTaskResourcesPanel({
   }
 
   async function addSources(files: File[]): Promise<void> {
-    for (const file of files) {
+    for (let i = 0, len = files.length; i < len; i++) {
+      const file = files[i];
       if (file.size > MAX_ATTACHMENT_BYTES) {
         toastManager.add({ title: t('tooLarge', { name: file.name }), type: 'error' });
         continue;

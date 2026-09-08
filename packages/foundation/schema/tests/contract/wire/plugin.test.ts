@@ -134,7 +134,9 @@ describe('plugin wire schema', () => {
   });
 
   it('round-trips install and uninstall requests', () => {
-    for (const kind of ['plugin.install', 'plugin.uninstall']) {
+    const kinds = ['plugin.install', 'plugin.uninstall'];
+    for (let i = 0, len = kinds.length; i < len; i++) {
+      const kind = kinds[i];
       expect(
         parseWireMessage(
           envelope({

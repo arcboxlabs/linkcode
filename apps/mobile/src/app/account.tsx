@@ -1,8 +1,10 @@
 import { Button, Form, Host, ProgressView, Section } from '@expo/ui/swift-ui';
+import { DeleteAccountSection } from '@mobile/components/account/delete-account-section';
 import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
 import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { Redirect, Stack } from 'expo-router';
+import { Alert } from 'react-native';
 import { useTranslations } from 'use-intl';
 
 /** Account screen: profile, the account's device registry, and sign-out. */
@@ -30,11 +32,10 @@ export default function AccountScreen(): React.ReactNode {
                 <Button
                   role="destructive"
                   label={t('signOut')}
-                  onPress={() => {
-                    void signOutOfCloud();
-                  }}
+                  onPress={() => signOutOfCloud().catch(() => Alert.alert(t('signOutError')))}
                 />
               </Section>
+              <DeleteAccountSection />
             </>
           )}
         </Form>
