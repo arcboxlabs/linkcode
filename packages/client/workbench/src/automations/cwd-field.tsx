@@ -1,33 +1,49 @@
+import { TaskSelect } from '@linkcode/ui';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
-import type { UseFormRegisterReturn } from 'react-hook-form';
+import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useWorkspaces } from '../workspace/hooks';
 
-const CWD_OPTIONS_ID = 'automations-cwd-options';
-
-/** Working-directory field with registered-workspace suggestions (MRU first), shared by both create forms. */
-export function CwdField({ inputProps }: { inputProps: UseFormRegisterReturn }): React.ReactNode {
+export function CwdField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const { data: workspaces } = useWorkspaces();
+  const [custom, setCustom] = useState(false);
+  const workspaceByCwd = new Map(workspaces?.map((workspace) => [workspace.cwd, workspace]));
+  const showPath = custom || !workspaceByCwd.has(value);
 
   return (
     <Field name="cwd">
       <FieldLabel>{t('cwdLabel')}</FieldLabel>
-      <Input
-        className="w-full"
-        autoComplete="off"
-        placeholder="/path/to/repo"
-        list={CWD_OPTIONS_ID}
-        {...inputProps}
+      <TaskSelect
+        value={showPath ? 'custom' : value}
+        onChange={(next) => {
+          setCustom(next === 'custom');
+          if (next !== 'custom') onChange(next);
+        }}
+        items={[
+          ...(workspaces ?? []).map((workspace) => ({
+            value: workspace.cwd,
+            label: workspace.name ?? workspace.cwd,
+          })),
+          { value: 'custom', label: t('customDirectory') },
+        ]}
       />
-      <datalist id={CWD_OPTIONS_ID}>
-        {(workspaces ?? []).map((workspace) => (
-          <option key={workspace.workspaceId} value={workspace.cwd}>
-            {workspace.name}
-          </option>
-        ))}
-      </datalist>
+      {showPath ? (
+        <Input
+          className="w-full"
+          autoComplete="off"
+          aria-label={t('directoryPath')}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      ) : null}
       <FieldError />
     </Field>
   );

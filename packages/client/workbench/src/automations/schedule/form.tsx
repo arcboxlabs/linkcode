@@ -177,7 +177,13 @@ export function ScheduleForm({
                       />
                     </Field>
 
-                    <CwdField inputProps={register('cwd')} />
+                    <Controller
+                      control={control}
+                      name="cwd"
+                      render={({ field }) => (
+                        <CwdField value={field.value} onChange={field.onChange} />
+                      )}
+                    />
                   </>
                 )}
               </>
