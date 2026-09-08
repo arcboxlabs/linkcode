@@ -8,3 +8,4 @@ export * from './conversation';
 export * from './conversation-read';
 export * from './conversation-store';
 export * from './react';
+export * from './wire-incompatible-error';

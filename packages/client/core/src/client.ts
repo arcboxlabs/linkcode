@@ -129,6 +129,7 @@ import type {
 } from './client/pending-registry';
 import { PendingRegistry, resolveRandomUUID } from './client/pending-registry';
 import { TerminalChannel } from './client/terminal-channel';
+import { WireIncompatibleError } from './wire-incompatible-error';
 
 export type { AgentLoginHandlers, AgentLoginSettled } from './client/agent-login-channel';
 export type {
@@ -244,13 +245,16 @@ type ConnectionState = 'idle' | 'connecting' | 'ready' | 'closed' | 'disposed';
 
 const HANDSHAKE_TIMEOUT_MS = 5000;
 
-/** The message to fail the handshake with, or null when the two builds overlap. */
-function wireIncompatibility(peerVersion: number, peerMinCompatible: number): string | null {
+/** The skew between this build and the peer that answered the handshake, or null when they overlap. */
+function wireIncompatibility(
+  peerVersion: number,
+  peerMinCompatible: number,
+): WireIncompatibleError | null {
   if (peerVersion < MIN_COMPATIBLE_WIRE_VERSION) {
-    return `LinkCodeClient: host speaks wire v${peerVersion}, older than the v${MIN_COMPATIBLE_WIRE_VERSION} this build needs — update the host`;
+    return new WireIncompatibleError('update-host', peerVersion, peerMinCompatible);
   }
   if (WIRE_PROTOCOL_VERSION < peerMinCompatible) {
-    return `LinkCodeClient: this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${peerMinCompatible} the host needs — update this app`;
+    return new WireIncompatibleError('update-app', peerVersion, peerMinCompatible);
   }
   return null;
 }
@@ -800,7 +804,7 @@ export class LinkCodeClient {
       case 'pong': {
         this.peerWire = { version: p.version, minCompatible: p.minCompatible };
         const incompatible = wireIncompatibility(p.version, p.minCompatible);
-        if (incompatible) this.rejectHandshake?.(new Error(incompatible));
+        if (incompatible) this.rejectHandshake?.(incompatible);
         else this.resolveHandshake?.();
         break;
       }
@@ -1729,6 +1733,9 @@ export class LinkCodeClient {
   }
 }
 
+/** A wire incompatibility must reach callers as itself: the controller stops retrying on the type
+ * and a client renders an update state from it. */
 function toError(error: unknown): Error {
+  if (error instanceof WireIncompatibleError) return error;
   return new Error(extractErrorMessage(error, false) ?? 'Unknown error', { cause: error });
 }
