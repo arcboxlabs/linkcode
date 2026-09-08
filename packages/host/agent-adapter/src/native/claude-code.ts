@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { access, cp, readdir, readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import type {
@@ -61,6 +61,7 @@ import {
 import { asyncRetry } from 'foxts/async-retry';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
+import { falseFn, trueFn } from 'foxts/noop';
 import { waitWithAbort } from 'foxts/wait';
 import { z } from 'zod';
 import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
@@ -691,9 +692,31 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         upToMessageId: predecessor,
         dir: startOpts.cwd,
       });
+      await this.copySubagentTranscripts(opts.historyId, fork.sessionId);
       this.resumeFrom = fork.sessionId;
+      // The child transcript exists now, so a fork that dispatches no prompt (a session fork) can
+      // still read its own history; the first query's init announces the same id and dedupes.
+      this.emitSessionRef(asHistoryId(fork.sessionId));
     }
     await this.start(startOpts);
+  }
+
+  /** `forkSession` copies the transcript alone; without its `subagents/` the child's cold read
+   * finds no subagent detail. Best-effort: the fork already exists on disk, so a failed copy is
+   * reported into the session, never a failed fork. */
+  protected async copySubagentTranscripts(sourceId: string, childId: string): Promise<void> {
+    try {
+      await copyClaudeSubagentTranscripts(
+        path.join(homedir(), '.claude', 'projects'),
+        sourceId,
+        childId,
+      );
+    } catch (error) {
+      this.emitError(
+        `claude-code: subagent transcripts were not copied into the fork: ${extractErrorMessage(error)}`,
+        'fork_subagents_not_copied',
+      );
+    }
   }
 
   override async listHistory(opts?: AgentHistoryListOptions): Promise<AgentHistoryListResult> {
@@ -1973,6 +1996,51 @@ async function readClaudeProjectText(segments: readonly string[]): Promise<strin
     dirs.map((dir) => readFile(path.join(projectsDir, dir, ...segments), 'utf8').catch(() => null)),
   );
   return texts.find((t) => t !== null) ?? null;
+}
+
+/** The project directory holding `<sessionId>.jsonl`; the SDK keys projects by an encoded cwd
+ * that nothing outside it reproduces, so the file is found by looking. */
+async function findClaudeProjectDir(
+  projectsDir: string,
+  sessionId: string,
+): Promise<string | undefined> {
+  const dirs = await readdir(projectsDir).catch(() => []);
+  const present = await Promise.all(
+    dirs.map((dir) =>
+      access(path.join(projectsDir, dir, `${sessionId}.jsonl`))
+        .then(trueFn)
+        .catch(falseFn),
+    ),
+  );
+  const index = present.indexOf(true);
+  return index < 0 ? undefined : path.join(projectsDir, dirs[index]);
+}
+
+/**
+ * Copy a session's `subagents/` transcripts next to its fork child (SDK 0.3.215's `forkSession`
+ * leaves them behind). Transcripts of agents spawned after the cut travel too: their spawning
+ * tool_use is not in the child transcript, so they are never spliced in. Returns whether anything
+ * was copied; both ids become path segments and are shape-checked first.
+ */
+export async function copyClaudeSubagentTranscripts(
+  projectsDir: string,
+  sourceId: string,
+  childId: string,
+): Promise<boolean> {
+  if (!SAFE_SESSION_ID.test(sourceId) || !SAFE_SESSION_ID.test(childId)) return false;
+  const [sourceDir, childDir] = await Promise.all([
+    findClaudeProjectDir(projectsDir, sourceId),
+    findClaudeProjectDir(projectsDir, childId),
+  ]);
+  if (sourceDir === undefined || childDir === undefined) return false;
+  const from = path.join(sourceDir, sourceId, 'subagents');
+  try {
+    await access(from);
+  } catch {
+    return false;
+  }
+  await cp(from, path.join(childDir, childId, 'subagents'), { recursive: true });
+  return true;
 }
 
 async function readClaudeTranscriptSupplement(

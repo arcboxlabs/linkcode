@@ -413,7 +413,9 @@ export class PiAdapter extends BaseAgentAdapter {
     );
     this.emitApprovalPolicy({ availablePolicies: [...POLICIES], currentPolicyId: this.policyId });
     if (isEffort(session.thinkingLevel)) this.emitEffort(session.thinkingLevel);
-    if (this.resumeFrom) this.emitSessionRef(this.resumeFrom);
+    // A resumed or branched manager already has its file: announce it before any prompt, so a
+    // fork that dispatches nothing yet (a session fork) can read its own history.
+    if (manager) this.emitSessionRef(asHistoryId(session.sessionId));
     await session.bindExtensions({
       uiContext: createPiUiContext({
         ask: (tool, questions, signal) =>
