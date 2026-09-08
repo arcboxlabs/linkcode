@@ -1,6 +1,7 @@
 import { useSettingsStore } from '@mobile/stores/settings-store';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
+import { Appearance } from 'react-native';
 import { Uniwind, useUniwind } from 'uniwind';
 
 /**
@@ -13,6 +14,7 @@ export function ThemeController(): React.ReactNode {
 
   useEffect(() => {
     Uniwind.setTheme(preference);
+    Appearance.setColorScheme(preference === 'system' ? 'unspecified' : preference);
   }, [preference]);
 
   return <StatusBar style={theme === 'dark' ? 'light' : 'dark'} />;

@@ -24,7 +24,6 @@ import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { HeaderMenuButton } from '@mobile/components/shell/header-menu-button';
-import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useAccountModels } from '@mobile/runtime/use-account-models';
@@ -84,9 +83,6 @@ function SessionScreen(): React.ReactNode {
   const actions = useSessionActions(sessionId, conversation.status);
   const { stop } = useSessionAutoResume(sessionId, session?.status, autoResumeSuppressed);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
-  // Measured height of the floating composer block, fed back to the list as its bottom inset so
-  // resting content clears the card while scrolling still flows under the glass.
-  const [dockHeight, setDockHeight] = useState(0);
 
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
@@ -140,7 +136,7 @@ function SessionScreen(): React.ReactNode {
       className="flex-1"
       style={{
         backgroundColor: palette.background,
-        paddingBottom: USES_IOS_26_NAVIGATION ? 0 : insets.bottom,
+        paddingBottom: insets.bottom,
       }}
     >
       <Stack.Screen
@@ -211,26 +207,11 @@ function SessionScreen(): React.ReactNode {
               onPressTool={(toolCall) => setOpenToolCallId(toolCall.toolCallId)}
             />
           )}
-          // Inverted list: the header renders at the visual bottom — the clearance that keeps
-          // resting content out from under the floating composer.
-          ListHeaderComponent={
-            USES_IOS_26_NAVIGATION && dockHeight > 0 ? (
-              <View style={{ height: dockHeight }} />
-            ) : null
-          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
           className="flex-1"
         />
       )}
-      {/* Sticky rather than an avoiding view: the inverted list already pins to the bottom, so
-          the composer only has to ride the keyboard instead of resizing the whole screen. On
-          iOS 26 the block floats over the list so content scrolls under the glass. */}
-      <View
-        className={USES_IOS_26_NAVIGATION ? 'absolute inset-x-0 bottom-0' : undefined}
-        style={USES_IOS_26_NAVIGATION ? { paddingBottom: insets.bottom } : undefined}
-        pointerEvents="box-none"
-        onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}
-      >
+      <View>
         <KeyboardStickyView>
           <PromptDock
             prompts={prompts}

@@ -1,5 +1,5 @@
 import { Host } from '@expo/ui/jetpack-compose';
-import { useResolvedColorScheme } from '@mobile/components/form/compose-theme.android';
+import { useResolvedColorScheme } from '@mobile/components/theme/use-color-scheme';
 
 /** `Host` pinned to the APP theme. A bare Host follows the system scheme, which diverges from
  * the RN surfaces the moment the in-app appearance preference overrides it — dark text on a
