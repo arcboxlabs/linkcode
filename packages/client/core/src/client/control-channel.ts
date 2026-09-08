@@ -82,6 +82,7 @@ import type {
   PluginList,
   PluginMutation,
   RequestAck,
+  SessionForkResult,
   SessionStartResult,
   TurnSubmitResult,
 } from './pending-registry';
@@ -213,6 +214,26 @@ export class ControlChannel {
         parentTurnId: target.parentTurnId,
         expectedGraphRevision: target.expectedGraphRevision,
       }),
+    }));
+  }
+
+  /**
+   * Fork a new session off `sourceSessionId` through `throughTurnId` (that turn included). The
+   * daemon validates the turn and `expectedGraphRevision` — the source graph the caller looked at
+   * — and answers typed `busy`/`conflict`/`unsupported`. Idempotency is a fresh `operationId`.
+   */
+  forkSession(
+    sourceSessionId: SessionId,
+    throughTurnId: TurnId,
+    expectedGraphRevision: number,
+  ): Promise<SessionForkResult> {
+    return this.sendCorrelated('fork', (clientReqId) => ({
+      kind: 'session.fork',
+      clientReqId,
+      sourceSessionId,
+      throughTurnId,
+      operationId: OperationIdSchema.parse(`op-${clientReqId}`),
+      expectedGraphRevision,
     }));
   }
 

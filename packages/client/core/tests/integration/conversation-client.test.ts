@@ -1,5 +1,9 @@
 import type { RunId, SessionId, TurnId } from '@linkcode/schema';
-import { AttachmentIdSchema, CONVERSATION_GRAPH_WIRE_VERSION } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  CONVERSATION_GRAPH_WIRE_VERSION,
+  SESSION_FORK_WIRE_VERSION,
+} from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
@@ -167,6 +171,77 @@ describe('LinkCodeClient conversation graph API', () => {
       expect.objectContaining({ parentTurnId: leafTurnId, expectedGraphRevision: 5 }),
     ]);
     client.dispose();
+    serverTransport.close();
+  });
+
+  it('forks a session through a turn and resolves with the child, or fails typed', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const forks: unknown[] = [];
+    serverTransport.onMessage((msg) => {
+      const p = msg.payload;
+      if (p.kind !== 'session.fork') return;
+      forks.push(p);
+      serverTransport.send(
+        p.expectedGraphRevision === 7
+          ? createWireMessage({
+              kind: 'session.forked',
+              replyTo: p.clientReqId,
+              sessionId: 'sess-child' as SessionId,
+            })
+          : createWireMessage({
+              kind: 'request.failed',
+              replyTo: p.clientReqId,
+              code: 'conflict',
+              message: 'The conversation graph has moved',
+            }),
+      );
+    });
+
+    expect(client.supportsSessionFork).toBe(true);
+    await expect(client.forkSession(sessionId, leafTurnId, 7)).resolves.toEqual({
+      sessionId: 'sess-child',
+    });
+    await expect(client.forkSession(sessionId, leafTurnId, 6)).rejects.toMatchObject({
+      code: 'conflict',
+    });
+    expect(forks).toEqual([
+      expect.objectContaining({
+        sourceSessionId: sessionId,
+        throughTurnId: leafTurnId,
+        expectedGraphRevision: 7,
+        operationId: expect.stringMatching(rOperationId),
+      }),
+      expect.objectContaining({ expectedGraphRevision: 6 }),
+    ]);
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('refuses to fork against a host that predates session.fork, before any frame leaves', async () => {
+    const [clientTransport, serverTransport] = createLocalTransportPair();
+    await serverTransport.connect();
+    const frames: string[] = [];
+    serverTransport.onMessage((message) => {
+      frames.push(message.payload.kind);
+      if (message.payload.kind === 'ping') {
+        serverTransport.send(
+          createWireMessage({
+            kind: 'pong',
+            version: SESSION_FORK_WIRE_VERSION - 1,
+            minCompatible: SESSION_FORK_WIRE_VERSION - 5,
+          }),
+        );
+      }
+    });
+    const older = new LinkCodeClient(clientTransport);
+    await older.connect();
+
+    expect(older.supportsSessionFork).toBe(false);
+    await expect(older.forkSession(sessionId, leafTurnId, 1)).rejects.toMatchObject({
+      code: 'unsupported',
+    });
+    expect(frames).not.toContain('session.fork');
+    older.dispose();
     serverTransport.close();
   });
 
