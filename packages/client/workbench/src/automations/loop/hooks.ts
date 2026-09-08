@@ -37,6 +37,7 @@ export function useLoopInspection(loopId: LoopId | null) {
       client.subscribeLoopEvents((event) => {
         const matches =
           (event.type === 'changed' && event.loop.loopId === loopId) ||
+          (event.type === 'removed' && event.loopId === loopId) ||
           (event.type === 'iteration' && event.iteration.loopId === loopId);
         if (matches && !signal.aborted) void mutate();
       }),

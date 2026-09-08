@@ -752,7 +752,7 @@ export function DesktopShell({
       >
         {/* Never paint this wrapper: it spans the sidebar column, whose translucent tint has to
             reach the native backdrop. Only the floating rail needs its own opaque gutter. */}
-        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-hidden">
+        <div className="grid h-full min-h-0 grid-cols-[minmax(0,1fr)_auto] overflow-clip">
           <DesktopWorkspace
             main={main}
             workspaceOverlay={

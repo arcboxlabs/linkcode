@@ -1,18 +1,11 @@
 import type { LoopId, LoopIteration, LoopStatus, SessionId } from '@linkcode/schema';
-import { deleteLoop, stopLoop } from '@linkcode/sdk';
-import {
-  AlertDialog,
-  AlertDialogClose,
-  AlertDialogDescription,
-  AlertDialogPopup,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from 'coss-ui/components/alert-dialog';
+import { TaskDisclosure, TaskLoadError } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
-import { useMutation } from '../../runtime/tayori';
+import { AutomationActions } from '../actions';
+import { AutomationPaneSkeleton } from '../pane-layout';
 import { useLoopInspection, useLoopLog } from './hooks';
 import { LoopLogView } from './log-view';
 
@@ -37,12 +30,25 @@ export function LoopDetail({
 }): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const tAgent = useTranslations('workbench.agentKind');
-  const { data: inspection } = useLoopInspection(loopId);
+  const { data: inspection, error, mutate } = useLoopInspection(loopId);
   const logs = useLoopLog(loopId);
-  const stop = useMutation(stopLoop);
-  const remove = useMutation(deleteLoop);
 
   if (!inspection) {
+    if (error) {
+      return (
+        <TaskLoadError
+          message={t('loadFailed')}
+          retryLabel={t('retry')}
+          onRetry={() => {
+            void mutate();
+          }}
+        />
+      );
+    }
+    return <AutomationPaneSkeleton />;
+  }
+
+  if (inspection.loop.loopId !== loopId) {
     return (
       <Empty className="h-full">
         <EmptyTitle>{t('notFound')}</EmptyTitle>
@@ -52,13 +58,29 @@ export function LoopDetail({
 
   const { loop, iterations } = inspection;
   return (
-    <div className="flex min-w-0 flex-1 flex-col gap-4">
+    <div className="mx-auto flex w-full min-w-0 max-w-xl flex-col gap-5">
+      {error ? (
+        <TaskLoadError
+          message={t('loadFailed')}
+          retryLabel={t('retry')}
+          onRetry={() => {
+            void mutate();
+          }}
+        />
+      ) : null}
       <header className="flex flex-col gap-2">
+        <div className="flex items-center justify-between">
+          <Badge variant={STATUS_BADGE[loop.status]}>{t(`loopStatus.${loop.status}`)}</Badge>
+          <AutomationActions
+            task={loop}
+            sessionId={iterations.at(-1)?.workerSessionId}
+            onOpenSession={onOpenSession}
+          />
+        </div>
         <div className="flex items-center gap-2">
           <h2 className="min-w-0 truncate font-semibold text-lg">
             {loop.spec.name ?? loop.spec.cwd}
           </h2>
-          <Badge variant={STATUS_BADGE[loop.status]}>{t(`loopStatus.${loop.status}`)}</Badge>
         </div>
         <p className="whitespace-pre-wrap text-muted-foreground text-sm">{loop.spec.prompt}</p>
       </header>
@@ -70,59 +92,23 @@ export function LoopDetail({
           label={t('loop.iterations')}
           value={`${loop.iterationCount} / ${loop.spec.maxIterations}`}
         />
-        <Fact label={t('loop.summary')} value={loop.summary ?? loop.error ?? '—'} />
       </dl>
+      {loop.summary || loop.error ? (
+        <p role="status" className="whitespace-pre-wrap break-words text-sm">
+          {loop.status === 'failed'
+            ? (iterations.at(-1)?.error ?? loop.error)
+            : (loop.error ?? loop.summary)}
+        </p>
+      ) : null}
 
-      <div className="flex flex-wrap gap-2">
-        {loop.status === 'running' ? (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => {
-              void stop.trigger({ loopId });
-            }}
-          >
-            {t('loop.stop')}
-          </Button>
-        ) : (
-          <AlertDialog>
-            <AlertDialogTrigger
-              render={
-                <Button size="sm" variant="ghost" className="text-destructive">
-                  {t('delete')}
-                </Button>
-              }
-            />
-            <AlertDialogPopup>
-              <AlertDialogTitle>{t('deleteConfirmTitle')}</AlertDialogTitle>
-              <AlertDialogDescription>{t('deleteConfirmDescription')}</AlertDialogDescription>
-              <div className="mt-4 flex justify-end gap-2">
-                <AlertDialogClose render={<Button variant="ghost">{t('cancel')}</Button>} />
-                <AlertDialogClose
-                  render={
-                    <Button
-                      variant="destructive"
-                      onClick={() => {
-                        void remove.trigger({ loopId });
-                      }}
-                    >
-                      {t('delete')}
-                    </Button>
-                  }
-                />
-              </div>
-            </AlertDialogPopup>
-          </AlertDialog>
-        )}
-      </div>
+      <TaskDisclosure title={t('loop.log')}>
+        <section className="flex flex-col gap-2">
+          <h3 className="font-medium text-sm">{t('loop.log')}</h3>
+          <LoopLogView entries={logs} emptyLabel={t('loop.logEmpty')} />
+        </section>
+      </TaskDisclosure>
 
-      <section className="flex flex-col gap-2">
-        <h3 className="font-medium text-sm">{t('loop.log')}</h3>
-        <LoopLogView entries={logs} emptyLabel={t('loop.logEmpty')} />
-      </section>
-
-      <section className="flex min-h-0 flex-col gap-2">
-        <h3 className="font-medium text-sm">{t('loop.iterations')}</h3>
+      <TaskDisclosure title={t('loop.iterations')}>
         {iterations.length === 0 ? (
           <p className="text-muted-foreground text-sm">{t('loop.iterationsEmpty')}</p>
         ) : (
@@ -137,7 +123,7 @@ export function LoopDetail({
             ))}
           </ul>
         )}
-      </section>
+      </TaskDisclosure>
     </div>
   );
 }
@@ -177,9 +163,13 @@ function IterationRow({
           {iteration.checks.map((check, checkIndex) => (
             // Checks are an append-only, never-reordered sequence per iteration; index is stable.
             // eslint-disable-next-line @eslint-react/no-array-index-key -- no natural id; order is fixed
-            <li key={checkIndex} className="flex items-center gap-2 font-mono text-xs">
-              <Badge variant={check.exitCode === 0 ? 'success' : 'error'}>{check.exitCode}</Badge>
-              <span className="min-w-0 flex-1 truncate">{check.command}</span>
+            <li key={checkIndex} className="min-w-0 text-xs">
+              <TaskDisclosure title={`${check.exitCode} · ${check.command}`}>
+                {check.timedOut ? <p className="text-destructive">{t('loop.timedOut')}</p> : null}
+                <pre className="max-h-64 overflow-auto whitespace-pre-wrap break-words font-mono text-xs">
+                  {check.outputTail || t('loop.noOutput')}
+                </pre>
+              </TaskDisclosure>
             </li>
           ))}
         </ul>
