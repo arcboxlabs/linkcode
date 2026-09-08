@@ -121,6 +121,8 @@ export const en = {
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
       errorManaged:
         'Unable to connect to the daemon ({url}). It starts automatically with the app — retry, and restart the app if this keeps failing.',
+      updateApp: 'This LinkCode build is too old to talk to the daemon at {url}. Update the app.',
+      updateHost: 'The daemon at {url} is too old for this LinkCode build. Update the daemon.',
       retry: 'Retry',
     },
     errors: {

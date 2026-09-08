@@ -117,6 +117,8 @@ export const zhCN = {
       error: '无法连接到 daemon（{url}）。请先运行 {command}。',
       errorManaged:
         '无法连接到 daemon（{url}）。它会随应用自动启动——请重试，若持续失败请重启应用。',
+      updateApp: '此版本的 LinkCode 过旧，无法与 daemon（{url}）通信。请更新应用。',
+      updateHost: 'daemon（{url}）的版本过旧，无法与此版本的 LinkCode 通信。请更新 daemon。',
       retry: '重试',
     },
     errors: {
