@@ -1,4 +1,5 @@
 import type { ScheduleCadence } from '@linkcode/schema';
+import { recognizePreset } from './form-model';
 
 /** Human cadence summary shared by the schedule list rows and detail facts. */
 export function cadenceLabel(
@@ -6,7 +7,20 @@ export function cadenceLabel(
   t: (key: string, values?: Record<string, number>) => string,
 ): string {
   if (cadence.type === 'interval') {
-    return t('schedule.everyMinutes', { minutes: Math.round(cadence.everyMs / 60000) });
+    return t('schedule.everyMinutes', { minutes: cadence.everyMs / 60000 });
   }
-  return cadence.timezone ? `${cadence.expression} (${cadence.timezone})` : cadence.expression;
+  const preset = recognizePreset(cadence.expression);
+  let label = cadence.expression;
+  if (preset.cadenceKind) {
+    const time = `${String(preset.hour ?? 0).padStart(2, '0')}:${String(preset.minute ?? 0).padStart(2, '0')}`;
+    label =
+      preset.cadenceKind === 'hourly'
+        ? `${t('schedule.hourly')} · :${String(preset.minute ?? 0).padStart(2, '0')}`
+        : `${t(`schedule.${preset.cadenceKind}`)} · ${time}`;
+    if (preset.weekday !== undefined) label += ` · ${t(`schedule.weekdayNames.${preset.weekday}`)}`;
+    if (preset.monthDay !== undefined) {
+      label += ` · ${t('schedule.onDay', { day: preset.monthDay })}`;
+    }
+  }
+  return cadence.timezone ? `${label} (${cadence.timezone})` : label;
 }
