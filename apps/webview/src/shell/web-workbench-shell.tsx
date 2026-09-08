@@ -5,6 +5,7 @@ import {
   getResourcesPanelPresentation,
   RESOURCES_FLOATING_COLUMN_WIDTH,
   RESOURCES_FLOATING_MIN_WORKSPACE_WIDTH,
+  useAutomationDraftState,
   useProvidersSettingsStore,
   useResourcesPanelStore,
   WorkspaceServicesMenu,
@@ -14,7 +15,8 @@ import { Card } from 'coss-ui/components/card';
 import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { ChevronLeftIcon, ChevronRightIcon, Settings2Icon, SettingsIcon } from 'lucide-react';
-import { Link, useLocation, useNavigate } from 'react-router';
+import { useEffect } from 'react';
+import { Link, useBlocker, useLocation, useNavigate } from 'react-router';
 import { useTranslations } from 'use-intl';
 
 const WEB_SIDEBAR_WIDTH = 288;
@@ -30,6 +32,19 @@ export function WebWorkbenchShell({
   const navigate = useNavigate();
   const location = useLocation();
   const automationsOpen = location.pathname === '/automations';
+  const dirty = useAutomationDraftState((state) => state.dirty);
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      automationsOpen && dirty && currentLocation.pathname !== nextLocation.pathname,
+  );
+  useEffect(() => {
+    if (blocker.state !== 'blocked') return;
+    useAutomationDraftState.getState().request(() => blocker.proceed());
+
+    return useAutomationDraftState.subscribe((state, previous) => {
+      if (previous.pending && !state.pending && state.dirty) blocker.reset();
+    });
+  }, [blocker]);
   const resourcesOpen = useResourcesPanelStore((state) => state.open);
   const setResourcesOpen = useResourcesPanelStore((state) => state.setOpen);
   const floatingSpaceAvailable = useMediaQuery({
@@ -66,8 +81,10 @@ export function WebWorkbenchShell({
             automationsOpen ? (
               <AutomationsView
                 onOpenSession={(sessionId) => {
-                  props.onSelectSession(sessionId);
-                  void navigate('/');
+                  useAutomationDraftState.getState().request(() => {
+                    props.onSelectSession(sessionId);
+                    void navigate('/');
+                  });
                 }}
               />
             ) : undefined
@@ -81,12 +98,16 @@ export function WebWorkbenchShell({
             void navigate('/automations');
           }}
           onSelectSession={(sessionId) => {
-            props.onSelectSession(sessionId);
-            if (automationsOpen) void navigate('/');
+            useAutomationDraftState.getState().request(() => {
+              props.onSelectSession(sessionId);
+              if (automationsOpen) void navigate('/');
+            });
           }}
           onStartDraft={(workspaceId) => {
-            props.onStartDraft(workspaceId);
-            if (automationsOpen) void navigate('/');
+            useAutomationDraftState.getState().request(() => {
+              props.onStartDraft(workspaceId);
+              if (automationsOpen) void navigate('/');
+            });
           }}
           header={
             automationsOpen ? null : (
