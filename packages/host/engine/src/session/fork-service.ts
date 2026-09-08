@@ -57,6 +57,10 @@ interface AdmittedFork {
   readonly path: ConversationTurn[];
   readonly cut: ForkCut;
   readonly operation: OpenForkOperation;
+  /** The source's managed worktree, captured while the source was provably present under the
+   * semaphore; the child leases exactly this path, so a source deleted before the launch is a
+   * typed `conflict` at the store, not an unleased start in a vanishing directory. */
+  readonly sourceWorktreePath: string | undefined;
 }
 
 /**
@@ -165,7 +169,10 @@ export class SessionForkService {
             new RequestError({ code: 'busy', message: `Session is busy: ${source.sessionId}` }),
           );
         }
-        const { checkpoints, sessions, turns, worktrees } = this;
+        // Captured synchronously while the source is provably present: a delete interleaving the
+        // async admit below cannot make the launch skip the child's lease.
+        const sourceWorktreePath = this.worktrees.get(source.sessionId)?.worktreePath;
+        const { checkpoints, sessions, turns } = this;
         return Effect.gen(function* () {
           if (yield* turns.hasOpenOperation(source.sessionId)) {
             return yield* Effect.fail(
@@ -193,16 +200,6 @@ export class SessionForkService {
           if (request.expectedGraphRevision !== source.graphRevision) {
             return yield* Effect.fail(
               new RequestError({ code: 'conflict', message: 'The conversation graph has moved' }),
-            );
-          }
-          // A managed worktree has exactly one owning session until worktree leases land; the
-          // child could not hold the working tree it would share.
-          if (worktrees.get(source.sessionId) !== undefined) {
-            return yield* Effect.fail(
-              new RequestError({
-                code: 'unsupported',
-                message: 'Forking a session on a managed worktree is not supported yet',
-              }),
             );
           }
           if (sessions.historyCapabilitiesOf(source.kind).forkAfterTurn !== true) {
@@ -235,7 +232,7 @@ export class SessionForkService {
             createdAt: Date.now(),
           };
           yield* turns.persistOperation(operation);
-          return { source, through, path, cut, operation };
+          return { source, through, path, cut, operation, sourceWorktreePath };
         });
       }),
     );
@@ -254,10 +251,10 @@ export class SessionForkService {
     { readonly sessionId: SessionId; readonly mcpWarnings: readonly McpWarning[] },
     EngineFailure
   > {
-    const { history, lifecycle, records, sessions, turns } = this;
+    const { history, lifecycle, records, sessions, turns, worktrees } = this;
     const abandon = this.abandon.bind(this);
     return Effect.gen(function* () {
-      const { source, through, path, cut, operation } = admitted;
+      const { source, through, path, cut, operation, sourceWorktreePath } = admitted;
       const childId = lifecycle.nextSessionId();
       // The source's pins, resolved for the child: per-session resources such as the simulator
       // MCP endpoint token must belong to the child, or its tools act as the source's.
@@ -309,6 +306,14 @@ export class SessionForkService {
         eventEpoch: 0,
       };
       records.registerProvisional(child);
+      // The child leases its source's managed worktree before the adapter starts there. The path
+      // was captured at admit, so a source deleted meanwhile makes this acquire fail typed
+      // `conflict` (the store refuses a `deleting`/removed worktree) instead of starting the child
+      // in a directory being torn down.
+      const lease =
+        sourceWorktreePath === undefined
+          ? Effect.void
+          : worktrees.acquire(childId, sourceWorktreePath);
       const start = sessions
         .startLive(
           undefined,
@@ -359,7 +364,8 @@ export class SessionForkService {
           ),
           Effect.uninterruptible,
         );
-      yield* start.pipe(
+      yield* lease.pipe(
+        Effect.andThen(start),
         Effect.andThen(commit),
         Effect.onExit((exit) =>
           Exit.isFailure(exit) && records.isProvisional(childId) ? abandon(child) : Effect.void,
@@ -371,7 +377,7 @@ export class SessionForkService {
 
   /** A fork that never committed: stop the child adapter if it started, forget the record. */
   private abandon(child: SessionRecord): Effect.Effect<void> {
-    const { records, sessions } = this;
+    const { records, sessions, worktrees } = this;
     return Effect.suspend(() => {
       const stop =
         sessions.liveRunId(child.sessionId) === undefined
@@ -388,6 +394,20 @@ export class SessionForkService {
                 ),
               );
       return stop.pipe(
+        // The child's lease goes with it; when the source vanished meanwhile this was the last one.
+        Effect.andThen(
+          worktrees
+            .cleanupDeletedSession(child.sessionId)
+            .pipe(
+              Effect.catch((error) =>
+                Effect.logError(
+                  'Failed to release the abandoned fork child worktree lease',
+                  { sessionId: child.sessionId },
+                  error.cause,
+                ),
+              ),
+            ),
+        ),
         Effect.andThen(
           Effect.sync(() => {
             records.discardProvisional(child.sessionId);
