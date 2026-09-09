@@ -60,12 +60,14 @@ function approvalFor(toolCallId: string): ConversationItem {
 }
 
 function boundary(
-  kind: 'plan' | 'approval' | 'question' | 'error' | 'compaction',
+  kind: 'plan' | 'approval' | 'question' | 'error' | 'compaction' | 'history-unavailable',
 ): ConversationItem {
   const id = `boundary-${seq++}`;
   switch (kind) {
     case 'plan':
       return { kind, id, turnId: 'turn-0', plan: { planId: id, entries: [] } };
+    case 'history-unavailable':
+      return { kind, id, turnId: 'turn-0' };
     case 'approval':
       return approvalFor(`unrelated-${id}`);
     case 'question':

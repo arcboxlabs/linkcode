@@ -1,5 +1,4 @@
 import type { AdapterFactory, AgentAdapter, BrowserToolsetFactory } from '@linkcode/agent-adapter';
-import { nextMessageId } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryCapabilities,
@@ -13,6 +12,7 @@ import type {
   SessionInfo,
   SessionRecord,
 } from '@linkcode/schema';
+import { userRowMessageId } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
@@ -221,9 +221,15 @@ export class SessionOrchestrator {
             input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
           });
           const result = yield* Effect.sync(() => {
-            this.events.broadcast(sessionId, session, [
-              { type: 'user-message', messageId: nextMessageId(), content },
-            ]);
+            this.events.broadcast(
+              sessionId,
+              session,
+              session.trackPrompt(
+                userRowMessageId(intent.turn.turnId),
+                content,
+                intent.turn.turnId,
+              ),
+            );
             records.setTitleFromContent(sessionId, content);
           }).pipe(
             Effect.andThen(

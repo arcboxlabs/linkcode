@@ -62,6 +62,7 @@ import type {
   StandaloneSkill,
   StandaloneSkillScope,
   StartOptions,
+  TurnId,
   WirePayload,
   WorkspaceFile,
   WorkspaceId,
@@ -72,6 +73,8 @@ import type {
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import type {
+  ConversationGraphSnapshot,
+  ConversationReadPage,
   PendingRegistry,
   PendingValueMap,
   PluginList,
@@ -88,6 +91,13 @@ export type HistoryListClientOptions = AgentHistoryListOptions & {
 export type HistoryReadClientOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
 };
+
+export interface ConversationReadClientOptions {
+  /** Absent = the session's active leaf. */
+  leafTurnId?: TurnId;
+  cursor?: string;
+  limit?: number;
+}
 
 /**
  * Correlated control-plane requests (sessions, history, config, git, workspaces); replies are
@@ -160,6 +170,29 @@ export class ControlChannel {
       clientReqId,
       agentKind,
       opts,
+    }));
+  }
+
+  /** The session's turn tree — ids, parents, ordinals, states, input summaries; no content. */
+  getConversationGraph(sessionId: SessionId): Promise<ConversationGraphSnapshot> {
+    return this.sendCorrelated('conversationGraph', (clientReqId) => ({
+      kind: 'conversation.graph.get',
+      clientReqId,
+      sessionId,
+    }));
+  }
+
+  /** One page of the host-composed projection toward a leaf. Only the final page carries the live
+   * tail and the `(epoch, seq)` watermark; `readConversationProjection` walks the whole read. */
+  readConversation(
+    sessionId: SessionId,
+    opts: ConversationReadClientOptions = {},
+  ): Promise<ConversationReadPage> {
+    return this.sendCorrelated('conversationRead', (clientReqId) => ({
+      kind: 'conversation.read',
+      clientReqId,
+      sessionId,
+      ...opts,
     }));
   }
 

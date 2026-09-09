@@ -1,6 +1,5 @@
-import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
-import { agentCommandMatches } from '@linkcode/schema';
+import { agentCommandMatches, userRowMessageId } from '@linkcode/schema';
 import { Cause, Effect, Exit } from 'effect';
 import { nullthrow } from 'foxts/guard';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
@@ -64,7 +63,6 @@ export class SessionInputDispatcher {
       return Effect.fail(error);
     }
     const { events, records, resources, turns } = this;
-    const promptMessageId = input.type === 'prompt' ? nextMessageId() : undefined;
     // Set synchronously, before the first await, so a same-tick second turn input cannot slip
     // past the gate above while this one is still validating; every failure exit releases it.
     if (startsTurn) session.turnInputActive = true;
@@ -118,28 +116,34 @@ export class SessionInputDispatcher {
         });
       }
       const persisted = intent;
+      const persistedTurnId = startsTurn
+        ? nullthrow(persisted, 'turn input without a persisted turn').turn.turnId
+        : undefined;
+      // The echo carries the durable row's identity: a client's live view and its later
+      // conversation.read converge on one row per turn instead of reconciling two ids.
+      const echoMessageId =
+        persistedTurnId === undefined ? undefined : userRowMessageId(persistedTurnId);
       const dispatch = Effect.gen(function* () {
         // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
-        if (promptMessageId !== undefined && input.type === 'prompt') {
-          const { turnId } = nullthrow(persisted, 'prompt dispatch without a persisted turn').turn;
-          events.broadcast(
-            sessionId,
-            session,
-            session.trackPrompt(promptMessageId, input.content, turnId),
-          );
-          records.setTitleFromContent(sessionId, input.content);
-        } else if (input.type === 'command' || input.type === 'shell-command') {
-          const text =
-            input.type === 'command'
-              ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
-              : `$ ${input.command}`;
-          events.broadcast(sessionId, session, [
-            {
-              type: 'user-message',
-              messageId: nextMessageId(),
-              content: [{ type: 'text', text }],
-            },
-          ]);
+        if (persistedTurnId !== undefined && echoMessageId !== undefined) {
+          if (input.type === 'prompt') {
+            events.broadcast(
+              sessionId,
+              session,
+              session.trackPrompt(echoMessageId, input.content, persistedTurnId),
+            );
+            records.setTitleFromContent(sessionId, input.content);
+          } else if (input.type === 'command' || input.type === 'shell-command') {
+            const text =
+              input.type === 'command'
+                ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
+                : `$ ${input.command}`;
+            events.broadcast(
+              sessionId,
+              session,
+              session.trackPrompt(echoMessageId, [{ type: 'text', text }], persistedTurnId),
+            );
+          }
         }
         const responseInput =
           input.type === 'permission-response' || input.type === 'question-response'
@@ -177,7 +181,7 @@ export class SessionInputDispatcher {
                   session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
                 );
               }
-              if (promptMessageId !== undefined) session.untrackPrompt(promptMessageId);
+              if (echoMessageId !== undefined) session.untrackPrompt(echoMessageId);
               if (startsTurn) events.rejectInput(sessionId, session, error.publicMessage);
             }),
           ),
