@@ -9,6 +9,7 @@ import { asc, eq } from 'drizzle-orm';
 import { drizzle } from 'drizzle-orm/better-sqlite3';
 import { migrate } from 'drizzle-orm/better-sqlite3/migrator';
 import { readMigrationFiles } from 'drizzle-orm/migrator';
+import { nullthrow } from 'foxts/guard';
 import { sessionRuns, sessions } from './db/schema';
 
 type SessionRow = typeof sessions.$inferSelect;
@@ -87,6 +88,10 @@ export function createSessionStore(dbPath: string): SessionStore {
               record.runs.map((run, seq) => ({
                 sessionId: record.sessionId,
                 seq,
+                // runId is optional at the wire parse boundary only; every writer mints it, so a
+                // runId-less run here is a bug — minting one would drift the durable id per save.
+                runId: nullthrow(run.runId, `Session run without runId: ${record.sessionId}`),
+                baseTurnId: run.baseTurnId ?? null,
                 historyId: run.historyId ?? null,
                 accountId: run.accountId ?? null,
                 model: run.model ?? null,
@@ -119,9 +124,14 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     originType: record.origin.type,
     originHistoryId: record.origin.type === 'imported' ? record.origin.historyId : null,
     originImportedAt: record.origin.type === 'imported' ? record.origin.importedAt : null,
+    originSourceSessionId: record.forkOrigin?.sourceSessionId ?? null,
+    originSourceTurnId: record.forkOrigin?.sourceTurnId ?? null,
+    originForkedAt: record.forkOrigin?.forkedAt ?? null,
     createdVia: record.createdVia ?? null,
     automationKind: record.automation?.kind ?? null,
     automationId: record.automation?.id ?? null,
+    activeLeafTurnId: record.activeLeafTurnId ?? null,
+    graphRevision: record.graphRevision,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -133,22 +143,20 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
     kind: row.kind,
     cwd: row.cwd,
     title: row.title ?? undefined,
-    origin:
-      row.originType === 'imported'
-        ? {
-            type: 'imported',
-            historyId: row.originHistoryId,
-            importedAt: row.originImportedAt,
-          }
-        : { type: 'created' },
+    origin: toOrigin(row),
+    forkOrigin: toForkOrigin(row),
     createdVia: row.createdVia ?? undefined,
     automation:
       row.automationKind && row.automationId
         ? { kind: row.automationKind, id: row.automationId }
         : undefined,
+    activeLeafTurnId: row.activeLeafTurnId ?? undefined,
+    graphRevision: row.graphRevision,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({
+      runId: run.runId ?? undefined,
+      baseTurnId: run.baseTurnId ?? undefined,
       historyId: run.historyId ?? undefined,
       accountId: run.accountId ?? undefined,
       model: run.model ?? undefined,
@@ -158,4 +166,27 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
       endedAt: run.endedAt ?? undefined,
     })),
   });
+}
+
+function toOrigin(row: SessionRow): unknown {
+  if (row.originType === 'imported') {
+    return { type: 'imported', historyId: row.originHistoryId, importedAt: row.originImportedAt };
+  }
+  return { type: 'created' };
+}
+
+function toForkOrigin(row: SessionRow): unknown {
+  if (
+    row.originType !== 'forked' &&
+    row.originSourceSessionId === null &&
+    row.originSourceTurnId === null &&
+    row.originForkedAt === null
+  ) {
+    return undefined;
+  }
+  return {
+    sourceSessionId: row.originSourceSessionId,
+    sourceTurnId: row.originSourceTurnId,
+    forkedAt: row.originForkedAt,
+  };
 }

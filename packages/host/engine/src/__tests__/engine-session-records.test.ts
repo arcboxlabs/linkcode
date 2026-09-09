@@ -4,6 +4,7 @@ import type {
   AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
   AgentHistoryReadOptions,
+  RunId,
   SessionId,
   SessionRecord,
   WirePayload,
@@ -743,7 +744,10 @@ describe('engine session records', () => {
       automation: { kind: 'schedule', id: 'schedule-1' },
       createdAt: 1,
       updatedAt: 2,
-      runs: [{ historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 2 }],
+      runs: [
+        { runId: 'run-1' as RunId, historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 2 },
+      ],
+      graphRevision: 0,
     });
     const h = harness(store);
     await h.engine.start();
@@ -866,6 +870,7 @@ describe('engine session records', () => {
       createdAt: 1,
       updatedAt: 2,
       runs: [],
+      graphRevision: 0,
     };
     const created: SessionRecord = {
       sessionId: 's-created' as SessionId,
@@ -875,6 +880,7 @@ describe('engine session records', () => {
       createdAt: 1,
       updatedAt: 2,
       runs: [],
+      graphRevision: 0,
     };
     await sessionStore.save(imported);
     await sessionStore.save(created);

@@ -22,6 +22,8 @@ import { AutomationRequestHandler } from './automation/request-handler';
 import { BrowserBrokerService } from './browser/broker';
 import { BrowserReplHost } from './browser/repl-host';
 import { BrowserRequestHandler } from './browser/request-handler';
+import { InMemoryConversationStore } from './conversation/conversation-store';
+import { ConversationRequestHandler } from './conversation/request-handler';
 import type { EngineDeps } from './deps';
 import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
@@ -101,6 +103,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.stateDir,
     fileHost,
   );
+  const conversations = deps.conversationStore ?? new InMemoryConversationStore();
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -156,6 +159,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
       deps.simulatorMcp?.release(sessionId);
     },
     resources,
+    conversations,
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
@@ -216,6 +220,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     sessionLifecycle,
     responder,
   );
+  const conversationRequests = new ConversationRequestHandler(conversations, responder);
   const scheduler = new ScheduleService(
     transport,
     deps.scheduleStore ?? new InMemoryScheduleStore(),
@@ -255,6 +260,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
+    conversation: conversationRequests,
     agent: agentRequests,
     asset: assets,
     workspace: workspaceRequests,
