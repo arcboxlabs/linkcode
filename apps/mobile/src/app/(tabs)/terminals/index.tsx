@@ -14,7 +14,10 @@ import { repositoryLabel } from '@linkcode/ui/native';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
-import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import type { PrimaryAction } from '@mobile/components/shell/primary-action';
+import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { NewTerminalSheet } from '@mobile/components/terminal/new-terminal-sheet';
 import { useHostConnection } from '@mobile/runtime/host-connection';
 import { Stack, useFocusEffect, useRouter } from 'expo-router';
@@ -38,26 +41,28 @@ export default function TerminalsRoute(): React.ReactNode {
   const connection = useHostConnection();
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  const primaryAction: PrimaryAction | null =
+    connection?.status === 'ready'
+      ? {
+          sf: 'plus',
+          icon: PlusIcon,
+          label: t('newTerminal'),
+          onPress: () => setSheetOpen(true),
+        }
+      : null;
+  usePrimaryAction('terminals', primaryAction);
+  const trailingActions = useTrailingActions(primaryAction);
+
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
-  // proposed the whole window and paints straight over the large title.
+  // proposed the whole window and paints straight over the navigation header.
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitle: true,
+          ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
-          headerRight:
-            connection?.status === 'ready'
-              ? () => (
-                  <HeaderIconButton
-                    icon={PlusIcon}
-                    label={t('newTerminal')}
-                    onPress={() => setSheetOpen(true)}
-                  />
-                )
-              : undefined,
+          ...trailingActions,
         }}
       />
       <HostClientGate>

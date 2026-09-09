@@ -17,6 +17,7 @@ import {
   strokeBorder,
   tag,
 } from '@expo/ui/swift-ui/modifiers';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import {
   resolveTerminalTheme,
   TERMINAL_COLOR_SCHEMES,
@@ -65,7 +66,7 @@ export default function TerminalAppearanceScreen(): React.ReactNode {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: t('title') }} />
+      <Stack.Screen options={{ ...VISIBLE_HEADER_OPTIONS, title: t('title') }} />
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         <Form>
           <Section title={t('fontSize')}>

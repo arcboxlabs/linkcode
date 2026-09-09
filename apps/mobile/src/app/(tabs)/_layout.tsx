@@ -1,7 +1,11 @@
+import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
+import { usePrimaryActions } from '@mobile/components/shell/primary-action';
+import { PrimaryActionScope } from '@mobile/components/shell/primary-action-scope';
+import { router, useSegments } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 import { useTranslations } from 'use-intl';
 
-/** The app's three top-level surfaces. `NativeTabs` is a real `UITabBarController`, so the iOS 26
+/** The app's top-level surfaces. `NativeTabs` is a real `UITabBarController`, so the iOS 26
  * floating tab bar and its scroll-minimize behaviour come from UIKit rather than being drawn here.
  *
  * The tabs sit at the root and the host is a selection, not a parent route — switching hosts is a
@@ -10,9 +14,21 @@ import { useTranslations } from 'use-intl';
  * pushed screen, so pushing them from the root stack is the only way to keep the bar off a
  * composer or a terminal canvas. */
 export default function TabsLayout(): React.ReactNode {
+  return (
+    <PrimaryActionScope>
+      <TabsNavigator />
+    </PrimaryActionScope>
+  );
+}
+
+function TabsNavigator(): React.ReactNode {
   const tThreads = useTranslations('mobile.sessions');
   const tTerminals = useTranslations('mobile.terminals');
-  const tSettings = useTranslations('mobile.settings');
+  const actions = usePrimaryActions();
+  // Runtime segments under this layout are ['(tabs)', '<tab>'] — wider than the untyped-routes
+  // 1-tuple, hence `.at`. Before hydration fall back to home.
+  const segments = useSegments();
+  const focused = actions[segments.at(1) ?? 'threads'] ?? null;
 
   return (
     <NativeTabs>
@@ -24,10 +40,26 @@ export default function TabsLayout(): React.ReactNode {
         <NativeTabs.Trigger.Icon sf="apple.terminal" />
         <NativeTabs.Trigger.Label>{tTerminals('title')}</NativeTabs.Trigger.Label>
       </NativeTabs.Trigger>
-      <NativeTabs.Trigger name="settings">
-        <NativeTabs.Trigger.Icon sf="gearshape" />
-        <NativeTabs.Trigger.Label>{tSettings('title')}</NativeTabs.Trigger.Label>
-      </NativeTabs.Trigger>
+      {/* iOS 26's separated tab-bar slot (the `search` role) carries the focused tab's primary
+       * action: `disabled` keeps native selection prevented while tabPress still reaches JS. */}
+      {USES_IOS_26_NAVIGATION ? (
+        <NativeTabs.Trigger
+          name="compose"
+          role="search"
+          disabled
+          listeners={{
+            tabPress() {
+              if (focused) focused.onPress();
+              else router.navigate('/threads');
+            },
+          }}
+        >
+          <NativeTabs.Trigger.Icon sf={focused?.sf ?? 'square.and.pencil'} />
+          <NativeTabs.Trigger.Label>
+            {focused?.label ?? tThreads('newThread')}
+          </NativeTabs.Trigger.Label>
+        </NativeTabs.Trigger>
+      ) : null}
     </NativeTabs>
   );
 }

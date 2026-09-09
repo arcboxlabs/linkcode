@@ -2,7 +2,7 @@ import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/u
 import { disabled, font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
 import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { NavigationRow } from '@mobile/components/form/navigation-row';
-import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
+import { LARGE_TITLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import {
   disableDeviceNotifications,
@@ -32,14 +32,13 @@ const SUPPORT_URL = 'https://linkcode.ai/support';
 const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
 
 /** App settings: account + host management entries plus the About/contract summary. Nothing here is
- * host-scoped, and the tab is deliberately ungated — this is where "Manage hosts" lives, so it has
- * to survive the selected host being unreachable. */
+ * host-scoped, and the screen is deliberately ungated — this is where "Manage hosts" lives, so it
+ * has to survive the selected host being unreachable. */
 export function SettingsScreen(): React.ReactNode {
   const t = useTranslations('mobile.settings');
   const tAbout = useTranslations('mobile.about');
   const router = useRouter();
   const account = useCloudAccount();
-  const hostMenuItems = useHostMenuItems();
   const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
   const themePreference = useSettingsStore((state) => state.themePreference);
   const notificationsEnabled = useSettingsStore((state) => state.notificationsEnabled);
@@ -79,13 +78,11 @@ export function SettingsScreen(): React.ReactNode {
   // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
   // proposed the whole window and paints straight over the large title.
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitle: true,
+          ...LARGE_TITLE_HEADER_OPTIONS,
           title: t('title'),
-          unstable_headerLeftItems: () => hostMenuItems,
         }}
       />
       {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}

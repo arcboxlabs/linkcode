@@ -24,8 +24,14 @@ appId: com.arcboxlabs.linkcode.mobile
 
 # Skipping sign-in must reach host setup rather than dead-ending: a LAN/direct user never signs in.
 - tapOn: 'Skip — connect manually'
-- assertVisible: 'Connect to a host'
-# Assert what the screen always offers, not its empty state or the collapsed/expanded shape of the
-# manual form: a simulator that has been used before carries saved hosts and remembers whether the
-# form was open, and either would make this flow depend on leftover state.
+- assertVisible: 'Manage hosts'
+# Assert what the screen always offers rather than its saved-host state.
 - assertVisible: 'Sign in to reach your machines from anywhere through LinkCode Cloud.'
+
+# Skip pushes host setup above sign-in so the native back affordance returns to the OOBE instead of
+# revealing an older copy of the same Connect screen.
+- tapOn:
+    point: '6%,8%'
+- assertVisible: 'Sign in with Apple'
+- assertVisible: 'More sign-in options'
+- assertNotVisible: 'Manage hosts'

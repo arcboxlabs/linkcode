@@ -1203,7 +1203,7 @@ export const zhCN = {
       note: '直连 Link Code host（daemon）的 transport。经 LinkCode Cloud tunnel 的远程接入将随设备配对到来。',
     },
     connect: {
-      title: '连接 host',
+      title: '管理 host',
       emptyHint:
         '填入正在运行的 Link Code daemon 地址。iOS 模拟器上 http://127.0.0.1:19523 可直达本机 daemon。',
       nameLabel: '名称',
@@ -1212,6 +1212,7 @@ export const zhCN = {
       urlPlaceholder: 'http://127.0.0.1:19523',
       invalidUrl: '请输入 http(s):// 或 ws(s):// 地址。',
       add: '添加 host',
+      cancel: '取消',
       savedHosts: '已保存的 host',
       open: '打开',
       remove: '移除',
@@ -1370,6 +1371,7 @@ export const zhCN = {
     },
     settings: {
       title: '设置',
+      more: '更多',
       signIn: '登录 LinkCode Cloud',
       manageHosts: '管理 host',
       terminalAppearance: '终端外观',
