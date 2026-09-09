@@ -1,5 +1,15 @@
 import { z } from 'zod';
-import { ContentBlockSchema } from '../content';
+import type { AttachmentCapability } from '../attachment';
+import {
+  AttachmentCapabilitySchema,
+  DEFAULT_ATTACHMENT_IMAGE_MAX_COUNT,
+  intersectAttachmentCapability,
+} from '../attachment';
+import {
+  ContentBlockSchema,
+  MAX_ATTACHMENT_BYTES,
+  SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES,
+} from '../content';
 import { ImPlatformSchema } from '../im';
 import { PermissionOutcomeSchema } from '../permission';
 import type { AgentKind } from '../primitives';
@@ -149,19 +159,56 @@ export type AgentStartCatalog = z.infer<typeof AgentStartCatalogSchema>;
 export const AgentCapabilitiesSchema = z.object({
   slashCommands: z.boolean(),
   shellCommand: z.boolean(),
+  /** Absent means the harness accepts no attachments. Required would break mixed-version peers. */
+  attachments: AttachmentCapabilitySchema.optional(),
 });
 export type AgentCapabilities = z.infer<typeof AgentCapabilitiesSchema>;
+
+/** What `onPrompt` consumes today: image ContentBlocks inlined to the SDK. grok-build declares
+ * nothing — its prompt is a CLI argument. */
+const INLINE_IMAGE_ATTACHMENT_CAPABILITY: AttachmentCapability = {
+  kinds: {
+    image: {
+      mimeTypes: [...SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES],
+      maxBytes: MAX_ATTACHMENT_BYTES,
+      maxCount: DEFAULT_ATTACHMENT_IMAGE_MAX_COUNT,
+    },
+  },
+  representations: ['inline_image'],
+};
 
 /** Stable pre-session input capabilities. Live clients still trust each session's
  * `capabilities-update`; this complete matrix lets drafts and adapters share one source of truth
  * before that event stream exists. */
 export const AGENT_INPUT_CAPABILITIES = {
-  'claude-code': { slashCommands: true, shellCommand: false },
-  codex: { slashCommands: true, shellCommand: true },
-  opencode: { slashCommands: true, shellCommand: true },
-  pi: { slashCommands: true, shellCommand: false },
+  'claude-code': {
+    slashCommands: true,
+    shellCommand: false,
+    attachments: INLINE_IMAGE_ATTACHMENT_CAPABILITY,
+  },
+  codex: {
+    slashCommands: true,
+    shellCommand: true,
+    attachments: INLINE_IMAGE_ATTACHMENT_CAPABILITY,
+  },
+  opencode: {
+    slashCommands: true,
+    shellCommand: true,
+    attachments: INLINE_IMAGE_ATTACHMENT_CAPABILITY,
+  },
+  pi: {
+    slashCommands: true,
+    shellCommand: false,
+    attachments: INLINE_IMAGE_ATTACHMENT_CAPABILITY,
+  },
   'grok-build': { slashCommands: false, shellCommand: false },
 } as const satisfies Readonly<Record<AgentKind, AgentCapabilities>>;
+
+/** Host limits ∩ the harness declaration. Undefined means the harness accepts no attachments. */
+export function effectiveAttachmentCapability(kind: AgentKind): AttachmentCapability | undefined {
+  const declared: AgentCapabilities = AGENT_INPUT_CAPABILITIES[kind];
+  return intersectAttachmentCapability(declared.attachments);
+}
 
 /** Input sent up to the agent, normalized into discrete actions. */
 export const AgentInputSchema = z.discriminatedUnion('type', [

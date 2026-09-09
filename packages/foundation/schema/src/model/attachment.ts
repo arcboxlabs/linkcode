@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MAX_ATTACHMENT_BYTES, SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES } from './content';
 import { AttachmentIdSchema, TimestampSchema } from './primitives';
 
 /**
@@ -84,3 +85,99 @@ export const UploadLeaseSchema = z.object({
   createdAt: TimestampSchema,
 });
 export type UploadLease = z.infer<typeof UploadLeaseSchema>;
+
+/** Adapter-declared per-kind limits. Host ∩ adapter (∩ model, when known) is the effective cap. */
+export const AttachmentKindLimitsSchema = z.object({
+  mimeTypes: z.array(z.string().min(1)).min(1),
+  maxBytes: z.number().int().positive(),
+  maxCount: z.number().int().positive(),
+});
+export type AttachmentKindLimits = z.infer<typeof AttachmentKindLimitsSchema>;
+
+/** How the engine hands bytes to a harness. `extracted_text` is later. */
+export const KNOWN_ATTACHMENT_REPRESENTATIONS = ['inline_image', 'readonly_file'] as const;
+export type AttachmentRepresentation = (typeof KNOWN_ATTACHMENT_REPRESENTATIONS)[number];
+
+/** Open on the wire like {@link AttachmentKindSchema}: this rides `capabilities-update`, so a newer
+ * peer's representation must not fail the whole frame. The host intersection drops what it cannot
+ * materialize. */
+export const AttachmentRepresentationSchema = z.string().min(1).max(32);
+
+export const AttachmentCapabilitySchema = z.object({
+  kinds: z.object({
+    image: AttachmentKindLimitsSchema.optional(),
+    file: AttachmentKindLimitsSchema.optional(),
+  }),
+  representations: z.array(AttachmentRepresentationSchema).min(1),
+});
+export type AttachmentCapability = z.infer<typeof AttachmentCapabilitySchema>;
+
+/** Adapter-declared image count; the 12 MiB prompt aggregate is the tighter bound for large files. */
+export const DEFAULT_ATTACHMENT_IMAGE_MAX_COUNT = 16;
+
+/** What the host can materialize. Effective capability is this ∩ the adapter declaration. */
+export const HOST_ATTACHMENT_LIMITS: AttachmentCapability = {
+  kinds: {
+    image: {
+      mimeTypes: [...SUPPORTED_ATTACHMENT_IMAGE_MIME_TYPES],
+      maxBytes: MAX_ATTACHMENT_BYTES,
+      maxCount: DEFAULT_ATTACHMENT_IMAGE_MAX_COUNT,
+    },
+  },
+  representations: [...KNOWN_ATTACHMENT_REPRESENTATIONS],
+};
+
+function intersectKindLimits(
+  declared: AttachmentKindLimits | undefined,
+  host: AttachmentKindLimits | undefined,
+): AttachmentKindLimits | undefined {
+  if (declared === undefined || host === undefined) return undefined;
+  const mimeTypes: string[] = [];
+  for (let i = 0, len = declared.mimeTypes.length; i < len; i++) {
+    const mimeType = declared.mimeTypes[i];
+    if (host.mimeTypes.includes(mimeType)) mimeTypes.push(mimeType);
+  }
+  if (mimeTypes.length === 0) return undefined;
+  return {
+    mimeTypes,
+    maxBytes: Math.min(declared.maxBytes, host.maxBytes),
+    maxCount: Math.min(declared.maxCount, host.maxCount),
+  };
+}
+
+/** Absent declaration or empty intersection means the harness accepts no attachments. */
+export function intersectAttachmentCapability(
+  declared: AttachmentCapability | undefined,
+  host: AttachmentCapability = HOST_ATTACHMENT_LIMITS,
+): AttachmentCapability | undefined {
+  if (declared === undefined) return undefined;
+  const representations: string[] = [];
+  for (let i = 0, len = declared.representations.length; i < len; i++) {
+    const representation = declared.representations[i];
+    if (host.representations.includes(representation)) representations.push(representation);
+  }
+  if (representations.length === 0) return undefined;
+  const image = intersectKindLimits(declared.kinds.image, host.kinds.image);
+  const file = intersectKindLimits(declared.kinds.file, host.kinds.file);
+  if (image === undefined && file === undefined) return undefined;
+  return {
+    kinds: {
+      ...(image !== undefined && { image }),
+      ...(file !== undefined && { file }),
+    },
+    representations,
+  };
+}
+
+/** Locator a conversation.read user row uses so clients can `attachment.read` without bytes. */
+export const ATTACHMENT_URI_SCHEME = 'attachment:';
+
+export function attachmentUri(attachmentId: string): string {
+  return `${ATTACHMENT_URI_SCHEME}${attachmentId}`;
+}
+
+export function attachmentIdFromUri(uri: string): string | undefined {
+  if (!uri.startsWith(ATTACHMENT_URI_SCHEME)) return undefined;
+  const id = uri.slice(ATTACHMENT_URI_SCHEME.length);
+  return id.length > 0 ? id : undefined;
+}

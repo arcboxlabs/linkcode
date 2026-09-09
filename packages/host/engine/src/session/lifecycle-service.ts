@@ -17,8 +17,17 @@ import type {
   WorkspaceRecord,
   WorktreeRecord,
 } from '@linkcode/schema';
+import { effectiveAttachmentCapability } from '@linkcode/schema';
 import { Effect, Exit, Semaphore } from 'effect';
 import { nullthrow } from 'foxts/guard';
+import {
+  admitPromptAttachments,
+  assertInlineAttachmentsSupported,
+  attachmentIdsFromBlocks,
+  uniqueAttachmentIds,
+} from '../attachment/admit';
+import type { AttachmentStore } from '../attachment/attachment-store';
+import type { PromptMaterializer } from '../attachment/materializer';
 import type { SessionDriver } from '../automation';
 import type { ConversationCheckpointService, ForkCut } from '../conversation/checkpoint-service';
 import { hasHiddenPrefix, pathToLeaf } from '../conversation/lineage-attribution';
@@ -39,6 +48,7 @@ import {
 } from '../failure';
 import type { WorkspaceRegistry } from '../workspace/workspace-registry';
 import type { WorktreeService } from '../worktree/worktree-service';
+import { assertAttachmentContentAllowed } from './attachment-guard';
 import type { HistoryService } from './history-service';
 import { decodeLiveBranchCursor } from './live-session';
 import type { SessionOrchestrator } from './orchestrator';
@@ -76,9 +86,24 @@ type TurnLaunch =
   | { readonly type: 'resume'; readonly historyId?: AgentHistoryId }
   | { readonly type: 'fork'; readonly cut: ForkCut };
 
+function caughtEngineFailure(error: unknown): EngineFailure {
+  if (
+    error instanceof RequestError ||
+    error instanceof OperationError ||
+    error instanceof OperationTimeout
+  ) {
+    return error;
+  }
+  return new OperationError({
+    subsystem: 'store',
+    operation: 'attachments.admit',
+    publicMessage: 'Attachment validation failed',
+    cause: error,
+  });
+}
+
 function toAgentInput(input: TurnSubmitInput): AgentInput {
   if (input.type !== 'prompt') return input;
-  // attachment_ref blocks are refused at admit until the attachment store lands.
   return {
     type: 'prompt',
     content: input.blocks.flatMap((block) =>
@@ -103,6 +128,8 @@ export class SessionLifecycleService {
     private readonly worktrees: WorktreeService,
     private readonly turns: ConversationTurnService,
     private readonly checkpoints: ConversationCheckpointService,
+    private readonly attachments: AttachmentStore,
+    private readonly materializer: PromptMaterializer,
   ) {
     this.driver = {
       createSession: ({ signal, ...options }) =>
@@ -126,10 +153,15 @@ export class SessionLifecycleService {
   }
 
   deleteSession(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { sessions, workspaces, worktrees } = this;
+    const { materializer, sessions, workspaces, worktrees } = this;
     return Effect.gen(function* () {
       const worktree = worktrees.get(sessionId);
       yield* sessions.delete(sessionId);
+      // Best-effort: a missed directory is removed at the next boot sweep. Do not await the
+      // unlink on the delete reply — `session.delete` of `..` must not block or traverse.
+      void materializer.cleanupSession(sessionId).catch((error: unknown) => {
+        Effect.runFork(Effect.logWarning('Failed to clean up materialized attachments', error));
+      });
       yield* worktrees.cleanupDeletedSession(sessionId);
       if (worktree && !worktrees.hasPath(worktree.worktreePath)) {
         const workspace = workspaces.findByCwd(worktree.worktreePath);
@@ -314,6 +346,15 @@ export class SessionLifecycleService {
         const resolveForRecord = this.resolveForRecord.bind(this);
         const launchRun = this.launchRun.bind(this);
         return Effect.gen(function* () {
+          yield* Effect.try({
+            try() {
+              assertAttachmentContentAllowed(content);
+              assertInlineAttachmentsSupported(content, effectiveAttachmentCapability(source.kind));
+            },
+            catch(error) {
+              return caughtEngineFailure(error);
+            },
+          });
           if (yield* turns.hasOpenOperation(sourceSessionId)) {
             return yield* Effect.fail(
               new RequestError({
@@ -414,6 +455,7 @@ export class SessionLifecycleService {
     const admitSubmit = this.admitSubmit.bind(this);
     const relaunch = this.relaunch.bind(this);
     const resumeSession = this.resumeSession.bind(this);
+    const materializeSubmitInput = this.materializeSubmitInput.bind(this);
     const { history } = this;
     return Effect.gen(function* () {
       // Replay before any validation: a reply lost to a disconnect must not duplicate a sibling.
@@ -478,7 +520,9 @@ export class SessionLifecycleService {
         // the turn is visibly running is committed, not failed — pi-style send() spans the whole
         // turn. commitRunning completes before the race interrupts the losing send fiber, so its
         // exit backstop then sees an already-resolved operation and stands down.
-        yield* sessions.sendInput(request.sessionId, toAgentInput(request.input), intent).pipe(
+        const echoInput = toAgentInput(request.input);
+        const adapterInput = yield* materializeSubmitInput(request, intent);
+        yield* sessions.sendInput(request.sessionId, echoInput, intent, adapterInput).pipe(
           Effect.timeoutOrElse({
             duration: TURN_SUBMIT_TIMEOUT_MS,
             orElse: (): Effect.Effect<void, OperationError | OperationTimeout> =>
@@ -559,20 +603,9 @@ export class SessionLifecycleService {
             new RequestError({ code: 'busy', message: `Session is busy: ${request.sessionId}` }),
           );
         }
-        if (
-          request.input.type === 'prompt' &&
-          request.input.blocks.some((block) => block.type === 'attachment_ref')
-        ) {
-          // Seam: attachment existence/readiness/capability validation lands with the store.
-          return Effect.fail(
-            new RequestError({
-              code: 'unsupported',
-              message: 'Prompt attachments are not supported yet',
-            }),
-          );
-        }
         // Seam: the worktree co-leaseholder busy gate joins this critical section later.
         const { checkpoints, records, sessions, turns } = this;
+        const admitAttachments = this.admitPromptBlocks.bind(this);
         return Effect.gen(function* () {
           if (yield* turns.hasOpenOperation(request.sessionId)) {
             return yield* Effect.fail(
@@ -699,6 +732,9 @@ export class SessionLifecycleService {
           const liveRunId =
             launch.type === 'continue' ? sessions.liveRunId(request.sessionId) : undefined;
           if (liveRunId === undefined && launch.type === 'continue') launch = { type: 'resume' };
+          if (request.input.type === 'prompt') {
+            yield* admitAttachments(record.kind, request.input.blocks);
+          }
           const intent = yield* turns.persistIntent({
             sessionId: request.sessionId,
             operationId: request.operationId,
@@ -709,6 +745,76 @@ export class SessionLifecycleService {
           return { intent, launch };
         });
       }),
+    );
+  }
+
+  private admitPromptBlocks(
+    kind: AgentKind,
+    blocks: Extract<TurnSubmitInput, { type: 'prompt' }>['blocks'],
+  ): Effect.Effect<void, EngineFailure> {
+    const ids = uniqueAttachmentIds(attachmentIdsFromBlocks(blocks));
+    if (ids.length === 0) return Effect.void;
+    const capability = effectiveAttachmentCapability(kind);
+    return Effect.tryPromise({
+      try: () => this.attachments.listAttachments(ids),
+      catch: (cause) =>
+        new OperationError({
+          subsystem: 'store',
+          operation: 'attachments.list',
+          publicMessage: 'Failed to load attachments',
+          cause,
+        }),
+    }).pipe(
+      Effect.flatMap((stored) =>
+        Effect.try({
+          try: () => admitPromptAttachments(blocks, stored, capability),
+          catch: (error) => caughtEngineFailure(error),
+        }),
+      ),
+    );
+  }
+
+  private materializeSubmitInput(
+    request: TurnSubmitRequest,
+    intent: PersistedTurnIntent,
+  ): Effect.Effect<AgentInput, EngineFailure> {
+    if (request.input.type !== 'prompt') return Effect.succeed(request.input);
+    if (attachmentIdsFromBlocks(request.input.blocks).length === 0) {
+      return Effect.succeed(toAgentInput(request.input));
+    }
+    const record = this.records.get(request.sessionId);
+    if (!record) {
+      return Effect.fail(
+        new RequestError({
+          code: 'not_found',
+          message: `Unknown session: ${request.sessionId}`,
+        }),
+      );
+    }
+    const promptId = intent.turn.input.type === 'prompt' ? intent.turn.input.promptId : null;
+    if (promptId === null) return Effect.succeed(toAgentInput(request.input));
+    const { materializer } = this;
+    const capability = effectiveAttachmentCapability(record.kind);
+    return this.turns.getPrompt(promptId).pipe(
+      Effect.flatMap((prompt) =>
+        prompt === undefined
+          ? Effect.fail(
+              new RequestError({
+                code: 'not_found',
+                message: 'The prompt was not persisted',
+              }),
+            )
+          : materializer.prepare(request.sessionId, intent.turn.runId, prompt, capability),
+      ),
+      Effect.flatMap((prepared) =>
+        Effect.try({
+          try: (): AgentInput => ({
+            type: 'prompt',
+            content: materializer.toContentBlocks(prepared),
+          }),
+          catch: (error) => caughtEngineFailure(error),
+        }),
+      ),
     );
   }
 

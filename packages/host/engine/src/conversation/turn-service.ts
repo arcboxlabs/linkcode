@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { HistoryCheckpoint } from '@linkcode/agent-adapter';
 import type {
+  AttachmentId,
   ContentBlock,
   ConversationOperation,
   ConversationTurn,
@@ -16,9 +17,12 @@ import type {
   TurnId,
   TurnInput,
 } from '@linkcode/schema';
+import { attachmentUri } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
+import type { AttachmentStore } from '../attachment/attachment-store';
+import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { OperationError, RequestError } from '../failure';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationStore } from './conversation-store';
@@ -36,8 +40,7 @@ function mintPromptId(): PromptId {
   return `prompt-${randomUUID()}` as PromptId;
 }
 
-/** Durable prompt blocks from legacy prompt content: text only for now — binary attachments
- * become `attachment_ref`s once the attachment store lands. */
+/** Durable prompt blocks from legacy prompt content: text only. Inline images are not ingested. */
 export function promptBlocksFromContent(content: ContentBlock[]): PromptBlock[] {
   return content.flatMap((block) =>
     block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
@@ -113,6 +116,7 @@ export class ConversationTurnService {
     private readonly records: SessionRecordRegistry,
     private readonly transport: Transport,
     private readonly runTask: (effect: Effect.Effect<void>) => void,
+    private readonly attachments: AttachmentStore = new InMemoryAttachmentStore(),
   ) {}
 
   getOperation(
@@ -158,12 +162,45 @@ export class ConversationTurnService {
       return Effect.succeed([{ type: 'text' as const, text: turnInputText(input) }]);
     }
     if (input.promptId === null) return Effect.undefined;
+    const { attachments } = this;
     return this.getPrompt(input.promptId).pipe(
-      Effect.map((prompt) => {
-        if (!prompt) return;
-        // attachment_ref blocks join the projection when the attachment store lands.
-        return prompt.blocks.flatMap((block) =>
-          block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
+      Effect.flatMap((prompt) => {
+        if (!prompt) return Effect.undefined;
+        const ids: AttachmentId[] = [];
+        for (let i = 0, len = prompt.blocks.length; i < len; i++) {
+          const block = prompt.blocks[i];
+          if (block.type === 'attachment_ref') ids.push(block.attachmentId);
+        }
+        const load =
+          ids.length === 0
+            ? Effect.succeed([])
+            : storeOperation('attachments.list', () => attachments.listAttachments(ids));
+        return load.pipe(
+          Effect.map((stored) => {
+            const byId = new Map(stored.map((attachment) => [attachment.attachmentId, attachment]));
+            const content: ContentBlock[] = [];
+            for (let i = 0, len = prompt.blocks.length; i < len; i++) {
+              const block = prompt.blocks[i];
+              if (block.type === 'text') {
+                content.push({ type: 'text', text: block.text });
+                continue;
+              }
+              const attachment = byId.get(block.attachmentId);
+              content.push({
+                type: 'resource_link',
+                uri: attachmentUri(block.attachmentId),
+                name: attachment?.name ?? block.attachmentId,
+                // `kind` rides `description`, never `title`: renderers prefer `title` over `name`,
+                // so putting it there labels every attachment chip "image" instead of its filename.
+                ...(attachment !== undefined && {
+                  mimeType: attachment.mimeType,
+                  size: attachment.sizeBytes,
+                  description: attachment.kind,
+                }),
+              });
+            }
+            return content;
+          }),
         );
       }),
     );
