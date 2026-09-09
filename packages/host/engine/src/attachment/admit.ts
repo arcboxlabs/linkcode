@@ -123,11 +123,13 @@ export function admitPromptAttachments(
   }
 }
 
-/** Legacy `agent.input` images: size/mime already passed the inline guard; this is the capability gate. */
+/** Legacy `agent.input` images: bytes already passed the inline guard; this is the capability gate
+ * (kind, MIME type, count) that a ref submit gets from {@link admitPromptAttachments}. */
 export function assertInlineAttachmentsSupported(
   content: ContentBlock[],
   capability: AttachmentCapability | undefined,
 ): void {
+  let imageCount = 0;
   for (let i = 0, len = content.length; i < len; i++) {
     const block = content[i];
     if (
@@ -157,6 +159,10 @@ export function assertInlineAttachmentsSupported(
           code: 'unsupported_attachment',
           message: `Unsupported attachment type: ${block.mimeType}`,
         });
+      }
+      imageCount += 1;
+      if (imageCount > limits.maxCount) {
+        throw new RequestError({ code: 'limit_exceeded', message: 'Too many attachments' });
       }
       continue;
     }

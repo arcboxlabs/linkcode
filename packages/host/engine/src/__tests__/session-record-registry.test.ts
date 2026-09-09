@@ -47,6 +47,23 @@ describe('session record registry run addressing', () => {
     expect(runs.find((run) => run.runId === second)?.endedAt).toBeUndefined();
   });
 
+  it('resolves the thread history past an abandoned run', async () => {
+    const registry = await startedRegistry();
+    const first = registry.beginRun(sessionId);
+    registry.bindHistoryId(sessionId, first, asHistoryId('native-1'));
+    const second = registry.beginRun(sessionId);
+    registry.bindHistoryId(sessionId, second, asHistoryId('native-child'));
+
+    registry.abandonRun(sessionId, second);
+
+    expect(registry.historyId(sessionId)).toBe('native-1');
+    expect(registry.get(sessionId)?.runs.find((run) => run.runId === second)).toMatchObject({
+      historyId: 'native-child',
+      abandonedAt: expect.any(Number),
+      endedAt: expect.any(Number),
+    });
+  });
+
   it('binds a history id to the addressed run while a newer run exists', async () => {
     const registry = await startedRegistry();
     const first = registry.beginRun(sessionId);

@@ -13,7 +13,12 @@ import { ConversationMinimap, useConversationMinimap } from './conversation-mini
 import { SubagentViewer } from './subagent-viewer';
 import { partitionSubagentItems } from './subagents';
 import { TurnSegmentView } from './turn-segment-view';
-import type { ConversationItem, ConversationViewModel, PromptEditState } from './types';
+import type {
+  ConversationItem,
+  ConversationViewModel,
+  PromptEditState,
+  TurnVersion,
+} from './types';
 import { useTimelineModel } from './use-timeline-model';
 
 export interface ConversationViewProps {
@@ -26,9 +31,13 @@ export interface ConversationViewProps {
   promptEditState: PromptEditState;
   onEditPrompt?: (
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ) => Promise<void>;
+  /** Sibling versions per user row (by message id), from the turn graph. */
+  versions?: ReadonlyMap<string, TurnVersion>;
+  onSelectVersion?: (messageId: string, direction: -1 | 1) => void;
+  rewritesViaGraph?: boolean;
   /** Opens this turn's workspace changes in the host review surface. */
   onReviewChanges?: () => void;
   /** Opens the host-owned LinkCode billing surface for a typed gateway credit error. */
@@ -46,6 +55,9 @@ export function ConversationView({
   TerminalBlockComponent,
   promptEditState,
   onEditPrompt,
+  versions,
+  onSelectVersion,
+  rewritesViaGraph,
   onReviewChanges,
   onOpenBilling,
   scrollContextRef,
@@ -135,6 +147,9 @@ export function ConversationView({
             TerminalBlockComponent={TerminalBlockComponent}
             promptEditState={promptEditState}
             onEditPrompt={onEditPrompt}
+            versions={versions}
+            onSelectVersion={onSelectVersion}
+            rewritesViaGraph={rewritesViaGraph}
             onExpandTask={setExpandedTaskId}
             onReviewChanges={onReviewChanges}
             onOpenBilling={onOpenBilling}

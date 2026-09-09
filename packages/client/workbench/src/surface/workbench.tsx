@@ -1,4 +1,4 @@
-import type { Conversation } from '@linkcode/client-core';
+import type { Conversation, ConversationGraphSnapshot } from '@linkcode/client-core';
 import { isRequestFailureReportedInConversation } from '@linkcode/client-core';
 import type {
   AgentInput,
@@ -9,12 +9,7 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import {
-  AttachmentIdSchema,
-  MessageIdSchema,
-  userRowMessageId,
-  workspaceKind,
-} from '@linkcode/schema';
+import { MessageIdSchema, userRowMessageId, workspaceKind } from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
@@ -36,6 +31,7 @@ import type {
   ComposerAttachment,
   ComposerDirectiveControls,
   ConversationComposerController,
+  ConversationLineage,
   CurrentPlan,
   ModelOption,
   NewSessionDraft,
@@ -55,7 +51,7 @@ import {
 } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
-import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
+import { extractErrorMessage } from 'foxts/extract-error-message';
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
@@ -79,9 +75,19 @@ import { selectVisibleSessions } from '../sidebar/visible-sessions';
 import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import { submitActiveSessionInput } from './active-session-input';
+import {
+  continuationParent,
+  descendToLeaf,
+  lineageParentKey,
+  lineagePath,
+  lineageVersions,
+  siblingsOf,
+  turnsById,
+} from './lineage';
+import type { ParkedLineage } from './lineage-store';
+import { useLineageStore } from './lineage-store';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
 import {
-  attachmentObjectUrl,
   clearInflightUserAttachments,
   isStoredAttachmentBlock,
   noteInflightUserAttachments,
@@ -89,6 +95,7 @@ import {
   overlayPendingUserAttachments,
   pendingUserAttachmentsSnapshot,
   promptBlocksFromComposer,
+  resolveStoredAttachmentPreview,
   revokeAttachmentObjectUrls,
   stageStoreAttachment,
   stageStoreAttachmentFromBase64,
@@ -179,7 +186,11 @@ export function Workbench({
     },
   };
   useWorkbenchKeyboardShortcuts(rootRef, sessions);
-  const conversation = useSeededConversation(sessions.active, handleError);
+  const activeSessionId = sessions.active?.sessionId ?? null;
+  const { conversation, graph } = useSeededConversation(sessions.active, handleError);
+  const parked = useLineageStore((state) =>
+    activeSessionId === null ? undefined : state.parkedBySession[activeSessionId],
+  );
 
   // Deliberately NOT keyed by the active session: the surface hosts the whole shell (chrome,
   // sidebar, panels, terminals), which must stay permanently mounted across session switches —
@@ -191,6 +202,8 @@ export function Workbench({
       <WorkbenchSessionSurface
         sessions={sessions}
         conversation={conversation}
+        graph={graph}
+        parked={parked}
         errorMessage={errorMessage}
         ShellComponent={ShellComponent}
         workspacePick={workspacePick}
@@ -206,6 +219,10 @@ export function Workbench({
 interface WorkbenchSessionSurfaceProps {
   sessions: WorkbenchSessions;
   conversation: Conversation;
+  /** The active session's turn tree; absent on hosts without a graph or before the first read. */
+  graph: ConversationGraphSnapshot | undefined;
+  /** The version this client is browsing when it is not the host default. */
+  parked: ParkedLineage | undefined;
   errorMessage: string | null;
   ShellComponent: WorkbenchShellComponent;
   workspacePick: NewSessionWorkspacePick | null;
@@ -217,6 +234,8 @@ interface WorkbenchSessionSurfaceProps {
 function WorkbenchSessionSurface({
   sessions,
   conversation,
+  graph,
+  parked,
   errorMessage,
   ShellComponent,
   workspacePick,
@@ -258,6 +277,9 @@ function WorkbenchSessionSurface({
     if (message) visibleResponseErrors.set(requestId, message);
   }
   const active = sessions.active;
+  /** Edits go through the turn graph when the harness can fork after a turn; otherwise the legacy
+   * `history.branch` path stays (opencode until its turn-level cut is verified). */
+  const graphEditable = active?.historyCapabilities?.forkAfterTurn === true;
   const currentPlan: CurrentPlan | null = selectCurrentPlan(conversation);
   const { mentionItems, onMentionQueryChange } = useFileMentionSource();
   const accountModels = useAccountModelOptions();
@@ -356,8 +378,36 @@ function WorkbenchSessionSurface({
     [threadGroups],
   );
 
+  const graphById = graph === undefined ? undefined : turnsById(graph.turns);
+  /** Where a turn-starting input lands while this client browses an earlier version: that
+   * version's last completed turn — "continue from here" — never onto the host default behind
+   * the viewer's back. */
+  const parkedTarget =
+    parked !== undefined && graph !== undefined && graphById !== undefined
+      ? {
+          parentTurnId: continuationParent(graphById, parked.leafTurnId),
+          expectedGraphRevision: graph.graphRevision,
+        }
+      : undefined;
+
+  /** The daemon moves its default onto a submitted turn before it replies, so this device follows
+   * the lineage it just created by following the default again. */
+  function followSubmitted(sessionId: SessionId): void {
+    useLineageStore.getState().follow(sessionId);
+  }
+
   function submitActiveInput(input: AgentInput): Promise<void> {
     onClearError();
+    if (
+      parkedTarget !== undefined &&
+      sessions.activeId !== null &&
+      (input.type === 'command' || input.type === 'shell-command')
+    ) {
+      const sessionId = sessions.activeId;
+      return client.submitTurn(sessionId, input, parkedTarget).then(() => {
+        followSubmitted(sessionId);
+      });
+    }
     return submitActiveSessionInput(input, turnInputMutation.trigger);
   }
 
@@ -368,14 +418,22 @@ function WorkbenchSessionSurface({
     }
     const blocks = promptBlocksFromComposer(content);
     if (blocks === undefined || blocks.length === 0) {
+      if (parkedTarget !== undefined) {
+        throw new Error('This content cannot continue an earlier version');
+      }
       await submitActiveSessionInput({ type: 'prompt', content }, turnInputMutation.trigger);
       return;
     }
     noteInflightUserAttachments(sessionId, content);
     try {
-      const { turnId } = await client.submitTurn(sessionId, { type: 'prompt', blocks });
+      const { turnId } = await client.submitTurn(
+        sessionId,
+        { type: 'prompt', blocks },
+        parkedTarget,
+      );
       notePendingUserAttachments(sessionId, userRowMessageId(turnId), content);
       clearInflightUserAttachments(sessionId);
+      followSubmitted(sessionId);
     } catch (error) {
       clearInflightUserAttachments(sessionId);
       if (!isRequestFailureReportedInConversation(error)) onError(error);
@@ -394,11 +452,34 @@ function WorkbenchSessionSurface({
 
   async function handleEditPrompt(
     messageId: string,
-    branchCursor: string,
+    branchCursor: string | undefined,
     content: ContentBlock[],
   ): Promise<void> {
-    if (active?.historyCapabilities?.branch !== true) {
-      throw new Error('Prompt editing is unavailable for this session');
+    // Non-destructive rewrite: a sibling under the edited turn's parent (a new root lineage for
+    // the first prompt). The old version stays switchable; the host rejects a stale revision. A
+    // row the graph does not know (a transcript-seeded session) takes the legacy branch below.
+    const turn =
+      graph !== undefined && graphEditable
+        ? graph.turns.find((candidate) => userRowMessageId(candidate.turnId) === messageId)
+        : undefined;
+    // Content the graph cannot carry (legacy inline images) branches the old way where it can.
+    const blocks = turn === undefined ? undefined : promptBlocksFromComposer(content);
+    if (graph !== undefined && active !== null && turn !== undefined && blocks?.length) {
+      const { turnId } = await client.submitTurn(
+        active.sessionId,
+        { type: 'prompt', blocks },
+        { parentTurnId: turn.parentTurnId, expectedGraphRevision: graph.graphRevision },
+      );
+      notePendingUserAttachments(active.sessionId, userRowMessageId(turnId), content);
+      followSubmitted(active.sessionId);
+      return;
+    }
+    if (branchCursor === undefined || active?.historyCapabilities?.branch !== true) {
+      throw new Error(
+        turn === undefined
+          ? 'Prompt editing is unavailable for this session'
+          : 'Prompt editing is unavailable for this message',
+      );
     }
     const stripped = content.filter((block) => !isStoredAttachmentBlock(block));
     await rewriteMutation.trigger({
@@ -519,18 +600,9 @@ function WorkbenchSessionSurface({
     });
   }
 
-  async function resolveAttachmentPreview(attachmentId: string): Promise<AttachmentPreview | null> {
-    if (!activeSessionId) return null;
-    try {
-      const { bytes } = await client.getAttachmentBytes(
-        activeSessionId,
-        AttachmentIdSchema.parse(attachmentId),
-      );
-      return { url: attachmentObjectUrl(attachmentId, bytes) };
-    } catch (error) {
-      if (isErrorLikeObject(error) && 'code' in error && error.code === 'not_found') return null;
-      throw error;
-    }
+  function resolveAttachmentPreview(attachmentId: string): Promise<AttachmentPreview | null> {
+    if (!activeSessionId) return Promise.resolve(null);
+    return resolveStoredAttachmentPreview(client, activeSessionId, attachmentId);
   }
 
   function handleModeChange(modeId: string): Promise<void> {
@@ -592,6 +664,66 @@ function WorkbenchSessionSurface({
       ? { state: 'ready', onRunShellCommand: handleRunShellCommand }
       : { state: 'unsupported' },
   };
+  function handleSelectVersion(messageId: string, direction: -1 | 1): void {
+    if (graph === undefined || active === null) return;
+    const turn = graph.turns.find((candidate) => userRowMessageId(candidate.turnId) === messageId);
+    if (turn === undefined) return;
+    const siblings = siblingsOf(graph.turns, turn);
+    const target =
+      siblings[siblings.findIndex((sibling) => sibling.turnId === turn.turnId) + direction];
+    if (target === undefined) return;
+    const store = useLineageStore.getState();
+    store.rememberChild(active.sessionId, lineageParentKey(target.parentTurnId), target.turnId);
+    const leaf = descendToLeaf(
+      graph.turns,
+      target.turnId,
+      useLineageStore.getState().preferredChildBySession[active.sessionId] ?? {},
+    );
+    // Switching is a pure read: the host default never moves until something is submitted.
+    if (leaf === graph.activeLeafTurnId) store.follow(active.sessionId);
+    else store.park(active.sessionId, leaf, graph.activeLeafTurnId);
+  }
+
+  function handleJumpToLatest(): void {
+    if (active !== null) useLineageStore.getState().follow(active.sessionId);
+  }
+
+  function handleDismissElsewhere(): void {
+    if (active !== null && graph !== undefined) {
+      useLineageStore.getState().dismissElsewhere(active.sessionId, graph.activeLeafTurnId);
+    }
+  }
+
+  const isRunning = conversation.status === 'running' || conversation.status === 'starting';
+  const lineage: ConversationLineage | undefined =
+    graph === undefined || graphById === undefined || active === null
+      ? undefined
+      : {
+          versions: lineageVersions(
+            graph.turns,
+            lineagePath(graphById, parked?.leafTurnId ?? graph.activeLeafTurnId),
+          ),
+          onSelectVersion: handleSelectVersion,
+          notice:
+            parked === undefined
+              ? null
+              : graph.activeLeafTurnId !== parked.sinceLeafTurnId &&
+                  graph.activeLeafTurnId !== parked.dismissedLeafTurnId
+                ? {
+                    kind: 'elsewhere',
+                    onJump: handleJumpToLatest,
+                    onDismiss: handleDismissElsewhere,
+                  }
+                : { kind: 'parked', onJump: handleJumpToLatest },
+          rewritesViaGraph: graphEditable,
+          promptEditState:
+            graphEditable || active.historyCapabilities?.branch === true
+              ? isRunning
+                ? 'busy'
+                : 'enabled'
+              : 'unsupported',
+        };
+
   const conversationComposer: ConversationComposerController = {
     onSend: handleSend,
     onStop: handleStopTurn,
@@ -776,6 +908,7 @@ function WorkbenchSessionSurface({
         onContinueUnverified={onboarding.acknowledgeUnverified}
         conversation={displayedConversation}
         onEditPrompt={handleEditPrompt}
+        lineage={lineage}
         onPrepareAttachment={client.supportsAttachmentStore ? handlePrepareAttachment : undefined}
         respondingRequestIds={respondingRequestIds}
         responseErrors={visibleResponseErrors}

@@ -1,6 +1,7 @@
 import type {
   Accounts,
   AgentEvent,
+  AgentHistoryCapabilities,
   AgentHistoryId,
   AgentHistorySession,
   AgentInput,
@@ -77,6 +78,8 @@ import {
   FAIL_PROMPT,
   MOCK_REPLY,
   MOCK_USAGE_REPORT,
+  REFUSE_MESSAGE,
+  REFUSE_PROMPT,
   WORD_CHUNK_PATTERN,
 } from './data/prompt';
 import { mockScriptDeclarations } from './data/scripts';
@@ -136,6 +139,14 @@ const MOCK_DEFAULT_EFFORTS: Readonly<Partial<Record<AgentKind, EffortLevel>>> = 
   'grok-build': 'high',
 };
 
+/** What each adapter class declares; grok-build declares nothing. */
+const MOCK_HISTORY_CAPABILITIES: Readonly<Partial<Record<AgentKind, AgentHistoryCapabilities>>> = {
+  'claude-code': { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
+  codex: { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
+  opencode: { list: true, read: true, resume: true, forkAfterTurn: false, branch: true },
+  pi: { list: true, read: true, resume: true, forkAfterTurn: true, branch: true },
+};
+
 interface MockSession extends SessionInfo {
   /** Host-only replay state: keep it off `session.list` so the mock crosses the schema boundary. */
   model?: string;
@@ -150,8 +161,11 @@ interface MockSession extends SessionInfo {
   journal: MockJournalEntry[];
   /** The turn the next frames are attributed to; set from a turn's start until it settles. */
   runningTurnId?: TurnId;
-  /** Minimal turn tree: one lineage appended per turn-starting input (showcase parity). */
+  /** Every turn ever minted, any lineage; siblings share a parent and take ordinals in order. */
   graphTurns: MockTurn[];
+  /** The host default view; moves on every submit, the way the daemon's does on dispatch. */
+  activeLeafTurnId?: TurnId;
+  graphRevision: number;
   showcase?: boolean;
   showcaseSeeded?: boolean;
   longThread?: boolean;
@@ -165,6 +179,8 @@ interface MockTurn {
   /** `conversation.read` user-row content; the live echo stays text-only. */
   readContent?: ContentBlock[];
 }
+
+type MockReplyOutcome = { state: 'completed' | 'cancelled' } | { state: 'failed'; message: string };
 
 interface MockJournalEntry {
   epoch: number;
@@ -440,13 +456,14 @@ export class DevMockHost {
           this.sendFailure(p.clientReqId, `Unknown session: ${p.sessionId}`);
           break;
         }
-        const leaf = session.graphTurns.at(-1);
         this.send({
           kind: 'conversation.graph.result',
           replyTo: p.clientReqId,
           sessionId: p.sessionId,
-          graphRevision: session.graphTurns.length,
-          ...(leaf !== undefined && { activeLeafTurnId: leaf.graph.turnId }),
+          graphRevision: session.graphRevision,
+          ...(session.activeLeafTurnId !== undefined && {
+            activeLeafTurnId: session.activeLeafTurnId,
+          }),
           turns: session.graphTurns.map((turn) => structuredClone(turn.graph)),
         });
         break;
@@ -459,19 +476,26 @@ export class DevMockHost {
           break;
         }
         // Fail loudly on parameters the mock would silently ignore.
-        if (p.leafTurnId !== undefined || p.cursor !== undefined || p.limit !== undefined) {
+        if (p.cursor !== undefined || p.limit !== undefined) {
           this.sendFailure(p.clientReqId, 'Dev mock host does not support read paging yet.');
           break;
         }
-        const leaf = session.graphTurns.at(-1);
+        if (
+          p.leafTurnId !== undefined &&
+          !session.graphTurns.some((turn) => turn.graph.turnId === p.leafTurnId)
+        ) {
+          this.sendFailure(p.clientReqId, `Unknown turn: ${p.leafTurnId}`, { code: 'not_found' });
+          break;
+        }
+        const leafTurnId = p.leafTurnId ?? session.activeLeafTurnId;
         this.send({
           kind: 'conversation.read.result',
           replyTo: p.clientReqId,
           sessionId: p.sessionId,
-          graphRevision: session.graphTurns.length,
-          ...(leaf !== undefined && { leafTurnId: leaf.graph.turnId }),
+          graphRevision: session.graphRevision,
+          ...(leafTurnId !== undefined && { leafTurnId }),
           watermark: { epoch: session.eventEpoch, seq: session.eventSeq },
-          events: readMockProjection(session),
+          events: readMockProjection(session, leafTurnId),
         });
         break;
       }
@@ -906,6 +930,8 @@ export class DevMockHost {
       | 'journal'
       | 'status'
       | 'graphTurns'
+      | 'activeLeafTurnId'
+      | 'graphRevision'
     > & {
       status: SessionStatus;
       origin?: SessionInfo['origin'];
@@ -927,6 +953,7 @@ export class DevMockHost {
       eventSeq: 0,
       journal: [],
       graphTurns: [],
+      graphRevision: 0,
     };
     this.sessions.set(session.sessionId, session);
     return session;
@@ -1345,7 +1372,7 @@ export class DevMockHost {
       case 'shell-command': {
         const content = [textBlock(`$ ${input.command}`)];
         const turn = this.beginTurn(session, content, input);
-        settleTurn(session, turn, 'completed');
+        this.settleTurn(session, turn, 'completed');
         this.sendSuccess(replyTo);
         break;
       }
@@ -1397,7 +1424,7 @@ export class DevMockHost {
     }
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
-    settleTurn(session, turn, 'completed');
+    this.settleTurn(session, turn, 'completed');
     this.sendSuccess(replyTo);
   }
 
@@ -1414,13 +1441,33 @@ export class DevMockHost {
       return;
     }
     if (session.status === 'running') {
-      this.sendFailure(p.clientReqId, `Session is busy: ${p.sessionId}`);
+      this.sendFailure(p.clientReqId, `Session is busy: ${p.sessionId}`, { code: 'busy' });
       return;
     }
-    // Fail loudly on parameters the mock would silently ignore (plain sends only).
-    if (p.parentTurnId !== undefined || p.expectedGraphRevision !== undefined) {
-      this.sendFailure(p.clientReqId, 'Dev mock host does not support explicit-parent submits.');
-      return;
+    // Explicit-parent submits carry the daemon's admit rules in its order: the parent must exist
+    // and have completed, then the revision must match. `null` starts a new root lineage.
+    let parentTurnId: TurnId | null | undefined;
+    if (p.parentTurnId !== undefined) {
+      if (p.parentTurnId !== null) {
+        const parent = session.graphTurns.find((turn) => turn.graph.turnId === p.parentTurnId);
+        if (parent === undefined) {
+          this.sendFailure(p.clientReqId, `Unknown turn: ${p.parentTurnId}`, {
+            code: 'not_found',
+          });
+          return;
+        }
+        if (parent.graph.state !== 'completed') {
+          this.sendFailure(p.clientReqId, 'The parent turn has not completed', {
+            code: 'conflict',
+          });
+          return;
+        }
+      }
+      if (p.expectedGraphRevision !== session.graphRevision) {
+        this.sendFailure(p.clientReqId, 'The conversation graph has moved', { code: 'conflict' });
+        return;
+      }
+      parentTurnId = p.parentTurnId;
     }
     if (p.input.type === 'prompt') {
       const blocks = p.input.blocks;
@@ -1447,44 +1494,95 @@ export class DevMockHost {
       }
     }
     const content = turnSubmitContent(p.input);
-    const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
+    if (p.input.type === 'prompt' && promptText(content).toLowerCase() === REFUSE_PROMPT) {
+      const refused = this.refuseTurn(session, content, parentTurnId);
+      refused.readContent = this.projectTurnSubmit(p.input);
+      this.sendFailure(p.clientReqId, REFUSE_MESSAGE, { code: 'operation_failed' });
+      return;
+    }
+    const turn = this.beginTurn(
+      session,
+      content,
+      p.input.type === 'prompt' ? undefined : p.input,
+      parentTurnId,
+    );
     turn.readContent = this.projectTurnSubmit(p.input);
     this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
       const result = await this.streamMockReply(session, content);
-      settleTurn(session, turn, result.ok ? 'completed' : 'failed');
+      this.settleTurn(session, turn, result.state);
       return;
     }
     // Command/shell turns just echo — the mock has no directive execution behind turn.submit.
-    settleTurn(session, turn, 'completed');
+    this.settleTurn(session, turn, 'completed');
   }
 
-  /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
-   * and point the frames that follow at it. */
-  private beginTurn(
+  /** Every device refetches the tree: a node it did not have moves the revision; a settle keeps
+   * it — the badge is what changed (the daemon's `announceGraph`). */
+  private announceGraph(session: MockSession, gainedNode: boolean): void {
+    if (gainedNode) session.graphRevision += 1;
+    this.send({
+      kind: 'conversation.graph.changed',
+      sessionId: session.sessionId,
+      graphRevision: session.graphRevision,
+      ...(session.activeLeafTurnId !== undefined && { activeLeafTurnId: session.activeLeafTurnId }),
+    });
+  }
+
+  private settleTurn(
+    session: MockSession,
+    turn: MockTurn,
+    state: 'completed' | 'failed' | 'cancelled',
+  ): void {
+    turn.graph.state = state;
+    if (session.runningTurnId === turn.graph.turnId) session.runningTurnId = undefined;
+    this.announceGraph(session, false);
+  }
+
+  /** Persist a graph turn the way the daemon does before dispatch: a plain send lands under the
+   * active leaf, an explicit parent lands a sibling (or a root). */
+  private mintTurn(
     session: MockSession,
     content: ContentBlock[],
-    input?: Exclude<TurnSubmitInput, { type: 'prompt' }>,
+    input: Exclude<TurnSubmitInput, { type: 'prompt' }> | undefined,
+    parentTurnId: TurnId | null | undefined,
+    state: 'running' | 'failed',
   ): MockTurn {
     this.turnSeq += 1;
     const id = this.turnSeq.toString(36);
     const turnId = `turn-mock-${id}` as TurnId;
-    const parent = session.graphTurns.at(-1);
+    const parent = parentTurnId === undefined ? (session.activeLeafTurnId ?? null) : parentTurnId;
+    const siblingOrdinal =
+      session.graphTurns.filter((turn) => turn.graph.parentTurnId === parent).length + 1;
     const turn: MockTurn = {
       graph: {
         turnId,
         sessionId: session.sessionId,
-        parentTurnId: parent?.graph.turnId ?? null,
-        siblingOrdinal: 1,
+        parentTurnId: parent,
+        siblingOrdinal,
         input: input ?? { type: 'prompt', promptId: `prompt-mock-${id}` as PromptId },
         runId: `run-mock-${id}` as RunId,
-        state: 'running',
+        state,
         createdAt: Date.now(),
         inputSummary: promptText(content).slice(0, 140),
       },
       content,
     };
     session.graphTurns.push(turn);
+    return turn;
+  }
+
+  /** Mint the graph turn a turn-starting input persists on the daemon (legacy inputs included)
+   * and point the frames that follow at it: the default leaf moves as the turn commits running. */
+  private beginTurn(
+    session: MockSession,
+    content: ContentBlock[],
+    input?: Exclude<TurnSubmitInput, { type: 'prompt' }>,
+    parentTurnId?: TurnId | null,
+  ): MockTurn {
+    const turn = this.mintTurn(session, content, input, parentTurnId, 'running');
+    const { turnId } = turn.graph;
+    session.activeLeafTurnId = turnId;
     session.runningTurnId = turnId;
     // Echo before graph.changed so a subscribed projection store sees the new leaf row and
     // treats a plain send as continuation, matching the engine dispatcher.
@@ -1493,12 +1591,20 @@ export class DevMockHost {
       messageId: userRowMessageId(turnId),
       content,
     });
-    this.send({
-      kind: 'conversation.graph.changed',
-      sessionId: session.sessionId,
-      graphRevision: session.graphTurns.length,
-      activeLeafTurnId: turnId,
-    });
+    this.announceGraph(session, true);
+    return turn;
+  }
+
+  /** A prompt the provider refuses before it runs — the daemon's `resolveFailed` shape: the tree
+   * gains a failed node and announces it, the default leaf stays, and nothing is echoed live. */
+  private refuseTurn(
+    session: MockSession,
+    content: ContentBlock[],
+    parentTurnId: TurnId | null | undefined,
+  ): MockTurn {
+    const turn = this.mintTurn(session, content, undefined, parentTurnId, 'failed');
+    turn.readContent = content;
+    this.announceGraph(session, true);
     return turn;
   }
 
@@ -1518,18 +1624,26 @@ export class DevMockHost {
         return;
       }
     }
+    if (promptText(content).toLowerCase() === REFUSE_PROMPT) {
+      this.refuseTurn(session, content, undefined);
+      this.sendFailure(replyTo, REFUSE_MESSAGE, { code: 'operation_failed' });
+      return;
+    }
     const turn = this.beginTurn(session, content);
     turn.readContent = await this.ingestInlineImages(session.sessionId, content);
     const result = await this.streamMockReply(session, content);
-    settleTurn(session, turn, result.ok ? 'completed' : 'failed');
-    if (result.ok) this.sendSuccess(replyTo);
-    else this.sendFailure(replyTo, result.message, { reportedInConversation: true });
+    this.settleTurn(session, turn, result.state);
+    if (result.state === 'failed') {
+      this.sendFailure(replyTo, result.message, { reportedInConversation: true });
+    } else {
+      this.sendSuccess(replyTo);
+    }
   }
 
   private async streamMockReply(
     session: MockSession,
     content: ContentBlock[],
-  ): Promise<{ ok: true } | { ok: false; message: string }> {
+  ): Promise<MockReplyOutcome> {
     const text = promptText(content);
     if (text && !session.title) session.title = text.slice(0, 80);
     session.status = 'running';
@@ -1543,7 +1657,7 @@ export class DevMockHost {
       return session.epoch !== epoch;
     };
 
-    if (await cancelledAfter(200)) return { ok: true };
+    if (await cancelledAfter(200)) return { state: 'cancelled' };
     const thoughtId = this.nextMessageId('mock-thought');
     this.emit(session.sessionId, {
       type: 'agent-thought-chunk',
@@ -1552,7 +1666,7 @@ export class DevMockHost {
     });
 
     if (text.toLowerCase() === FAIL_PROMPT) {
-      if (await cancelledAfter(200)) return { ok: true };
+      if (await cancelledAfter(200)) return { state: 'cancelled' };
       const message = `Mock failure requested via the "${FAIL_PROMPT}" prompt.`;
       this.emit(session.sessionId, {
         type: 'error',
@@ -1562,7 +1676,7 @@ export class DevMockHost {
       });
       session.status = 'idle';
       this.emit(session.sessionId, { type: 'status', status: 'idle' });
-      return { ok: false, message };
+      return { state: 'failed', message };
     }
 
     const messageId = this.nextMessageId('mock-message');
@@ -1571,7 +1685,7 @@ export class DevMockHost {
     if (chunks != null) {
       for (let i = 0, len = chunks.length; i < len; i++) {
         // eslint-disable-next-line no-await-in-loop -- word-by-word streaming: chunks are paced sequentially by design.
-        if (await cancelledAfter(CHUNK_LATENCY_MS)) return { ok: true };
+        if (await cancelledAfter(CHUNK_LATENCY_MS)) return { state: 'cancelled' };
         this.emit(session.sessionId, {
           type: 'agent-message-chunk',
           messageId,
@@ -1589,7 +1703,7 @@ export class DevMockHost {
     this.emit(session.sessionId, { type: 'stop', stopReason: 'end_turn' });
     session.status = 'idle';
     this.emit(session.sessionId, { type: 'status', status: 'idle' });
-    return { ok: true };
+    return { state: 'completed' };
   }
 
   /** Emitted in one burst, not streamed: this transcript exists to be long, not to look live. */
@@ -1971,6 +2085,20 @@ export class DevMockHost {
     if (payload.operationId !== undefined) {
       const replayed = this.attachmentBegins.get(payload.operationId);
       if (replayed) {
+        // The daemon's rule: one operation id names one begin, so other declared fields are refused.
+        const upload = this.attachmentUploads.get(replayed.uploadId);
+        if (
+          upload?.declaredSha256 !== payload.declaredSha256 ||
+          upload.declaredSize !== payload.declaredSize ||
+          upload.name !== payload.name ||
+          upload.mimeType !== payload.mimeType ||
+          upload.attachmentKind !== payload.attachmentKind
+        ) {
+          this.sendFailure(payload.clientReqId, 'The operation id belongs to another upload', {
+            code: 'invalid_request',
+          });
+          return;
+        }
         this.send({
           kind: 'attachment.upload.begun',
           replyTo: payload.clientReqId,
@@ -2111,6 +2239,7 @@ export class DevMockHost {
       mimeType: upload.mimeType ?? 'application/octet-stream',
       kind: upload.attachmentKind,
     });
+    this.forgetAttachmentBegins(payload.uploadId);
     this.send({
       kind: 'attachment.upload.committed',
       replyTo: payload.clientReqId,
@@ -2127,11 +2256,16 @@ export class DevMockHost {
       return;
     }
     this.attachmentUploads.delete(payload.uploadId);
-    // The replay must die with the upload it names, or a retried operationId resolves to a dead id.
-    for (const [operationId, begun] of this.attachmentBegins) {
-      if (begun.uploadId === payload.uploadId) this.attachmentBegins.delete(operationId);
-    }
+    this.forgetAttachmentBegins(payload.uploadId);
     this.sendSuccess(payload.clientReqId);
+  }
+
+  /** The daemon's `forget`: a replay dies with the upload it names — committed or aborted — or a
+   * retried operationId resolves to a dead or already-committed id instead of a fresh begin. */
+  private forgetAttachmentBegins(uploadId: string): void {
+    for (const [operationId, begun] of this.attachmentBegins) {
+      if (begun.uploadId === uploadId) this.attachmentBegins.delete(operationId);
+    }
   }
 
   private publishResourceAttachment(
@@ -2306,7 +2440,9 @@ function turnSubmitContent(input: TurnSubmitInput): ContentBlock[] {
         block.type === 'text' ? [textBlock(block.text)] : [],
       );
     case 'command':
-      return [textBlock(`/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`)];
+      return [
+        textBlock(`/${input.name}${input.arguments === undefined ? '' : ` ${input.arguments}`}`),
+      ];
     case 'shell-command':
       return [textBlock(`$ ${input.command}`)];
     default:
@@ -2323,14 +2459,28 @@ function promptText(content: readonly ContentBlock[]): string {
     .trim();
 }
 
-function settleTurn(session: MockSession, turn: MockTurn, state: 'completed' | 'failed'): void {
-  turn.graph.state = state;
-  if (session.runningTurnId === turn.graph.turnId) session.runningTurnId = undefined;
+/** The turns on the root→leaf path, the way the daemon reads one lineage of the tree. */
+function pathTurnIds(session: MockSession, leafTurnId: TurnId | undefined): Set<TurnId> {
+  const onPath = new Set<TurnId>();
+  let cursor = leafTurnId;
+  while (cursor !== undefined && !onPath.has(cursor)) {
+    const id: TurnId = cursor;
+    const turn = session.graphTurns.find((candidate) => candidate.graph.turnId === id);
+    if (turn === undefined) break;
+    onPath.add(id);
+    cursor = turn.graph.parentTurnId ?? undefined;
+  }
+  return onPath;
 }
 
-/** The journal as one final page: every stamped frame in order, plus the daemon's prompt-only
- * placeholder under any turn whose frames hold nothing but its own echo. */
-function readMockProjection(session: MockSession): ConversationReadItem[] {
+/** The journal as one final page: every stamped frame of the leaf's lineage in order (session
+ * frames without a turn included), plus the daemon's prompt-only placeholder under any turn whose
+ * frames hold nothing but its own echo. */
+function readMockProjection(
+  session: MockSession,
+  leafTurnId: TurnId | undefined,
+): ConversationReadItem[] {
+  const onPath = pathTurnIds(session, leafTurnId);
   const withOutput = new Set<TurnId>();
   for (let i = 0, len = session.journal.length; i < len; i++) {
     const entry = session.journal[i];
@@ -2341,6 +2491,7 @@ function readMockProjection(session: MockSession): ConversationReadItem[] {
   const items: ConversationReadItem[] = [];
   for (let i = 0, len = session.journal.length; i < len; i++) {
     const entry = session.journal[i];
+    if (entry.turnId !== undefined && !onPath.has(entry.turnId)) continue;
     items.push({
       ...(entry.turnId !== undefined && { turnId: entry.turnId }),
       epoch: entry.epoch,
@@ -2356,6 +2507,19 @@ function readMockProjection(session: MockSession): ConversationReadItem[] {
       items.push({ type: 'history-unavailable', turnId: entry.turnId });
     }
   }
+  // A turn refused before it ran journaled nothing; its lineage's read still carries its host user
+  // row, the way the daemon reads one from the turn table — and no placeholder: nothing ran.
+  const leaf = session.graphTurns.find((turn) => turn.graph.turnId === leafTurnId);
+  if (leaf !== undefined && !session.journal.some((entry) => entry.turnId === leaf.graph.turnId)) {
+    items.push({
+      turnId: leaf.graph.turnId,
+      event: {
+        type: 'user-message',
+        messageId: userRowMessageId(leaf.graph.turnId),
+        content: leaf.readContent ?? leaf.content,
+      },
+    });
+  }
   return items;
 }
 
@@ -2369,6 +2533,9 @@ function toSessionInfo(session: MockSession): SessionInfo {
     updatedAt: session.updatedAt,
     title: session.title,
     origin: session.origin,
+    ...(MOCK_HISTORY_CAPABILITIES[session.kind] !== undefined && {
+      historyCapabilities: MOCK_HISTORY_CAPABILITIES[session.kind],
+    }),
   };
 }
 

@@ -4,6 +4,8 @@ import {
   AttachmentIdSchema,
   BlobIdSchema,
   MAX_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_NAME_LENGTH,
+  MAX_MIME_TYPE_LENGTH,
   SessionIdSchema,
   UploadIdSchema,
 } from '@linkcode/schema';
@@ -259,6 +261,39 @@ describe('LinkCodeClient attachment store API', () => {
     serverTransport.close();
   });
 
+  it('fails the read walk when a later page names another blob', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const bytes = new Uint8Array(ATTACHMENT_UPLOAD_CHUNK_BYTES + 8).fill(5);
+    const attachmentId = AttachmentIdSchema.parse('att-5');
+    const sessionId = SessionIdSchema.parse('session-1');
+
+    serverTransport.onMessage((message) => {
+      const p = message.payload;
+      if (p.kind !== 'attachment.read') return;
+      const slice = bytes.subarray(p.offset, p.offset + p.length);
+      serverTransport.send(
+        createWireMessage({
+          kind: 'attachment.read.result',
+          replyTo: p.clientReqId,
+          sessionId: p.sessionId,
+          attachmentId: p.attachmentId,
+          // The second page answers from another record: its bytes must not be spliced in and
+          // cached under the first page's blob.
+          blobId: BlobIdSchema.parse(`sha256:${(p.offset === 0 ? 'f' : '0').repeat(64)}`),
+          offset: p.offset,
+          data: bytesToBase64(slice),
+          sizeBytes: bytes.byteLength,
+          eof: p.offset + slice.byteLength >= bytes.byteLength,
+        }),
+      );
+    });
+
+    await expect(client.getAttachmentBytes(sessionId, attachmentId)).rejects.toThrow('att-5');
+
+    client.dispose();
+    serverTransport.close();
+  });
+
   it('aborts the upload when a chunk is rejected', async () => {
     const { client, serverTransport } = await createConnectedLocalClient();
     const bytes = new Uint8Array(ATTACHMENT_UPLOAD_CHUNK_BYTES * 2).fill(5);
@@ -338,6 +373,33 @@ describe('LinkCodeClient attachment guards', () => {
         attachmentKind: 'file',
       }),
     ).rejects.toThrow('exceeds');
+    expect(seen).not.toContain('attachment.upload.begin');
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('rejects an over-long name or MIME type before any frame leaves the client', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const seen: string[] = [];
+    serverTransport.onMessage((message) => {
+      seen.push(message.payload.kind);
+    });
+    const bytes = new Uint8Array(4);
+    await expect(
+      client.putAttachment({
+        bytes,
+        name: 'n'.repeat(MAX_ATTACHMENT_NAME_LENGTH + 1),
+        attachmentKind: 'file',
+      }),
+    ).rejects.toThrow('name exceeds');
+    await expect(
+      client.putAttachment({
+        bytes,
+        name: 'ok.bin',
+        mimeType: `text/${'x'.repeat(MAX_MIME_TYPE_LENGTH)}`,
+        attachmentKind: 'file',
+      }),
+    ).rejects.toThrow('MIME type exceeds');
     expect(seen).not.toContain('attachment.upload.begin');
     client.dispose();
     serverTransport.close();

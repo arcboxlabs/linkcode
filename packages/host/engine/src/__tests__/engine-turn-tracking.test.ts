@@ -322,7 +322,8 @@ describe('legacy input turn tracking', () => {
     expect(operations).toHaveLength(0);
     const [record] = await h.store.load();
     expect(record.activeLeafTurnId).toBeUndefined();
-    expect(record.graphRevision).toBe(0);
+    // The failed turn is announced as a shape change (its ordinal is taken); no leaf moved.
+    expect(record.graphRevision).toBe(1);
   });
 
   it('resolves the persisted turn when the session stops while its dispatch hangs', async () => {
@@ -597,8 +598,13 @@ describe('commitRunning idempotence', () => {
 
     const operation = await store.getOperation(OperationIdSchema.parse('op-1'));
     expect(operation).toMatchObject({ state: 'failed', error: { code: 'timeout' } });
-    expect(registry.get(sessionId)?.graphRevision).toBe(0);
-    expect(sent.filter((payload) => payload.kind === 'conversation.graph.changed')).toHaveLength(0);
+    // The failure itself is a shape change (the turn keeps its ordinal): one announcement with no
+    // leaf move; the lost commit adds nothing on top of it.
+    expect(registry.get(sessionId)?.graphRevision).toBe(1);
+    expect(registry.get(sessionId)?.activeLeafTurnId).toBeUndefined();
+    expect(sent.filter((payload) => payload.kind === 'conversation.graph.changed')).toEqual([
+      { kind: 'conversation.graph.changed', sessionId, graphRevision: 1 },
+    ]);
     // Nor tracking: a settle for this run must find nothing to flip.
     turns.settleStop(sessionId, RunIdSchema.parse('run-1'), 'end_turn');
     await settleEngineTasks();

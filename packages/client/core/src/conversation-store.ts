@@ -21,6 +21,12 @@ export type ConversationResyncReason = 'epoch' | 'gap' | 'graph';
 export interface ConversationStoreOptions {
   /** Called at most once per store, never during a render, when the seed must be re-read. */
   onResync?: (reason: ConversationResyncReason) => void;
+  /** `false` freezes a projection store's content at its read: a client browsing an inactive
+   * lineage must not fold the active run's live stream, and a graph change is the owner's business
+   * (the "continued elsewhere" chip), not a re-read. Session state — policy, model, effort, mode,
+   * capabilities, commands, usage, status — still follows: it is the session's, not a lineage's,
+   * and the composer renders it. Default `true`. */
+  followLive?: boolean;
 }
 
 const EMPTY_CONVERSATION: Conversation = {
@@ -58,7 +64,13 @@ export function createConversationStore(
     return { subscribe: () => noop, getSnapshot: () => EMPTY_CONVERSATION };
   }
   if (seed !== undefined && 'items' in seed) {
-    return createProjectionStore(client, sessionId, seed, options.onResync ?? noop);
+    return createProjectionStore(
+      client,
+      sessionId,
+      seed,
+      options.onResync ?? noop,
+      options.followLive ?? true,
+    );
   }
   return createHistoryStore(client, sessionId, seed, options.onResync ?? noop);
 }
@@ -74,6 +86,21 @@ const INTERACTIVE_EVENT_TYPES = new Set<AgentEvent['type']>([
   'prompt-response-status',
 ]);
 
+/** Session state, not lineage content: the latest of each wins, so a frozen store folds them
+ * without a watermark — a parked composer must not fall back to defaults. */
+const SESSION_STATE_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'status',
+  'current-mode-update',
+  'approval-policy-update',
+  'model-update',
+  'effort-update',
+  'available-commands-update',
+  'available-models-update',
+  'capabilities-update',
+  'token-usage',
+  'usage-report',
+]);
+
 /**
  * The projection merge: the seed's items fold first, then every live event whose position is
  * above the seed's watermark. Nothing is matched by content — the daemon mints one identity per
@@ -86,6 +113,7 @@ function createProjectionStore(
   sessionId: SessionId,
   seed: ConversationProjectionSeed,
   onResync: (reason: ConversationResyncReason) => void,
+  followLive: boolean,
 ): ConversationStore {
   const builder = createConversationBuilder();
   const userMessageIds = new Set<string>();
@@ -145,6 +173,10 @@ function createProjectionStore(
     const events = client.eventsSnapshot(sessionId);
     for (let i = firstIndexAfter(events, consumedSeq), len = events.length; i < len; i += 1) {
       const entry = events[i];
+      if (!followLive) {
+        if (SESSION_STATE_EVENT_TYPES.has(entry.event.type)) fold(entry.event, entry.receivedAt);
+        continue;
+      }
       if (admit(entry)) fold(entry.event, entry.receivedAt);
     }
     consumedSeq = client.eventSeq(sessionId);
@@ -152,7 +184,8 @@ function createProjectionStore(
 
   /** A revision past this read means a lineage moved. A plain continuation is already covered
    * live — its new leaf's own user row has arrived — so only a leaf this store has never seen
-   * (an edit or rewrite from any device, a stale read) needs the re-read. */
+   * (an edit or rewrite from any device, a stale read) needs the re-read. A fork's row cannot
+   * pass: it relaunches under a new epoch, which `admit` flags first, and reads carry no echoes. */
   const checkGraph = (change: ConversationGraphChange | undefined): void => {
     if (change === undefined || change.graphRevision <= seed.graphRevision) return;
     if (
@@ -167,11 +200,13 @@ function createProjectionStore(
   return {
     subscribe(onStoreChange) {
       sync();
-      checkGraph(client.latestGraphChange(sessionId));
       const unsubscribeEvents = client.subscribe(sessionId, () => {
         sync();
         onStoreChange();
       });
+      // A frozen store keeps its session state live but leaves graph changes to its owner.
+      if (!followLive) return unsubscribeEvents;
+      checkGraph(client.latestGraphChange(sessionId));
       const unsubscribeGraph = client.subscribeGraphChanges(sessionId, (change) => {
         sync();
         checkGraph(change);

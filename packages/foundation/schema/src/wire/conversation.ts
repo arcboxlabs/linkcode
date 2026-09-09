@@ -99,8 +99,9 @@ export const conversationWireVariants = [
     activeLeafTurnId: TurnIdSchema.optional(),
     turns: z.array(ConversationGraphTurnSchema),
   }),
-  /** Session-scoped broadcast: the graph changed shape or moved its default leaf; clients holding
-   * a stale snapshot revalidate via `conversation.graph.get`. */
+  /** Session-scoped broadcast: the graph gained a node or moved its default leaf (a new
+   * `graphRevision`), or a visible turn reached its terminal state (the revision stands); clients
+   * holding a stale snapshot revalidate via `conversation.graph.get`. */
   z.object({
     kind: z.literal('conversation.graph.changed'),
     sessionId: SessionIdSchema,

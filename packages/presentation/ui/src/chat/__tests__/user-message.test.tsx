@@ -226,4 +226,87 @@ describe('UserMessage', () => {
     expect(multiline.container.querySelector('img')).toBeNull();
     expect(screen.queryByText('/documents')).toBeNull();
   });
+
+  it('shows the version control for a turn with siblings and reports a switch', () => {
+    const onSelectVersion = vi.fn();
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'msg-turn-2',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-2',
+      blocks: [{ type: 'text', text: 'second try' }],
+      isStreaming: false,
+    };
+    render(
+      <UserMessage
+        item={item}
+        version={{ index: 1, count: 3, state: null }}
+        onSelectVersion={onSelectVersion}
+      />,
+    );
+    expect(screen.getByText('versionOf')).toBeDefined();
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'versionPrevious' }).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'versionNext' }));
+    expect(onSelectVersion).toHaveBeenCalledWith(1);
+  });
+
+  it('badges a turn that did not complete and hides the arrows for an only child', () => {
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'msg-turn-3',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-3',
+      blocks: [{ type: 'text', text: 'went wrong' }],
+      isStreaming: false,
+    };
+    render(<UserMessage item={item} version={{ index: 1, count: 1, state: 'failed' }} />);
+    expect(screen.getByText('turnFailed')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'versionNext' })).toBeNull();
+  });
+
+  it('edits a graph-known prompt without a legacy branch cursor', async () => {
+    const onEditPrompt = vi.fn(asyncNoop);
+    const item: Extract<ConversationItem, { kind: 'message' }> = {
+      id: 'msg-turn-4',
+      kind: 'message',
+      role: 'user',
+      turnId: 'turn-4',
+      blocks: [{ type: 'text', text: 'original prompt' }],
+      isStreaming: false,
+    };
+    const { unmount } = render(
+      <UserMessage
+        item={item}
+        promptEditState="enabled"
+        version={{ index: 1, count: 1, state: null }}
+        onEditPrompt={onEditPrompt}
+      />,
+    );
+    // A known graph node on a harness whose edits still need a cursor stays uneditable.
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'editUnavailable' }).disabled,
+    ).toBe(true);
+    unmount();
+
+    render(
+      <UserMessage
+        item={item}
+        promptEditState="enabled"
+        version={{ index: 1, count: 1, state: null }}
+        rewritesViaGraph
+        onEditPrompt={onEditPrompt}
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'edit' }));
+    const editor = screen.getByRole('textbox', { name: 'editPromptLabel' });
+    fireEvent.change(editor, { target: { value: 'replacement prompt' } });
+    fireEvent.click(screen.getByRole('button', { name: 'editSend' }));
+    await waitFor(() => {
+      expect(onEditPrompt).toHaveBeenCalledWith('msg-turn-4', undefined, [
+        { type: 'text', text: 'replacement prompt' },
+      ]);
+    });
+  });
 });

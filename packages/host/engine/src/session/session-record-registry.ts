@@ -193,6 +193,18 @@ export class SessionRecordRegistry {
     this.persist(record);
   }
 
+  /** A run launched onto other provider history whose turn never ran: it is sealed and marked so
+   * the thread's history resolves past it. */
+  abandonRun(sessionId: SessionId, runId: RunId): void {
+    const record = this.records.get(sessionId);
+    const run = record?.runs.find((candidate) => candidate.runId === runId);
+    if (!record || !run || run.abandonedAt !== undefined) return;
+    const now = Date.now();
+    run.abandonedAt = now;
+    run.endedAt ??= now;
+    this.persist(record);
+  }
+
   /** Whether `runId` is the session's current (newest) run — the source-side gate that drops a
    * replaced adapter's session-scoped events. */
   isCurrentRun(sessionId: SessionId, runId: RunId): boolean {
@@ -207,6 +219,16 @@ export class SessionRecordRegistry {
     if (!record) return undefined;
     record.graphRevision += 1;
     record.activeLeafTurnId = leafTurnId;
+    this.persist(record);
+    return record.graphRevision;
+  }
+
+  /** The graph changed shape without moving the default leaf (a sibling failed before it ran):
+   * bump the revision so every device's `‹ 1/N ›` re-reads the tree. Returns the new revision. */
+  commitGraphShape(sessionId: SessionId): number | undefined {
+    const record = this.records.get(sessionId);
+    if (!record) return undefined;
+    record.graphRevision += 1;
     this.persist(record);
     return record.graphRevision;
   }
@@ -353,8 +375,8 @@ function definedFields<T extends object>(fields: T): Partial<T> {
 
 function latestHistoryId(record: SessionRecord): AgentHistoryId | undefined {
   for (let index = record.runs.length - 1; index >= 0; index -= 1) {
-    const historyId = record.runs[index].historyId;
-    if (historyId !== undefined) return historyId;
+    const { historyId, abandonedAt } = record.runs[index];
+    if (historyId !== undefined && abandonedAt === undefined) return historyId;
   }
   return record.origin.type === 'imported' ? record.origin.historyId : undefined;
 }

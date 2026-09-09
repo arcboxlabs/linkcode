@@ -23,6 +23,31 @@ import type {
 export type ConversationTurnId = string | null;
 export type PromptEditState = 'enabled' | 'busy' | 'unsupported';
 
+/** A turn's place among its siblings (the `‹ 1/N ›` control) and a non-success state to badge. */
+export interface TurnVersion {
+  /** 1-based sibling ordinal. */
+  index: number;
+  count: number;
+  state: 'failed' | 'cancelled' | null;
+}
+
+export type ConversationLineageNotice =
+  /** The viewer browsed to an earlier version; sending continues from it. */
+  | { kind: 'parked'; onJump: () => void }
+  /** The conversation moved on elsewhere while this viewer stayed parked. */
+  | { kind: 'elsewhere'; onJump: () => void; onDismiss: () => void };
+
+/** Turn-graph affordances for the conversation column, computed by the runtime from the graph. */
+export interface ConversationLineage {
+  /** Keyed by the user row's message id. */
+  versions: ReadonlyMap<string, TurnVersion>;
+  onSelectVersion: (messageId: string, direction: -1 | 1) => void;
+  notice: ConversationLineageNotice | null;
+  promptEditState: PromptEditState;
+  /** Edits submit through the turn graph, so a row the graph knows needs no legacy branch cursor. */
+  rewritesViaGraph: boolean;
+}
+
 /**
  * Fields every timeline item carries. `receivedAt` is the best-known time of the item's latest
  * event: client receive time for live events, the provider's own timestamp for history-seeded

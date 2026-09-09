@@ -18,12 +18,14 @@ import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { ConversationCheckpointService } from '../conversation/checkpoint-service';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
+import { attributeCorpus } from '../conversation/lineage-attribution';
 import type { JournaledEvent } from '../conversation/live-journal';
 import { ConversationLiveJournals } from '../conversation/live-journal';
 import { ConversationProjectionService, pageReadItems } from '../conversation/projection-service';
 import { ConversationTurnService } from '../conversation/turn-service';
 import { RequestError } from '../failure';
 import { HistoryService } from '../session/history-service';
+import { promptContentFingerprint } from '../session/live-session';
 import { SessionRecordRegistry } from '../session/session-record-registry';
 import { InMemorySessionStore } from '../session/session-store';
 import { FakeAdapter } from './fixtures/session-harness';
@@ -37,6 +39,11 @@ const OPEN_ASK: AgentEvent = {
   title: 'Run',
   subject: { type: 'tool-call', toolCallId: 't1' },
   options: [{ optionId: 'ok', name: 'Allow', kind: 'allow_once' }],
+};
+const RESPONDING: AgentEvent = {
+  type: 'prompt-response-status',
+  requestId: 'perm-open',
+  status: 'responding',
 };
 
 function chunk(messageId: string, text: string): AgentEvent {
@@ -52,14 +59,14 @@ function stamped(seq: number, turnId: TurnId, event: AgentEvent): JournaledEvent
 }
 
 class CannedHistoryAdapter extends FakeAdapter {
-  constructor(private readonly events: AgentHistoryEvent[]) {
+  constructor(private readonly eventsFor: (historyId: string) => AgentHistoryEvent[]) {
     super();
   }
 
   override readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
     return Promise.resolve({
       session: { historyId: opts.historyId, kind: this.kind, cwd: '/repo', createdAt: 1 },
-      events: [...this.events],
+      events: [...this.eventsFor(opts.historyId)],
     });
   }
 }
@@ -68,7 +75,10 @@ async function makeService(opts: {
   journals: ConversationLiveJournals;
   record: SessionRecord;
   openRequests?: AgentEvent[];
+  /** One corpus for every history id. */
   historyEvents?: AgentHistoryEvent[];
+  /** A corpus per history id — forked lineages read different histories. */
+  historiesById?: Record<string, AgentHistoryEvent[]>;
 }) {
   const runTask = (effect: Effect.Effect<void>) => {
     void Effect.runPromise(effect);
@@ -85,8 +95,11 @@ async function makeService(opts: {
   records.register(opts.record);
   const store = new InMemoryConversationStore();
   const turns = new ConversationTurnService(store, records, transport, runTask);
+  const { historyEvents, historiesById } = opts;
   const history = new HistoryService(() =>
-    opts.historyEvents ? new CannedHistoryAdapter(opts.historyEvents) : new FakeAdapter(),
+    historyEvents || historiesById
+      ? new CannedHistoryAdapter((historyId) => historiesById?.[historyId] ?? historyEvents ?? [])
+      : new FakeAdapter(),
   );
   const service = new ConversationProjectionService(
     turns,
@@ -138,7 +151,7 @@ describe('conversation projection live tail (CODE-35)', () => {
     const { service, store } = await makeService({
       journals,
       record: makeRecord(liveTurnId),
-      openRequests: [OPEN_ASK],
+      openRequests: [OPEN_ASK, RESPONDING],
     });
     await store.saveTurn({
       turnId: liveTurnId,
@@ -171,9 +184,11 @@ describe('conversation projection live tail (CODE-35)', () => {
       turnId: liveTurnId,
       runId,
     });
-    // The open ask reaches the reader even though its request event never survived the journal.
+    // The open ask reaches the reader even though its request event never survived the journal,
+    // and so does the status of the answer in flight — the UI keeps its "responding" state.
     const ask = result.events.find((item) => 'event' in item && item.event === OPEN_ASK);
     expect(ask).toMatchObject({ turnId: liveTurnId, runId });
+    expect(result.events.some((item) => 'event' in item && item.event === RESPONDING)).toBe(true);
   });
 
   it('surfaces truncation when a full-state event above the cut was evicted', async () => {
@@ -330,6 +345,50 @@ describe('conversation projection live tail (CODE-35)', () => {
     });
     expect(result.watermark).toEqual({ epoch: 3, seq: 3 });
   });
+
+  it('carries the live tail only into the lineage that owns the running turn', async () => {
+    const rootTurnId = 'turn-root' as TurnId;
+    const firstVersionId = 'turn-v1' as TurnId;
+    const editedVersionId = 'turn-v2' as TurnId;
+    const strayTurnId = 'turn-stray' as TurnId;
+    const journals = new ConversationLiveJournals();
+    const journal = journals.open(sessionId);
+    // After an edit the journal is the relaunch's: it holds the edited sibling's stream, and no
+    // entry of the version being read back — nothing settled the cut can anchor on.
+    journal.append(stamped(1, editedVersionId, chunk('msg-edited', 'edited')));
+    journal.append(stamped(2, strayTurnId, chunk('msg-stray', 'a refused sibling')));
+
+    const { service, store } = await makeService({
+      journals,
+      record: makeRecord(editedVersionId),
+    });
+    const turnAt = (
+      turnId: TurnId,
+      parentTurnId: TurnId | null,
+      ordinal: number,
+      state: ConversationTurnState,
+    ) =>
+      store.saveTurn({
+        turnId,
+        sessionId,
+        parentTurnId,
+        siblingOrdinal: ordinal,
+        input: { type: 'shell-command', command: turnId },
+        runId,
+        state,
+        createdAt: ordinal,
+      });
+    await turnAt(rootTurnId, null, 1, 'completed');
+    await turnAt(firstVersionId, rootTurnId, 1, 'completed');
+    await turnAt(editedVersionId, rootTurnId, 2, 'running');
+
+    const seqsOf = (items: ConversationReadItem[]) =>
+      items.flatMap((item) => ('event' in item && item.seq !== undefined ? [item.seq] : []));
+    const parked = await Effect.runPromise(service.read({ sessionId, leafTurnId: firstVersionId }));
+    expect(seqsOf(parked.events)).toEqual([]);
+    const active = await Effect.runPromise(service.read({ sessionId }));
+    expect(seqsOf(active.events)).toEqual([1]);
+  });
 });
 
 describe('conversation projection attribution gate', () => {
@@ -389,10 +448,208 @@ describe('conversation projection attribution gate', () => {
     return events.flatMap((item) => (!('event' in item) ? [item.turnId] : []));
   }
 
-  it('never attributes positionally on an inactive sibling lineage — even an identical retry', async () => {
+  it('reads a shared turn from the run that wrote it, so an identical retry on a fork never claims its rows', async () => {
+    const forkRunId = 'run-2' as RunId;
+    const record: SessionRecord = {
+      ...makeRecord('turn-b2' as TurnId, true),
+      runs: [
+        { runId, startedAt: 1, historyId: asHistoryId('hist-1') },
+        {
+          runId: forkRunId,
+          startedAt: 2,
+          historyId: asHistoryId('hist-2'),
+          baseTurnId: 'turn-a' as TurnId,
+        },
+      ],
+    };
     const { service, store } = await makeService({
       journals: new ConversationLiveJournals(),
-      record: makeRecord('turn-b2' as TurnId, true),
+      record,
+      historiesById: {
+        'hist-1': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a', 'answer a'),
+          providerUser('u-b', 'b'),
+          providerAnswer('ans-b1', 'answer b'),
+        ],
+        // The fork copied A's rows — a copy, not the source: claude re-stamps what it copies — and
+        // the retry ran here with prompt text IDENTICAL to the sibling's.
+        'hist-2': [
+          providerUser('u-a-copy', 'a'),
+          providerAnswer('ans-a-copy', 'answer a'),
+          providerUser('u-b', 'b'),
+          providerAnswer('ans-b2', 'answer b'),
+        ],
+      },
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-b1', 'turn-a', 'b', 'completed', 1));
+    await store.saveTurn({
+      ...shellTurn('turn-b2', 'turn-a', 'b', 'completed', 2),
+      runId: forkRunId,
+    });
+
+    // Both versions render A from hist-1, where A ran; each B reads the history its own run wrote.
+    const inactive = await Effect.runPromise(
+      service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
+    );
+    expect(answers(inactive.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b1', 'turn-b1'],
+    ]);
+    const active = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(active.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b2', 'turn-b2'],
+    ]);
+    expect(placeholderTurnIds(active.events)).toEqual([]);
+  });
+
+  it('attributes an inactive lineage against its own run history, never the live one', async () => {
+    const forkRunId = 'run-2' as RunId;
+    const record: SessionRecord = {
+      ...makeRecord('turn-b2' as TurnId, true),
+      runs: [
+        { runId, startedAt: 1, historyId: asHistoryId('hist-1') },
+        { runId: forkRunId, startedAt: 2, historyId: asHistoryId('hist-2') },
+      ],
+    };
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record,
+      historiesById: {
+        'hist-1': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a', 'answer a'),
+          providerUser('u-b1', 'b1'),
+          providerAnswer('ans-b1', 'answer b1'),
+        ],
+        // The fork copied the prefix, then the sibling's own turn ran here.
+        'hist-2': [
+          providerUser('u-a', 'a'),
+          providerAnswer('ans-a2', 'answer a'),
+          providerUser('u-b2', 'b2'),
+          providerAnswer('ans-b2', 'answer b2'),
+        ],
+      },
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-b1', 'turn-a', 'b1', 'completed', 1));
+    await store.saveTurn({
+      ...shellTurn('turn-b2', 'turn-a', 'b2', 'completed', 2),
+      runId: forkRunId,
+    });
+    // A continue from B1 that never ran: its own lineage still reads from B1's history.
+    await store.saveTurn({
+      ...shellTurn('turn-c1', 'turn-b1', 'c1', 'failed'),
+      runId: 'run-3' as RunId,
+    });
+
+    const expectOwnHistory = async (leafTurnId: TurnId) => {
+      const inactive = await Effect.runPromise(service.read({ sessionId, leafTurnId }));
+      expect(answers(inactive.events)).toEqual([
+        ['ans-a', 'turn-a'],
+        ['ans-b1', 'turn-b1'],
+      ]);
+      expect(placeholderTurnIds(inactive.events)).toEqual([]);
+    };
+    await expectOwnHistory('turn-b1' as TurnId);
+    await expectOwnHistory('turn-c1' as TurnId);
+
+    // The active lineage's shared turn A also reads hist-1, never the fork's copy of it.
+    const active = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(active.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-b2', 'turn-b2'],
+    ]);
+  });
+
+  it('reads the shared prefix of a lineage whose leaf failed from the live history', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-l' as TurnId, true),
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-l', 'l'),
+        providerAnswer('ans-l', 'answer l'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-l', 'turn-a', 'l', 'completed', 1));
+    // An edit of L refused at dispatch: a failed sibling on the live run, nothing durable ran.
+    await store.saveTurn(shellTurn('turn-l2', 'turn-a', 'l2', 'failed', 2));
+
+    const failed = await Effect.runPromise(
+      service.read({ sessionId, leafTurnId: 'turn-l2' as TurnId }),
+    );
+    expect(answers(failed.events)).toEqual([['ans-a', 'turn-a']]);
+    expect(placeholderTurnIds(failed.events)).toEqual([]);
+    expect(
+      failed.events.flatMap((item) =>
+        'event' in item && item.event.type === 'user-message' ? [item.turnId] : [],
+      ),
+    ).toEqual(['turn-a', 'turn-l2']);
+  });
+
+  it('attributes a failed turn’s own provider rows and continues past it', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
+      // The provider persisted the failed turn's prompt and its partial answer before the error.
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f'),
+        providerAnswer('ans-f', 'partial f'),
+        providerUser('u-b', 'b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-f', 'turn-a', 'f', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f', 'b', 'completed'));
+
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([
+      ['ans-a', 'turn-a'],
+      ['ans-f', 'turn-f'],
+      ['ans-b', 'turn-b'],
+    ]);
+    expect(placeholderTurnIds(read.events)).toEqual([]);
+  });
+
+  it('cuts a fork after a turn at the failed turn’s row that follows it', () => {
+    const fingerprint = (command: string) =>
+      promptContentFingerprint([{ type: 'text', text: `$ ${command}` }]);
+    const attribution = attributeCorpus(
+      [
+        providerUser('u-a', 'a', 'cut-a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f', 'cut-f'),
+        providerUser('u-b', 'b', 'cut-b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+      [
+        { fingerprint: fingerprint('a'), failed: false },
+        { fingerprint: fingerprint('f'), failed: true },
+        { fingerprint: fingerprint('b'), failed: false },
+      ],
+      undefined,
+    );
+    expect(attribution.attributed.map((partition) => partition.userRow.itemId)).toEqual([
+      'u-a',
+      'u-b',
+    ]);
+    expect(attribution.failed.map((partition) => partition?.userRow.itemId)).toEqual(['u-f']);
+    // "After a" is before the failed attempt's row, not before b's.
+    expect(attribution.successors.map((row) => row?.itemId)).toEqual(['u-f', undefined]);
+  });
+
+  it('consumes no partition for a failed turn that left no provider rows', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
       historyEvents: [
         providerUser('u-a', 'a'),
         providerAnswer('ans-a', 'answer a'),
@@ -401,24 +658,38 @@ describe('conversation projection attribution gate', () => {
       ],
     });
     await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
-    await store.saveTurn(shellTurn('turn-b1', 'turn-a', 'b', 'completed', 1));
-    await store.saveTurn(shellTurn('turn-b2', 'turn-a', 'b', 'completed', 2));
+    await store.saveTurn(shellTurn('turn-f', 'turn-a', 'f', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f', 'b', 'completed'));
 
-    // The inactive sibling B1 carries IDENTICAL prompt text to the active B2: counts and
-    // fingerprints both pass, so only the active-lineage gate stops the mis-slice.
-    const inactive = await Effect.runPromise(
-      service.read({ sessionId, leafTurnId: 'turn-b1' as TurnId }),
-    );
-    expect(answers(inactive.events)).toEqual([]);
-    expect(placeholderTurnIds(inactive.events)).toEqual(['turn-a', 'turn-b1']);
-
-    // The active lineage attributes normally.
-    const active = await Effect.runPromise(service.read({ sessionId }));
-    expect(answers(active.events)).toEqual([
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([
       ['ans-a', 'turn-a'],
-      ['ans-b', 'turn-b2'],
+      ['ans-b', 'turn-b'],
     ]);
-    expect(placeholderTurnIds(active.events)).toEqual([]);
+    expect(placeholderTurnIds(read.events)).toEqual([]);
+  });
+
+  it('keeps the prefix before a failed turn when the provider footprint is ambiguous', async () => {
+    const { service, store } = await makeService({
+      journals: new ConversationLiveJournals(),
+      record: makeRecord('turn-b' as TurnId, true),
+      // Two failed turns, one extra partition: which of them left rows is unknowable.
+      historyEvents: [
+        providerUser('u-a', 'a'),
+        providerAnswer('ans-a', 'answer a'),
+        providerUser('u-f', 'f1'),
+        providerUser('u-b', 'b'),
+        providerAnswer('ans-b', 'answer b'),
+      ],
+    });
+    await store.saveTurn(shellTurn('turn-a', null, 'a', 'completed'));
+    await store.saveTurn(shellTurn('turn-f1', 'turn-a', 'f1', 'failed'));
+    await store.saveTurn(shellTurn('turn-f2', 'turn-f1', 'f2', 'failed'));
+    await store.saveTurn(shellTurn('turn-b', 'turn-f2', 'b', 'completed'));
+
+    const read = await Effect.runPromise(service.read({ sessionId }));
+    expect(answers(read.events)).toEqual([['ans-a', 'turn-a']]);
+    expect(placeholderTurnIds(read.events)).toEqual(['turn-b']);
   });
 
   it('attributes nothing when the trailing extra partition is not the in-flight prompt', async () => {
@@ -896,6 +1167,20 @@ describe('conversation read cursor integrity', () => {
           graphRevision: 999,
           leafTurnId: 'turn-live',
           settled: 1,
+          durable: 2,
+          offset: 1,
+        }),
+      }),
+    );
+    // Right graph shape, wrong durable item count: the provider corpus moved between pages.
+    await expectConflict(
+      service.read({
+        sessionId,
+        cursor: JSON.stringify({
+          graphRevision: 1,
+          leafTurnId: 'turn-live',
+          settled: 1,
+          durable: 999,
           offset: 1,
         }),
       }),

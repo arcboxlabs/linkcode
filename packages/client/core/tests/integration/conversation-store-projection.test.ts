@@ -102,6 +102,34 @@ async function harness() {
 const tick = (): Promise<void> => wait(10);
 
 describe('projection conversation store', () => {
+  it('freezes a parked read’s content — live rows and graph changes never reach it — but not the session’s state', async () => {
+    const h = await harness();
+    const store = createConversationStore(
+      h.client,
+      sessionId,
+      seedOf([userRow(1, 'old version')], { epoch: 1, seq: 1 }),
+      { onResync: (reason) => h.resyncs.push(reason), followLive: false },
+    );
+    const unsubscribe = store.subscribe(noop);
+    h.send(echo(2, 'the active lineage moves on'), { epoch: 1, seq: 2 });
+    h.send(chunk('a2', 'streaming into the other version'), { epoch: 1, seq: 3 });
+    h.graphChanged(7, turn(2));
+    // The composer renders these while parked; they are the session's, not the lineage's.
+    h.send({ type: 'model-update', model: 'claude-fable-5' }, { epoch: 1, seq: 4 });
+    h.send({ type: 'effort-update', effort: 'high' }, { epoch: 1, seq: 5 });
+    h.send({ type: 'status', status: 'running' }, { epoch: 1, seq: 6 });
+    await tick();
+
+    expect(texts(store)).toEqual(['old version']);
+    const snapshot = store.getSnapshot();
+    expect(snapshot.currentModel).toBe('claude-fable-5');
+    expect(snapshot.currentEffort).toBe('high');
+    expect(snapshot.status).toBe('running');
+    expect(h.resyncs).toEqual([]);
+    unsubscribe();
+    h.close();
+  });
+
   it('folds the read and drops the live events it already covers', async () => {
     const h = await harness();
     h.send(echo(1, 'hello'), { epoch: 1, seq: 1 });
@@ -218,6 +246,19 @@ describe('projection conversation store', () => {
     await tick();
     expect(texts(store)).toEqual(['first', 'second']);
     expect(h.resyncs).toEqual([]);
+    h.close();
+  });
+
+  it('re-reads a fork whose leaf row arrived live: its relaunch’s epoch asks before the graph move', async () => {
+    const h = await harness();
+    const store = h.store(
+      seedOf([userRow(1, 'first'), userRow(2, 'second')], { epoch: 1, seq: 2 }, 3),
+    );
+    store.subscribe(noop);
+    h.send(echo(9, 'edited second'), { epoch: 2, seq: 1 });
+    h.graphChanged(4, turn(9));
+    await tick();
+    expect(h.resyncs).toEqual(['epoch']);
     h.close();
   });
 

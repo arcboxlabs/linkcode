@@ -203,6 +203,8 @@ describe('attachment upload/read frames', () => {
     expect(parses({ ...begin, name: 'x', mimeType: 'a'.repeat(MAX_MIME_TYPE_LENGTH + 1) })).toBe(
       false,
     );
+    // The legacy frame shipped at v79 without bounds and keeps them off the wire: a released client's
+    // over-long name must still parse (the handler caps it), or its request hangs unanswered.
     expect(
       parses({
         kind: 'resource.source.upload',
@@ -211,6 +213,6 @@ describe('attachment upload/read frames', () => {
         name: 'x'.repeat(MAX_ATTACHMENT_NAME_LENGTH + 1),
         data: 'YQ==',
       }),
-    ).toBe(false);
+    ).toBe(true);
   });
 });

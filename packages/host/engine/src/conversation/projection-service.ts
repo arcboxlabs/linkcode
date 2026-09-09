@@ -8,6 +8,7 @@ import type {
   ConversationGraphTurn,
   ConversationReadItem,
   ConversationTurn,
+  ConversationTurnState,
   ConversationWatermark,
   RunId,
   SessionId,
@@ -26,7 +27,7 @@ import { RequestError } from '../failure';
 import { encodeLiveBranchCursor } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
 import type { ConversationCheckpointService } from './checkpoint-service';
-import type { ProviderPartition } from './lineage-attribution';
+import type { CorpusAttribution } from './lineage-attribution';
 import { pathToLeaf } from './lineage-attribution';
 import type { ConversationLiveJournals } from './live-journal';
 import { inflightChunkKey } from './live-journal';
@@ -57,10 +58,21 @@ export interface ConversationReadResult {
   readonly cursor?: string;
 }
 
+/** One history's attribution plus each of its turns' index into it (settled non-failed / failed). */
+interface HistoryRead {
+  readonly attribution: CorpusAttribution;
+  readonly partition: ReadonlyMap<TurnId, number>;
+  readonly failed: ReadonlyMap<TurnId, number>;
+}
+
 const INPUT_SUMMARY_MAX_LENGTH = 140;
+/** Turns a peer can see: running or settled. */
+const VISIBLE_TURN_STATES = new Set<ConversationTurnState>(['running', ...TERMINAL_TURN_STATES]);
 const WHITESPACE_RUN_RE = /\s+/g;
 /** One page = one logical tunnel message; oversized reassembly is silently dropped by the tunnel
- * (the history-util.ts byte-budget rationale applies verbatim). */
+ * (the history-util.ts byte-budget rationale applies verbatim). The live journal's byte cap
+ * (10 MiB) sits under this, so a retained tail never trims in production; `trimTailToBudget`
+ * backs the invariant for the smaller budgets tests use. */
 const READ_PAGE_BYTE_BUDGET = MAX_ATTACHMENT_TOTAL_BASE64_LENGTH;
 
 /**
@@ -95,6 +107,9 @@ export class ConversationProjectionService {
       sessionTurns.sort(byCreation);
       const graphTurns: ConversationGraphTurn[] = [];
       for (let i = 0, len = sessionTurns.length; i < len; i++) {
+        // A turn that has not run yet is the submitting client's alone: peers see it once it runs
+        // or fails, which is also when the tree announces it.
+        if (!VISIBLE_TURN_STATES.has(sessionTurns[i].state)) continue;
         const summary = yield* inputSummary(sessionTurns[i]);
         graphTurns.push(
           summary === undefined ? sessionTurns[i] : { ...sessionTurns[i], inputSummary: summary },
@@ -140,13 +155,19 @@ export class ConversationProjectionService {
       // leaf moves, garbage restarts silently): the cursor pins the exact projection shape it
       // paged, and any drift or undecodable cursor is a typed conflict — never a silent splice.
       const settled = path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state)).length;
+      const activePath =
+        leafTurnId === record.activeLeafTurnId ? path : pathToLeaf(byId, record.activeLeafTurnId);
+      const durable = yield* composeDurable(record, path, sessionTurns, activePath);
       let offset = 0;
       if (request.cursor !== undefined) {
         const decoded = decodeReadCursor(request.cursor);
         if (
           decoded?.graphRevision !== record.graphRevision ||
           decoded.leafTurnId !== leafTurnId ||
-          decoded.settled !== settled
+          decoded.settled !== settled ||
+          // The item count pins the provider corpus too: rows gained or compacted between pages
+          // (a cache refresh) would shift offsets without moving the graph.
+          decoded.durable !== durable.length
         ) {
           return yield* Effect.fail(
             new RequestError({
@@ -157,12 +178,12 @@ export class ConversationProjectionService {
         }
         offset = decoded.offset;
       }
-      // Positional attribution is sound only on the active lineage: a sibling lineage has the
-      // same path length by construction (and can carry identical prompt text on a retry), so an
-      // inactive-leaf read renders host rows + placeholders until per-turn bindings (CODE-632).
-      const isActiveLineage = leafTurnId !== undefined && leafTurnId === record.activeLeafTurnId;
-      const durable = yield* composeDurable(record, path, isActiveLineage);
-      const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path);
+      // The journal is the active run's: only the lineage that owns the running turn, or the host
+      // default itself, may carry it — another version or an ancestor view reads durable rows only.
+      const ownsTail =
+        leafTurnId === record.activeLeafTurnId ||
+        path.some((turn) => !TERMINAL_TURN_STATES.has(turn.state));
+      const { tail, watermark } = composeTail(request.sessionId, record.eventEpoch, path, ownsTail);
       const { events, nextOffset } = pageReadItems(
         durable,
         tail,
@@ -175,6 +196,7 @@ export class ConversationProjectionService {
               graphRevision: record.graphRevision,
               leafTurnId,
               settled,
+              durable: durable.length,
               offset: nextOffset,
             })
           : undefined;
@@ -190,43 +212,116 @@ export class ConversationProjectionService {
   }
 
   /** Host user rows for every path turn, provider assistant/tool events under the attribution
-   * gate, placeholders where provider content is unavailable or unverifiable. */
+   * gate, placeholders where provider content is unavailable or unverifiable. Every turn reads the
+   * history of the run that executed it — never a fork's copy of it (claude re-stamps the rows it
+   * copies), so two versions render the turns they share identically. */
   private composeDurable(
     record: SessionRecord,
     path: ConversationTurn[],
-    isActiveLineage: boolean,
+    sessionTurns: ConversationTurn[],
+    activePath: ConversationTurn[],
   ): Effect.Effect<ConversationReadItem[], OperationError> {
-    const { checkpoints, turns } = this;
+    const { checkpoints, records, turns } = this;
     return Effect.gen(function* () {
-      const items: ConversationReadItem[] = [];
-      const contents: (ContentBlock[] | undefined)[] = [];
-      for (let i = 0, len = path.length; i < len; i++) {
-        contents.push(yield* turns.hostUserContent(path[i]));
+      // A provider history is one linear transcript, so the turns whose runs wrote to it, in
+      // creation order, are its user rows — the alignment the gate needs, whichever lineage reads.
+      const turnsByHistory = new Map<AgentHistoryId, ConversationTurn[]>();
+      const ordered = [...sessionTurns].sort(byCreation);
+      for (let i = 0, len = ordered.length; i < len; i++) {
+        const historyId = runHistoryId(record, ordered[i].runId);
+        if (historyId === undefined) continue;
+        const group = turnsByHistory.get(historyId);
+        if (group) group.push(ordered[i]);
+        else turnsByHistory.set(historyId, [ordered[i]]);
       }
-      let attributed: ProviderPartition[] = [];
-      let leading: AgentHistoryEvent[] = [];
-      if (isActiveLineage) {
-        // Reading the corpus also backfills replay bindings for the attributed turns.
-        const attribution = yield* checkpoints.attributeActiveLineage(record, path, contents);
-        if (attribution !== undefined) {
-          attributed = attribution.attributed;
-          leading = attribution.leading;
+      const touched = new Set<AgentHistoryId>();
+      const needed = new Map<TurnId, ConversationTurn>();
+      for (let i = 0, len = path.length; i < len; i++) {
+        needed.set(path[i].turnId, path[i]);
+        const historyId = runHistoryId(record, path[i].runId);
+        if (historyId !== undefined) touched.add(historyId);
+      }
+      for (const historyId of touched) {
+        const group = turnsByHistory.get(historyId) ?? [];
+        for (let i = 0, len = group.length; i < len; i++) needed.set(group[i].turnId, group[i]);
+      }
+      const neededTurns = [...needed.values()];
+      const loaded = yield* Effect.forEach(neededTurns, (turn) => turns.hostUserContent(turn));
+      const contentOf = new Map<TurnId, ContentBlock[] | undefined>();
+      for (let i = 0, len = neededTurns.length; i < len; i++) {
+        contentOf.set(neededTurns[i].turnId, loaded[i]);
+      }
+      const contentsOf = (lineage: readonly ConversationTurn[]) =>
+        lineage.map((turn) => contentOf.get(turn.turnId));
+
+      // Reading a corpus also backfills replay bindings on it.
+      const reads = new Map<AgentHistoryId, HistoryRead>();
+      for (const historyId of touched) {
+        const hostTurns = chainOrder(turnsByHistory.get(historyId) ?? []);
+        const attribution = yield* checkpoints.attributeLineage(
+          record,
+          hostTurns,
+          contentsOf(hostTurns),
+          historyId,
+        );
+        if (attribution === undefined) continue;
+        const partition = new Map<TurnId, number>();
+        const failed = new Map<TurnId, number>();
+        for (let i = 0, len = hostTurns.length; i < len; i++) {
+          const turn = hostTurns[i];
+          if (!TERMINAL_TURN_STATES.has(turn.state)) continue;
+          if (turn.state === 'failed') failed.set(turn.turnId, failed.size);
+          else partition.set(turn.turnId, partition.size);
+        }
+        reads.set(historyId, { attribution, partition, failed });
+      }
+      // A fork's copy is still where a later fork after a copied turn cuts once that turn's own
+      // history is gone, so the active lineage also backfills its prefix's bindings on the live
+      // history. Rendering never reads this pass.
+      const liveHistoryId = records.historyId(record.sessionId);
+      if (
+        path === activePath &&
+        liveHistoryId !== undefined &&
+        path.some((turn) => runHistoryId(record, turn.runId) !== liveHistoryId)
+      ) {
+        yield* checkpoints.attributeLineage(record, path, contentsOf(path), liveHistoryId);
+      }
+
+      const items: ConversationReadItem[] = [];
+      // Rows ahead of the first user row are pre-graph history: they belong to the root's own
+      // history alone — a fork child's leading rows are its copy of the prefix, rendered from the
+      // source above.
+      const rootHistoryId = path.length === 0 ? undefined : runHistoryId(record, path[0].runId);
+      const rootRead = rootHistoryId === undefined ? undefined : reads.get(rootHistoryId);
+      if (rootRead !== undefined) {
+        const { leading } = rootRead.attribution;
+        for (let i = 0, len = leading.length; i < len; i++) {
+          items.push(projectedItem(undefined, leading[i]));
         }
       }
-      for (let i = 0, len = leading.length; i < len; i++) {
-        items.push(projectedItem(undefined, leading[i]));
-      }
-      let partitionIndex = 0;
       for (let i = 0, len = path.length; i < len; i++) {
         const turn = path[i];
-        const content = contents[i];
+        const content = contentOf.get(turn.turnId);
         if (content !== undefined) {
           items.push(projectedUserRow(turn, content, runHistoryId(record, turn.runId)));
         }
         if (!TERMINAL_TURN_STATES.has(turn.state)) continue; // in-flight output rides the live tail
-        if (turn.state === 'failed') continue; // nothing durable ran; the state badge is the story
-        const partition = attributed[partitionIndex];
-        partitionIndex += 1;
+        const historyId = runHistoryId(record, turn.runId);
+        const read = historyId === undefined ? undefined : reads.get(historyId);
+        if (turn.state === 'failed') {
+          // The state badge is the story; whatever the provider kept of the attempt renders under
+          // it, and a turn that left nothing gets no placeholder — nothing durable ran.
+          const index = read?.failed.get(turn.turnId);
+          const partial = index === undefined ? undefined : read?.attribution.failed[index];
+          if (partial !== undefined) {
+            for (let j = 0, restLen = partial.rest.length; j < restLen; j++) {
+              items.push(projectedItem(turn, partial.rest[j]));
+            }
+          }
+          continue;
+        }
+        const index = read?.partition.get(turn.turnId);
+        const partition = index === undefined ? undefined : read?.attribution.attributed[index];
         if (partition !== undefined) {
           for (let j = 0, restLen = partition.rest.length; j < restLen; j++) {
             items.push(projectedItem(turn, partition.rest[j]));
@@ -241,21 +336,26 @@ export class ConversationProjectionService {
 
   /** The live tail: retained journal events above the last event attributed to a settled path
    * turn, minus user echoes (host rows own user display) and headless chunk streams, plus the
-   * authoritative open interactive requests. */
+   * authoritative open interactive requests. The journal is the active run's, so a lineage that
+   * does not own it (`ownsTail` false: another version, an ancestor view) gets durable rows only. */
   private composeTail(
     sessionId: SessionId,
     eventEpoch: number,
     path: ConversationTurn[],
+    ownsTail: boolean,
   ): { tail: ConversationReadItem[]; watermark: ConversationWatermark } {
     const journal = this.journals.get(sessionId);
     const liveTurn = path.find((turn) => !TERMINAL_TURN_STATES.has(turn.state));
+    const pathIds = new Set(path.map((turn) => turn.turnId));
     const tail: ConversationReadItem[] = [];
     const seenRequestIds = new Set<string>();
+    const seenStatusIds = new Set<string>();
     // Journal-less sessions (cold, or a launch whose first event hasn't flowed) cut every prior
     // epoch and NOTHING in the current one: seqs start at 1, so the run's own events all compare
     // above {epoch, 0} — a client adopting this during the launch window drops nothing.
     let watermark: ConversationWatermark = { epoch: eventEpoch, seq: 0 };
-    if (journal) {
+    if (journal?.watermark !== undefined) watermark = journal.watermark;
+    if (journal && ownsTail) {
       const snapshot = journal.snapshot();
       const terminalIds = new Set<TurnId>();
       for (let i = 0, len = path.length; i < len; i++) {
@@ -277,12 +377,16 @@ export class ConversationProjectionService {
       for (let i = 0, len = aboveCut.length; i < len; i++) {
         const entry = aboveCut[i];
         const event = entry.event;
+        // An entry stamped for a turn off this lineage (a refused sibling) is another version's.
+        if (entry.turnId !== undefined && !pathIds.has(entry.turnId)) continue;
         // User rows are host truth — a live echo must not double the durable row.
         if (event.type === 'user-message') continue;
         const chunkKey = inflightChunkKey(event);
         if (chunkKey !== undefined && journal.isChunkCleared(chunkKey)) continue;
         if (event.type === 'permission-request' || event.type === 'question-request') {
           seenRequestIds.add(event.requestId);
+        } else if (event.type === 'prompt-response-status') {
+          seenStatusIds.add(event.requestId);
         }
         tail.push({
           ...(entry.turnId !== undefined && { turnId: entry.turnId }),
@@ -301,15 +405,20 @@ export class ConversationProjectionService {
       if (gap && liveTurn !== undefined) {
         tail.push({ type: 'history-unavailable', turnId: liveTurn.turnId, runId: liveTurn.runId });
       }
-      if (journal.watermark !== undefined) watermark = journal.watermark;
     }
-    // CODE-35 backstop: open interactive requests reach the reader even when their original
-    // events were evicted or fell below the durable cut.
-    const openRequests = this.openRequests(sessionId);
+    // CODE-35 backstop: open interactive requests — and the responding status of one being
+    // answered — reach the reader even when their original events were evicted or fell below the
+    // durable cut.
+    const openRequests = ownsTail ? this.openRequests(sessionId) : [];
     for (let i = 0, len = openRequests.length; i < len; i++) {
       const request = openRequests[i];
-      if (request.type !== 'permission-request' && request.type !== 'question-request') continue;
-      if (seenRequestIds.has(request.requestId)) continue;
+      if (request.type === 'prompt-response-status') {
+        if (seenStatusIds.has(request.requestId)) continue;
+      } else if (request.type === 'permission-request' || request.type === 'question-request') {
+        if (seenRequestIds.has(request.requestId)) continue;
+      } else {
+        continue;
+      }
       tail.push({
         ...(liveTurn !== undefined && { turnId: liveTurn.turnId, runId: liveTurn.runId }),
         event: request,
@@ -374,6 +483,7 @@ interface ReadCursor {
   readonly graphRevision: number;
   readonly leafTurnId: TurnId;
   readonly settled: number;
+  readonly durable: number;
   readonly offset: number;
 }
 
@@ -391,6 +501,8 @@ function decodeReadCursor(raw: string): ReadCursor | undefined {
     typeof parsed.graphRevision !== 'number' ||
     !('settled' in parsed) ||
     typeof parsed.settled !== 'number' ||
+    !('durable' in parsed) ||
+    typeof parsed.durable !== 'number' ||
     !('offset' in parsed) ||
     typeof parsed.offset !== 'number' ||
     !Number.isSafeInteger(parsed.offset) ||
@@ -405,6 +517,7 @@ function decodeReadCursor(raw: string): ReadCursor | undefined {
     graphRevision: parsed.graphRevision,
     leafTurnId: leaf.data,
     settled: parsed.settled,
+    durable: parsed.durable,
     offset: parsed.offset,
   };
 }
@@ -453,6 +566,33 @@ function projectedItem(
 
 function runHistoryId(record: SessionRecord, runId: RunId): AgentHistoryId | undefined {
   return record.runs.find((run) => run.runId === runId)?.historyId;
+}
+
+/** The turns that ran on one history in transcript order: the chain through `parentTurnId` from
+ * the turn whose parent ran elsewhere. Creation order (the input) stands when they form no chain. */
+function chainOrder(group: ConversationTurn[]): ConversationTurn[] {
+  const ids = new Set(group.map((turn) => turn.turnId));
+  const childOf = new Map<TurnId, ConversationTurn>();
+  let head: ConversationTurn | undefined;
+  for (let i = 0, len = group.length; i < len; i++) {
+    const turn = group[i];
+    if (turn.parentTurnId !== null && ids.has(turn.parentTurnId)) {
+      childOf.set(turn.parentTurnId, turn);
+    } else {
+      head ??= turn;
+    }
+  }
+  const ordered: ConversationTurn[] = [];
+  const total = group.length;
+  let turn = head;
+  let count = 0;
+  // Bounded by the group size so a malformed graph cannot spin.
+  while (turn !== undefined && count < total) {
+    ordered.push(turn);
+    count += 1;
+    turn = childOf.get(turn.turnId);
+  }
+  return count === total ? ordered : group;
 }
 
 function projectedUserRow(

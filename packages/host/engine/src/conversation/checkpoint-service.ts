@@ -14,8 +14,13 @@ import { OperationError } from '../failure';
 import type { HistoryBranchCut, HistoryService } from '../session/history-service';
 import { promptContentFingerprint } from '../session/live-session';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
-import type { CorpusAttribution } from './lineage-attribution';
-import { attributeCorpus, hasHiddenPrefix, pathToLeaf } from './lineage-attribution';
+import type { CorpusAttribution, HostTurnFingerprint } from './lineage-attribution';
+import {
+  attributeCorpus,
+  hasHiddenPrefix,
+  pathToLeaf,
+  settledWithProvider,
+} from './lineage-attribution';
 import type { ConversationTurnService } from './turn-service';
 import { TERMINAL_TURN_STATES } from './turn-service';
 
@@ -78,42 +83,43 @@ export class ConversationCheckpointService {
   }
 
   /**
-   * Attribute the active lineage (`path` root→active leaf, `contents` per path turn) to the
-   * latest provider history under the §9 gate. Side effect: every attributed turn whose
-   * successor row carries a provider cursor gains a `replay` binding on that history, unless a
-   * binding already exists there — a live capture is never overwritten by a cold read.
+   * Attribute one lineage (`path` root→leaf, `contents` per path turn) to the provider history
+   * that lineage wrote — the live history for the active lineage, an inactive lineage's own leaf
+   * run history otherwise — under the §9 gate. Side effect: every attributed turn whose successor
+   * row carries a provider cursor gains a `replay` binding on that history, unless a binding
+   * already exists there — a live capture is never overwritten by a cold read.
    */
-  attributeActiveLineage(
+  attributeLineage(
     record: SessionRecord,
     path: readonly ConversationTurn[],
     contents: ReadonlyArray<ContentBlock[] | undefined>,
+    historyId: AgentHistoryId | undefined,
   ): Effect.Effect<CorpusAttribution | undefined, OperationError> {
-    const { records } = this;
     const readCorpus = this.readCorpus.bind(this);
     const backfill = this.backfill.bind(this);
     return Effect.gen(function* () {
-      const historyId = records.historyId(record.sessionId);
       const expectsProvider = settledWithProvider(path);
       if (historyId === undefined || expectsProvider.length === 0) return;
       const corpus = yield* readCorpus(record, historyId);
       if (corpus === undefined) return;
-      const hostFingerprints: Array<string | undefined> = [];
+      const hostTurns: HostTurnFingerprint[] = [];
       let liveFingerprint: string | undefined;
       for (let i = 0, len = path.length; i < len; i++) {
         const content = contents[i];
         if (!TERMINAL_TURN_STATES.has(path[i].state)) {
           if (content) liveFingerprint = promptContentFingerprint(content);
-        } else if (path[i].state !== 'failed') {
-          hostFingerprints.push(content && promptContentFingerprint(content));
+        } else {
+          hostTurns.push({
+            fingerprint: content && promptContentFingerprint(content),
+            failed: path[i].state === 'failed',
+          });
         }
       }
       const attribution = attributeCorpus(
         corpus,
-        hostFingerprints,
+        hostTurns,
         liveFingerprint,
-        // A failed turn may or may not have left provider rows, so the count behind the corpus
-        // tail is unknowable: end-anchored alignment is off for that lineage.
-        hasHiddenPrefix(record, path[0]) && !path.some((turn) => turn.state === 'failed'),
+        hasHiddenPrefix(record, path[0]),
       );
       yield* backfill(expectsProvider, attribution, historyId);
       return attribution;
@@ -209,7 +215,7 @@ export class ConversationCheckpointService {
     target: ConversationTurn,
   ): Effect.Effect<ForkCut | undefined, OperationError> {
     const { records, turns } = this;
-    const attributeActiveLineage = this.attributeActiveLineage.bind(this);
+    const attributeLineage = this.attributeLineage.bind(this);
     return Effect.gen(function* () {
       const anchor =
         path.find((turn) => turn.turnId === target.turnId) ??
@@ -219,8 +225,8 @@ export class ConversationCheckpointService {
       for (let i = 0, len = path.length; i < len; i++) {
         contents.push(yield* turns.hostUserContent(path[i]));
       }
-      const attribution = yield* attributeActiveLineage(record, path, contents);
       const historyId = records.historyId(record.sessionId);
+      const attribution = yield* attributeLineage(record, path, contents, historyId);
       if (attribution === undefined || historyId === undefined) return;
       const position = settledWithProvider(path).findIndex((turn) => turn.turnId === anchor.turnId);
       const row =
@@ -241,9 +247,9 @@ export class ConversationCheckpointService {
   ): Effect.Effect<void, OperationError> {
     const { turns } = this;
     return Effect.gen(function* () {
-      const { attributed, trailingLive } = attribution;
+      const { attributed, successors } = attribution;
       for (let j = 0, len = attributed.length; j < len; j++) {
-        const successor = j + 1 < len ? attributed[j + 1].userRow : trailingLive;
+        const successor = successors[j];
         const cursor =
           successor?.event.type === 'user-message' ? successor.event.branchCursor : undefined;
         if (cursor === undefined) continue;
@@ -268,9 +274,4 @@ function toCut(binding: ProviderTurnBinding): AgentHistoryBranchOptions {
 
 function activePath(record: SessionRecord, turns: ConversationTurn[]): ConversationTurn[] {
   return pathToLeaf(new Map(turns.map((turn) => [turn.turnId, turn])), record.activeLeafTurnId);
-}
-
-/** The path turns that expect provider rows: settled, and not failed (nothing durable ran). */
-function settledWithProvider(path: readonly ConversationTurn[]): ConversationTurn[] {
-  return path.filter((turn) => TERMINAL_TURN_STATES.has(turn.state) && turn.state !== 'failed');
 }

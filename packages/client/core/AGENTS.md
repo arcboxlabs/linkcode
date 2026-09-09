@@ -41,6 +41,20 @@ Rules the projection store enforces — keep them when touching it:
   hid the durable refs. Pending drafts render from the client's blob cache until submit roots the
   attachment.
 - Live user echoes carry no envelope `turnId` (they precede turn tracking); never bucket by it.
+- **A parked view is frozen at its read — its content, not the session's state.** Browsing an
+  earlier version reads toward that `leafTurnId` (`ConversationSeedSource.leafTurnId`) with
+  `followLive: false`: the live stream's content belongs to the active lineage's run and must not
+  fold into another version, and a graph change is the owner's business (the "continued
+  elsewhere" chip), not a re-read. Session state (`status`, policy, model, effort, mode,
+  capabilities, commands, models, usage) still folds from the live buffer, latest wins, no
+  watermark — those events reach a client only live, so a store that skipped them would render the
+  composer at defaults while parked. The caller decides
+  `followLive` from the read the store holds — a leaf on, behind, or ahead of the host default
+  follows; another version is frozen — never from view state, which runs ahead of the read by a
+  round trip on every switch.
+- **Edits and continues are explicit-parent submits** (`submitTurn(…, target)`): the daemon
+  validates the parent and `expectedGraphRevision` and answers typed `conflict`/`busy`; the
+  client never calls `history.branch` on a host that serves the graph and can fork.
 
 `history-unavailable` read items become `ConversationItem`s of that kind under the current turn:
 the prompt-only fallback for a lost, compacted, or never-recorded transcript.

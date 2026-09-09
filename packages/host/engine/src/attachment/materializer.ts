@@ -1,6 +1,7 @@
 import { Buffer } from 'node:buffer';
 import { chmod, link, mkdir, rm } from 'node:fs/promises';
 import { basename, join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import type {
   AttachmentCapability,
   ContentBlock,
@@ -107,9 +108,14 @@ export class PromptMaterializer {
         content.push(block.block);
         continue;
       }
-      throw new RequestError({
-        code: 'unsupported_attachment',
-        message: 'This harness does not accept file attachments',
+      // A file projection reaches the harness as the link the inline guard admits for
+      // `readonly_file`: the materialized path, never the store's bytes.
+      content.push({
+        type: 'resource_link',
+        uri: pathToFileURL(block.path).href,
+        name: block.attachment.name,
+        mimeType: block.attachment.mimeType,
+        size: block.attachment.sizeBytes,
       });
     }
     return content;
