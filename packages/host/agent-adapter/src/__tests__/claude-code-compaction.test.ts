@@ -159,6 +159,9 @@ describe('buildClaudeTranscriptSupplement', () => {
       convRow('user', 'u1'),
     ]);
     expect(supplement.droppedRows.map((r) => r.uuid)).toEqual(['u0', 'a0']);
+    // A sidechain row can never be a fork cut (forkSession drops it); meta rows stay chain rows.
+    expect(supplement.parentUuidByUuid.has('side0')).toBe(false);
+    expect(supplement.parentUuidByUuid.has('meta0')).toBe(true);
     expect(supplement.droppedRows[0]).toMatchObject({
       type: 'user',
       session_id: 'sid-1',

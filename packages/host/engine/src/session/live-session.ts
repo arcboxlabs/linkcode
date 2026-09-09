@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { AgentAdapter } from '@linkcode/agent-adapter';
+import type { AgentAdapter, HistoryCheckpoint } from '@linkcode/agent-adapter';
 import { contentToText } from '@linkcode/agent-adapter';
 import type {
   AgentCapabilities,
@@ -14,7 +14,9 @@ import type {
   RunId,
   SessionId,
   SessionInfo,
+  TurnId,
 } from '@linkcode/schema';
+import { TurnIdSchema } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
 import type { Deferred, Scope } from 'effect';
 import { Effect, Fiber } from 'effect';
@@ -27,16 +29,12 @@ const LIVE_BRANCH_CURSOR_TYPE = 'linkcode-live-branch';
 export type LiveBranchCursorParseResult =
   | { readonly type: 'provider' }
   | { readonly type: 'invalid-live' }
-  | {
-      readonly type: 'live';
-      readonly historyId: AgentHistoryId;
-      readonly offsetFromEnd: number;
-      readonly contentFingerprint: string;
-    };
+  | { readonly type: 'live'; readonly historyId: AgentHistoryId; readonly turnId: TurnId };
 
 interface LivePrompt {
   readonly messageId: MessageId;
   readonly content: ContentBlock[];
+  readonly turnId: TurnId;
 }
 
 /** Mutable state derived from one live adapter's event stream. */
@@ -95,28 +93,37 @@ export class LiveSession {
     return true;
   }
 
-  listen(listener: (event: AgentEvent) => void): void {
-    this.unsubscribe = this.adapter.onEvent(listener);
+  listen(
+    listener: (event: AgentEvent) => void,
+    onCheckpoint: (checkpoint: HistoryCheckpoint) => void,
+  ): void {
+    const unsubscribeEvents = this.adapter.onEvent(listener);
+    const unsubscribeCheckpoints = this.adapter.onCheckpoint?.(onCheckpoint) ?? noop;
+    this.unsubscribe = () => {
+      unsubscribeEvents();
+      unsubscribeCheckpoints();
+    };
   }
 
   stopListening(): void {
     this.unsubscribe();
   }
 
-  trackPrompt(messageId: MessageId, content: ContentBlock[]): AgentEvent[] {
-    this.livePrompts.push({ messageId, content });
+  /** Echo a live prompt; its branch cursor names the persisted turn, so `history.branch` resolves
+   * the cut through that turn's checkpoints. Without a history yet, the cursor rides the session-ref
+   * re-echo instead (≤v79 clients expect the cursor to arrive once the history is known). */
+  trackPrompt(messageId: MessageId, content: ContentBlock[], turnId: TurnId): AgentEvent[] {
+    const prompt = { messageId, content, turnId };
+    this.livePrompts.push(prompt);
     if (this.historyId === undefined) {
       return [{ type: 'user-message', messageId, content }];
     }
-    return this.livePromptEvents(promptContentFingerprint(content));
+    return [this.livePromptEvent(prompt, this.historyId)];
   }
 
-  untrackPrompt(messageId: MessageId): AgentEvent[] {
+  untrackPrompt(messageId: MessageId): void {
     const index = this.livePrompts.findIndex((prompt) => prompt.messageId === messageId);
-    if (index < 0) return [];
-    const contentFingerprint = promptContentFingerprint(this.livePrompts[index].content);
-    this.livePrompts.splice(index, 1);
-    return this.historyId === undefined ? [] : this.livePromptEvents(contentFingerprint);
+    if (index >= 0) this.livePrompts.splice(index, 1);
   }
 
   /** Apply adapter-owned state before the original event is broadcast; returned resolutions must
@@ -201,29 +208,19 @@ export class LiveSession {
     return [...resolutions, { type: 'status', status: 'stopped' }];
   }
 
-  private livePromptEvents(onlyFingerprint?: string): AgentEvent[] {
+  private livePromptEvents(): AgentEvent[] {
     const historyId = this.historyId;
     if (historyId === undefined) return [];
-    const occurrenceByFingerprint = new Map<string, number>();
-    return this.livePrompts
-      .toReversed()
-      .map((prompt) => {
-        const contentFingerprint = promptContentFingerprint(prompt.content);
-        const offsetFromEnd = occurrenceByFingerprint.get(contentFingerprint) ?? 0;
-        occurrenceByFingerprint.set(contentFingerprint, offsetFromEnd + 1);
-        return {
-          type: 'user-message' as const,
-          messageId: prompt.messageId,
-          content: prompt.content,
-          branchCursor: encodeLiveBranchCursor(historyId, offsetFromEnd, contentFingerprint),
-        };
-      })
-      .reverse()
-      .filter(
-        (event) =>
-          onlyFingerprint === undefined ||
-          promptContentFingerprint(event.content) === onlyFingerprint,
-      );
+    return this.livePrompts.map((prompt) => this.livePromptEvent(prompt, historyId));
+  }
+
+  private livePromptEvent(prompt: LivePrompt, historyId: AgentHistoryId): AgentEvent {
+    return {
+      type: 'user-message',
+      messageId: prompt.messageId,
+      content: prompt.content,
+      branchCursor: encodeLiveBranchCursor(historyId, prompt.turnId),
+    };
   }
 }
 
@@ -242,39 +239,18 @@ export function decodeLiveBranchCursor(cursor: string): LiveBranchCursorParseRes
   ) {
     return { type: 'provider' };
   }
-  if (
-    !('historyId' in parsed) ||
-    typeof parsed.historyId !== 'string' ||
-    !('offsetFromEnd' in parsed) ||
-    typeof parsed.offsetFromEnd !== 'number' ||
-    !Number.isSafeInteger(parsed.offsetFromEnd) ||
-    parsed.offsetFromEnd < 0 ||
-    !('contentFingerprint' in parsed) ||
-    typeof parsed.contentFingerprint !== 'string'
-  ) {
+  if (!('historyId' in parsed) || typeof parsed.historyId !== 'string' || !('turnId' in parsed)) {
     return { type: 'invalid-live' };
   }
-  return {
-    type: 'live',
-    historyId: parsed.historyId as AgentHistoryId,
-    offsetFromEnd: parsed.offsetFromEnd,
-    contentFingerprint: parsed.contentFingerprint,
-  };
+  const turnId = TurnIdSchema.safeParse(parsed.turnId);
+  if (!turnId.success) return { type: 'invalid-live' };
+  return { type: 'live', historyId: parsed.historyId as AgentHistoryId, turnId: turnId.data };
 }
 
 export function promptContentFingerprint(content: ContentBlock[]): string {
   return createHash('sha256').update(contentToText(content)).digest('base64url');
 }
 
-function encodeLiveBranchCursor(
-  historyId: AgentHistoryId,
-  offsetFromEnd: number,
-  contentFingerprint: string,
-): string {
-  return JSON.stringify({
-    type: LIVE_BRANCH_CURSOR_TYPE,
-    historyId,
-    offsetFromEnd,
-    contentFingerprint,
-  });
+function encodeLiveBranchCursor(historyId: AgentHistoryId, turnId: TurnId): string {
+  return JSON.stringify({ type: LIVE_BRANCH_CURSOR_TYPE, historyId, turnId });
 }

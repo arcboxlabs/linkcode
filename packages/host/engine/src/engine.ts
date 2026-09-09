@@ -22,6 +22,7 @@ import { AutomationRequestHandler } from './automation/request-handler';
 import { BrowserBrokerService } from './browser/broker';
 import { BrowserReplHost } from './browser/repl-host';
 import { BrowserRequestHandler } from './browser/request-handler';
+import { ConversationCheckpointService } from './conversation/checkpoint-service';
 import { InMemoryConversationStore } from './conversation/conversation-store';
 import { ConversationLiveJournals } from './conversation/live-journal';
 import { ConversationProjectionService } from './conversation/projection-service';
@@ -211,6 +212,11 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const resourceRequests = new ResourceRequestHandler(transport, resources, responder);
+  const conversationCheckpoints = new ConversationCheckpointService(
+    conversationTurns,
+    records,
+    history,
+  );
   const sessionLifecycle = new SessionLifecycleService(
     sessions,
     records,
@@ -219,6 +225,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     workspaces,
     worktrees,
     conversationTurns,
+    conversationCheckpoints,
   );
   const sessionRequests = new SessionRequestHandler(
     transport,
@@ -235,7 +242,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const conversationProjection = new ConversationProjectionService(
     conversationTurns,
     records,
-    history,
+    conversationCheckpoints,
     conversationJournals,
     (sessionId) => sessions.openInteractiveRequests(sessionId),
   );

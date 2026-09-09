@@ -1,5 +1,5 @@
 import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
-import { boundedLimit, cursorOffset } from '@linkcode/agent-adapter';
+import { boundedLimit, cursorOffset, HistoryCheckpointInvalidError } from '@linkcode/agent-adapter';
 import type {
   AgentEvent,
   AgentHistoryBranchOptions,
@@ -16,13 +16,18 @@ import type {
 import { Effect } from 'effect';
 import { OperationError, RequestError } from '../failure';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
-import { promptContentFingerprint } from './live-session';
 
 export const HISTORY_CONVERSION_CACHE_VERSION = 5;
 
 export type HistoryListOptions = AgentHistoryListOptions & {
   forceRefresh?: boolean;
 };
+
+/** What `branch` forks at; `fallback` is the same turn's cut on another history, tried only when
+ * the provider no longer honours the cut itself — never for a refused capability. */
+export interface HistoryBranchCut extends AgentHistoryBranchOptions {
+  readonly fallback?: AgentHistoryBranchOptions;
+}
 
 export type HistoryReadOptions = AgentHistoryReadOptions & {
   forceRefresh?: boolean;
@@ -194,9 +199,14 @@ export class HistoryService {
     );
   }
 
+  /** Fork provider history right after the cut's checkpoint and start `adapter` on the child.
+   * Gated on the legacy `branch` capability — the turn-level `forkAfterTurn` gate is the submit
+   * saga's, at admit. A checkpoint the provider no longer honours (rewritten/deleted history, an
+   * unforkable rollout) moves on to the cut's `fallback`, else is a typed `unsupported` with a
+   * fixed message; the adapter's detail names provider ids only and stays in the daemon log. */
   branch(
     adapter: AgentAdapter,
-    opts: AgentHistoryBranchOptions,
+    cut: HistoryBranchCut,
     startOpts: StartOptions,
   ): Effect.Effect<void, RequestError | OperationError> {
     const branchHistory = adapter.branchHistory?.bind(adapter);
@@ -208,66 +218,30 @@ export class HistoryService {
         }),
       );
     }
+    const { fallback, ...opts } = cut;
     return agentHistoryOperation('history.branch', 'Failed to branch agent history', () =>
       branchHistory(opts, startOpts),
-    );
-  }
-
-  resolveLiveBranchCursor(
-    kind: AgentKind,
-    historyId: AgentHistoryId,
-    cwd: string,
-    offsetFromEnd: number,
-    contentFingerprint: string,
-  ): Effect.Effect<string, RequestError | OperationError> {
-    const adapter = this.factory(kind);
-    if (!adapter.historyCapabilities.read) {
-      return Effect.fail(
-        new RequestError({
-          code: 'unsupported',
-          message: `${kind}: history read is not supported`,
-        }),
-      );
-    }
-    return agentHistoryOperation('history.read', 'Failed to read agent history', async () => {
-      const branchablePrompts: Array<{ branchCursor: string; contentFingerprint: string }> = [];
-      const seenCursors = new Set<string>();
-      let cursor: string | undefined;
-      do {
-        const result = sanitizeHistoryResult(
-          // eslint-disable-next-line no-await-in-loop -- Provider cursors require serial pagination.
-          await adapter.readHistory({ historyId, cwd, limit: 1000, cursor }),
+    ).pipe(
+      Effect.catch((error): Effect.Effect<void, RequestError | OperationError> => {
+        if (!(error.cause instanceof HistoryCheckpointInvalidError)) return Effect.fail(error);
+        return Effect.logWarning(
+          'Provider refused the fork checkpoint',
+          { kind: adapter.kind, historyId: opts.historyId },
+          error.cause,
+        ).pipe(
+          Effect.andThen(
+            fallback === undefined
+              ? Effect.fail(
+                  new RequestError({
+                    code: 'unsupported',
+                    message: 'The provider no longer honours this fork checkpoint',
+                  }),
+                )
+              : // Every adapter refuses before it spawns or starts anything, so the same instance retries.
+                this.branch(adapter, fallback, startOpts),
+          ),
         );
-        for (let i = 0, len = result.events.length; i < len; i++) {
-          const entry = result.events[i];
-          if (entry.event.type === 'user-message' && entry.event.branchCursor !== undefined) {
-            branchablePrompts.push({
-              branchCursor: entry.event.branchCursor,
-              contentFingerprint: promptContentFingerprint(entry.event.content),
-            });
-          }
-        }
-        cursor = result.cursor;
-        if (cursor !== undefined && seenCursors.has(cursor)) {
-          throw new Error(`${kind}: history read returned a repeated cursor`);
-        }
-        if (cursor !== undefined) seenCursors.add(cursor);
-      } while (cursor !== undefined);
-      const matchingPrompts = branchablePrompts.filter(
-        (prompt) => prompt.contentFingerprint === contentFingerprint,
-      );
-      return matchingPrompts.at(-(offsetFromEnd + 1))?.branchCursor;
-    }).pipe(
-      Effect.flatMap((cursor) =>
-        cursor === undefined
-          ? Effect.fail(
-              new RequestError({
-                code: 'conflict',
-                message: 'The prompt does not match the latest provider history',
-              }),
-            )
-          : Effect.succeed(cursor),
-      ),
+      }),
     );
   }
 

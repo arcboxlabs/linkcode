@@ -15,6 +15,7 @@ import type {
   StartOptions,
 } from '@linkcode/schema';
 import type { Unsubscribe } from '@linkcode/transport';
+import type { HistoryCheckpoint } from './history-branch';
 
 export type AgentStartCatalogOptions = Partial<Pick<StartOptions, 'cwd' | 'model' | 'config'>>;
 
@@ -60,11 +61,15 @@ export interface AgentAdapter {
   readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult>;
   /** Start/resume a live adapter session from a provider-local history id, if supported. */
   resumeHistory(opts: AgentHistoryResumeOptions, startOpts: StartOptions): Promise<void>;
-  /** Start this adapter on provider history forked before the cursor's historical prompt. */
+  /** Start this adapter on provider history forked right after the cursor's checkpoint (before a
+   * historical prompt ≡ after its predecessor). A cursor that no longer names a live position
+   * must reject with `HistoryCheckpointInvalidError`, never fork at a guessed cut. */
   branchHistory?(opts: AgentHistoryBranchOptions, startOpts: StartOptions): Promise<void>;
   send(input: AgentInput): Promise<void>;
   /** Subscribe to events normalized by the abstraction layer. */
   onEvent(cb: (e: AgentEvent) => void): Unsubscribe;
+  /** Subscribe to live fork checkpoints (adapter-opaque; the engine persists them per turn). */
+  onCheckpoint?(cb: (checkpoint: HistoryCheckpoint) => void): Unsubscribe;
   stop(): Promise<void>;
 }
 

@@ -131,8 +131,14 @@ describe('GrokBuildAdapter', () => {
     vi.restoreAllMocks();
   });
 
-  it('does not advertise provider-history branching', () => {
-    expect(new GrokBuildAdapter().historyCapabilities.branch).toBe(false);
+  it('advertises no history capability at all — fork included', () => {
+    expect(new GrokBuildAdapter().historyCapabilities).toEqual({
+      list: false,
+      read: false,
+      resume: false,
+      forkAfterTurn: false,
+      branch: false,
+    });
   });
 
   it('fails start when no CLI is resolved', async () => {
