@@ -223,6 +223,7 @@ export const en = {
       editUnavailable: 'This message cannot be rewritten yet',
       editUnsupported: 'This agent does not support editing historical prompts',
       editBusy: 'Wait for the agent to finish before editing',
+      editAttachmentsUnsupported: 'Prompt attachments cannot be edited yet',
       editPromptLabel: 'Prompt',
       editCancel: 'Cancel',
       editSend: 'Send',
@@ -367,7 +368,9 @@ export const en = {
       removeAttachment: 'Remove attachment',
       attachmentTooLarge: 'Image exceeds the 8MB limit',
       attachmentsTotalTooLarge: 'Attachments exceed the 12MB total limit',
+      attachmentLimit: 'You can attach at most {count} images',
       attachmentUnsupportedType: 'Only JPEG / PNG / GIF / WEBP images are supported',
+      attachmentContentMismatch: 'File contents are not {type}',
       attachmentUnsupportedAgent: "This agent doesn't support image attachments yet",
       attachmentReadFailed: 'Failed to read the file',
       approvalTitle: 'How should {agent} actions be approved?',
@@ -719,6 +722,8 @@ export const en = {
     content: {
       audio: '[audio]',
       resource: '[resource]',
+      attachment: 'Attachment',
+      attachmentUnavailable: 'Attachment unavailable',
     },
     artifact: {
       streaming: 'Generating…',

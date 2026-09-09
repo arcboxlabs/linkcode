@@ -3,6 +3,8 @@ export * from './activity-run';
 export * from './agent-icon';
 export * from './artifact';
 export * from './artifacts';
+export * from './attachment-card';
+export * from './attachment-preview';
 export * from './attachments';
 export * from './chat-card';
 export * from './checkpoint';

@@ -1,53 +1,20 @@
 import { LinkCodeClient } from '@linkcode/client-core';
-import type { AttachmentId, SessionId } from '@linkcode/schema';
 import {
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
-  OperationIdSchema,
+  attachmentIdFromUri,
 } from '@linkcode/schema';
-import type { Transport } from '@linkcode/transport';
-import { createWireMessage } from '@linkcode/transport';
 import { nullthrow } from 'foxts/guard';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { createDevMockTransport } from '../../src/mock/dev-mock-transport';
+
+const PNG_1X1_BASE64 =
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
 
 async function connectedClient(): Promise<LinkCodeClient> {
   const client = new LinkCodeClient(createDevMockTransport());
   await client.connect();
   return client;
-}
-
-/** `turn.submit` has no client-core method yet (CODE-638), so the prompt-ref root is driven raw. */
-function submitPromptRef(
-  transport: Transport,
-  sessionId: SessionId,
-  attachmentId: AttachmentId,
-): Promise<void> {
-  return new Promise((resolve, reject) => {
-    const clientReqId = 'creq-attachment-ref';
-    const unsubscribe = transport.onMessage((message) => {
-      const p = message.payload;
-      if (!('replyTo' in p) || p.replyTo !== clientReqId) return;
-      unsubscribe();
-      if (p.kind === 'turn.submitted') resolve();
-      else reject(new Error(p.kind === 'request.failed' ? p.message : `unexpected ${p.kind}`));
-    });
-    transport.send(
-      createWireMessage({
-        kind: 'turn.submit',
-        clientReqId,
-        sessionId,
-        operationId: OperationIdSchema.parse('op-attachment-ref'),
-        input: {
-          type: 'prompt',
-          blocks: [
-            { type: 'text', text: 'look at this' },
-            { type: 'attachment_ref', attachmentId },
-          ],
-        },
-      }),
-    );
-  });
 }
 
 describe('dev mock attachment store', () => {
@@ -99,15 +66,48 @@ describe('dev mock attachment store', () => {
     const client = new LinkCodeClient(transport);
     await client.connect();
     const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
-    const bytes = new TextEncoder().encode('attached by prompt');
-    const draft = await client.putAttachment({ bytes, name: 'note.txt', attachmentKind: 'file' });
+    // codex declares images only, and the mock admits like the daemon: a `file` ref is refused.
+    const bytes = new Uint8Array(Buffer.from(PNG_1X1_BASE64, 'base64'));
+    const draft = await client.putAttachment({
+      bytes,
+      name: 'shot.png',
+      mimeType: 'image/png',
+      attachmentKind: 'image',
+    });
 
     await expect(client.getAttachmentBytes(sessionId, draft.attachmentId)).rejects.toThrow(
       'Attachment not found',
     );
-    await submitPromptRef(transport, sessionId, draft.attachmentId);
+    await client.submitTurn(sessionId, {
+      type: 'prompt',
+      blocks: [
+        { type: 'text', text: 'look at this' },
+        { type: 'attachment_ref', attachmentId: draft.attachmentId },
+      ],
+    });
     const read = await client.getAttachmentBytes(sessionId, draft.attachmentId);
     expect(read.bytes).toEqual(bytes);
+
+    const page = await client.readConversation(sessionId);
+    const userRow = page.events.find(
+      (item) => 'event' in item && item.event.type === 'user-message',
+    );
+    expect(
+      userRow &&
+        'event' in userRow &&
+        userRow.event.type === 'user-message' &&
+        userRow.event.content,
+    ).toEqual([
+      { type: 'text', text: 'look at this' },
+      {
+        type: 'resource_link',
+        uri: `attachment:${draft.attachmentId}`,
+        name: 'shot.png',
+        mimeType: 'image/png',
+        size: bytes.byteLength,
+        description: 'image',
+      },
+    ]);
     client.dispose();
   });
 
@@ -134,6 +134,91 @@ describe('dev mock attachment store', () => {
         name: 'fake.png',
         mimeType: 'image/png',
         attachmentKind: 'image',
+      }),
+    ).rejects.toThrow('File contents are not image/png');
+    client.dispose();
+  });
+
+  it('refuses a prompt ref the daemon would refuse: unknown id, or a harness without images', async () => {
+    const client = await connectedClient();
+    const codex = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    await expect(
+      client.submitTurn(codex, {
+        type: 'prompt',
+        blocks: [{ type: 'attachment_ref', attachmentId: AttachmentIdSchema.parse('att-nope') }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported_attachment', message: 'Unknown attachment' });
+
+    const bytes = new TextEncoder().encode('PNG not really');
+    const { attachmentId } = await client.putAttachment({
+      bytes,
+      name: 'note.bin',
+      attachmentKind: 'image',
+    });
+    const grok = await client.startSession({ kind: 'grok-build', cwd: '/mock/repo' });
+    await expect(
+      client.submitTurn(grok, {
+        type: 'prompt',
+        blocks: [{ type: 'attachment_ref', attachmentId }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported_attachment' });
+    client.dispose();
+  });
+
+  it('stores a legacy inline image as a ref on the read row and serves its bytes', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    const bytes = new Uint8Array(Buffer.from(PNG_1X1_BASE64, 'base64'));
+    // The legacy ack lands after the whole mock reply streams; read the row as soon as it exists.
+    const sending = client.send(sessionId, {
+      type: 'prompt',
+      content: [
+        { type: 'text', text: 'look' },
+        { type: 'image', data: PNG_1X1_BASE64, mimeType: 'image/png', name: 'shot.png' },
+      ],
+    });
+    const content = await vi.waitFor(async () => {
+      const page = await client.readConversation(sessionId);
+      const userRow = page.events.find(
+        (item) => 'event' in item && item.event.type === 'user-message',
+      );
+      const blocks =
+        userRow && 'event' in userRow && userRow.event.type === 'user-message'
+          ? userRow.event.content
+          : undefined;
+      if (blocks?.[1]?.type !== 'resource_link') throw new Error('row not projected yet');
+      return blocks;
+    });
+    const link = content[1];
+    if (link?.type !== 'resource_link') throw new Error('expected a stored attachment link');
+    expect(link).toMatchObject({
+      name: 'shot.png',
+      mimeType: 'image/png',
+      size: bytes.byteLength,
+      description: 'image',
+    });
+    expect(JSON.stringify(content)).not.toContain(PNG_1X1_BASE64);
+    const attachmentId = AttachmentIdSchema.parse(nullthrow(attachmentIdFromUri(link.uri)));
+    const read = await client.getAttachmentBytes(sessionId, attachmentId);
+    expect(read.bytes).toEqual(bytes);
+    await client.send(sessionId, { type: 'cancel' });
+    await sending;
+    client.dispose();
+  });
+
+  it('refuses a legacy inline image whose bytes are not the declared type', async () => {
+    const client = await connectedClient();
+    const sessionId = await client.startSession({ kind: 'codex', cwd: '/mock/repo' });
+    await expect(
+      client.send(sessionId, {
+        type: 'prompt',
+        content: [
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            data: Buffer.from([0xff, 0xd8, 0xff, 0xe0]).toString('base64'),
+          },
+        ],
       }),
     ).rejects.toThrow('File contents are not image/png');
     client.dispose();

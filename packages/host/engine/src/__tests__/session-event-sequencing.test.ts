@@ -19,6 +19,8 @@ import { describe, expect, it } from 'vitest';
 import { AgentRuntimeService } from '../agent/runtime-service';
 import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { FsBlobStore } from '../attachment/blob-store';
+import { AttachmentIngest } from '../attachment/ingest';
+import { AttachmentIoMutex } from '../attachment/io-mutex';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import { ConversationLiveJournals } from '../conversation/live-journal';
 import { ConversationTurnService } from '../conversation/turn-service';
@@ -262,6 +264,7 @@ describe('stale-run events at saga cutover', () => {
         void Effect.runPromise(effect);
       },
     );
+    const blobs = new FsBlobStore(join(tmpdir(), 'linkcode-sequencing-blobs'));
     const processor = new SessionEventProcessor(
       transport,
       registry,
@@ -273,8 +276,8 @@ describe('stale-run events at saga cutover', () => {
         registry,
         undefined,
         new FileHostService(new PreviewRouteRegistry()),
-        new FsBlobStore(join(tmpdir(), 'linkcode-sequencing-blobs')),
-        new InMemoryAttachmentStore(),
+        blobs,
+        new AttachmentIngest(blobs, new InMemoryAttachmentStore(), new AttachmentIoMutex()),
       ),
       turns,
       journals,

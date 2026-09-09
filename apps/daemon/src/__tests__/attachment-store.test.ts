@@ -280,4 +280,21 @@ describe('SQLite attachment store', () => {
       ),
     ).toBe(false);
   });
+
+  it('refuses a commit naming a lease the reaper already removed and writes nothing', async () => {
+    const { store } = await fixture();
+    const draft = lease('up-late', 'abc');
+    await store.beginUpload(draft);
+    expect(await store.sweep({ now: draft.expiresAt, graceBefore: 0 })).toEqual([]);
+
+    await expect(async () =>
+      store.commitAttachment({
+        blob: blob('abc'),
+        attachment: attachment('att-late'),
+        uploadId: UploadIdSchema.parse('up-late'),
+      }),
+    ).rejects.toThrow('Upload lease is gone');
+    expect(await store.getAttachment(AttachmentIdSchema.parse('att-late'))).toBeUndefined();
+    expect(await store.getBlob(blob('abc').blobId)).toBeUndefined();
+  });
 });

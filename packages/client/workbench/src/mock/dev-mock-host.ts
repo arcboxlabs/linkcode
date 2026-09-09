@@ -47,8 +47,10 @@ import {
   AGENT_INPUT_CAPABILITIES,
   ATTACHMENT_UPLOAD_CHUNK_BYTES,
   AttachmentIdSchema,
+  attachmentUri,
   blobIdFromSha256,
   declaredMimeTypeMatches,
+  effectiveAttachmentCapability,
   managedAgentAssetId,
   managedAssetIdEquals,
   managedAssetKey,
@@ -160,6 +162,8 @@ interface MockSession extends SessionInfo {
 interface MockTurn {
   graph: ConversationGraphTurn;
   content: ContentBlock[];
+  /** `conversation.read` user-row content; the live echo stays text-only. */
+  readContent?: ContentBlock[];
 }
 
 interface MockJournalEntry {
@@ -269,7 +273,7 @@ export class DevMockHost {
   private readonly attachmentBlobs = new Map<string, Uint8Array>();
   private readonly attachmentRecords = new Map<
     string,
-    { blobId: BlobId; sizeBytes: number; name: string }
+    { blobId: BlobId; sizeBytes: number; name: string; mimeType: string; kind: string }
   >();
   private readonly attachmentBegins = new Map<string, MockAttachmentBegin>();
   /** The daemon's `isReachable` roots: sessions whose prompt or resource names the attachment. */
@@ -1420,6 +1424,23 @@ export class DevMockHost {
     }
     if (p.input.type === 'prompt') {
       const blocks = p.input.blocks;
+      // Admission mirrors the daemon's typed refusals so a composer bug cannot hide behind the mock.
+      const capability = effectiveAttachmentCapability(session.kind);
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
+        if (block.type !== 'attachment_ref') continue;
+        const record = this.attachmentRecords.get(block.attachmentId);
+        if (record === undefined) {
+          this.sendFailure(p.clientReqId, 'Unknown attachment', { code: 'unsupported_attachment' });
+          return;
+        }
+        if (capability?.kinds[record.kind === 'image' ? 'image' : 'file'] === undefined) {
+          this.sendFailure(p.clientReqId, 'This agent does not accept attachments of this kind', {
+            code: 'unsupported_attachment',
+          });
+          return;
+        }
+      }
       for (let i = 0, len = blocks.length; i < len; i++) {
         const block = blocks[i];
         if (block.type === 'attachment_ref') this.rootAttachment(p.sessionId, block.attachmentId);
@@ -1427,6 +1448,7 @@ export class DevMockHost {
     }
     const content = turnSubmitContent(p.input);
     const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
+    turn.readContent = this.projectTurnSubmit(p.input);
     this.send({ kind: 'turn.submitted', replyTo: p.clientReqId, turnId: turn.graph.turnId });
     if (p.input.type === 'prompt') {
       const result = await this.streamMockReply(session, content);
@@ -1485,7 +1507,19 @@ export class DevMockHost {
     session: MockSession,
     content: ContentBlock[],
   ): Promise<void> {
+    // The daemon sniffs before it stores; a mislabeled inline image is refused before any echo.
+    for (let i = 0, len = content.length; i < len; i++) {
+      const block = content[i];
+      if (block.type !== 'image') continue;
+      if (!declaredMimeTypeMatches(block.mimeType, mockBase64ToBytes(block.data).subarray(0, 16))) {
+        this.sendFailure(replyTo, `File contents are not ${block.mimeType}`, {
+          code: 'invalid_request',
+        });
+        return;
+      }
+    }
     const turn = this.beginTurn(session, content);
+    turn.readContent = await this.ingestInlineImages(session.sessionId, content);
     const result = await this.streamMockReply(session, content);
     settleTurn(session, turn, result.ok ? 'completed' : 'failed');
     if (result.ok) this.sendSuccess(replyTo);
@@ -1996,7 +2030,15 @@ export class DevMockHost {
       );
       return;
     }
-    const chunk = mockBase64ToBytes(payload.data);
+    let chunk: Uint8Array;
+    try {
+      chunk = mockBase64ToBytes(payload.data);
+    } catch {
+      this.sendFailure(payload.clientReqId, 'Chunk data is not valid base64', {
+        code: 'invalid_request',
+      });
+      return;
+    }
     if (upload.received + chunk.byteLength > upload.declaredSize) {
       this.sendFailure(payload.clientReqId, 'Chunk exceeds the declared size', {
         code: 'invalid_request',
@@ -2066,6 +2108,8 @@ export class DevMockHost {
       blobId,
       sizeBytes: upload.declaredSize,
       name: upload.name,
+      mimeType: upload.mimeType ?? 'application/octet-stream',
+      kind: upload.attachmentKind,
     });
     this.send({
       kind: 'attachment.upload.committed',
@@ -2090,10 +2134,21 @@ export class DevMockHost {
     this.sendSuccess(payload.clientReqId);
   }
 
-  private async publishResourceAttachment(
+  private publishResourceAttachment(
     payload: Extract<WirePayload, { kind: 'resource.source.upload' }>,
   ): Promise<AttachmentId> {
-    const bytes = mockBase64ToBytes(payload.data);
+    return this.storeMockBytes(mockBase64ToBytes(payload.data), {
+      name: payload.name,
+      mimeType: payload.mimeType,
+      kind: payload.mimeType?.startsWith('image/') ? 'image' : 'file',
+    });
+  }
+
+  /** Bytes the mock already holds become one record, the way the daemon's ingest does. */
+  private async storeMockBytes(
+    bytes: Uint8Array,
+    record: { name: string; mimeType?: string; kind: string },
+  ): Promise<AttachmentId> {
     const digest = await mockSha256Hex(bytes);
     this.attachmentBlobs.set(digest, bytes);
     this.attachmentSeq += 1;
@@ -2101,9 +2156,54 @@ export class DevMockHost {
     this.attachmentRecords.set(attachmentId, {
       blobId: blobIdFromSha256(digest),
       sizeBytes: bytes.byteLength,
-      name: payload.name,
+      name: record.name,
+      mimeType: record.mimeType ?? 'application/octet-stream',
+      kind: record.kind,
     });
     return attachmentId;
+  }
+
+  /** The daemon stores a legacy prompt's inline images and projects refs on read; the echo keeps
+   * the image for old clients. `undefined` when the prompt is text-only (the echo is the row). */
+  private ingestInlineImages(
+    sessionId: SessionId,
+    content: ContentBlock[],
+  ): Promise<ContentBlock[] | undefined> {
+    if (!content.some((block) => block.type === 'image')) return Promise.resolve(undefined);
+    return Promise.all(
+      content.map(async (block) => {
+        if (block.type !== 'image') return block;
+        const attachmentId = await this.storeMockBytes(mockBase64ToBytes(block.data), {
+          name: block.name ?? 'image',
+          mimeType: block.mimeType,
+          kind: 'image',
+        });
+        this.rootAttachment(sessionId, attachmentId);
+        return this.attachmentLink(attachmentId);
+      }),
+    );
+  }
+
+  private attachmentLink(attachmentId: AttachmentId): ContentBlock {
+    const record = this.attachmentRecords.get(attachmentId);
+    return {
+      type: 'resource_link',
+      uri: attachmentUri(attachmentId),
+      name: record?.name ?? attachmentId,
+      ...(record !== undefined && {
+        mimeType: record.mimeType,
+        size: record.sizeBytes,
+        description: record.kind,
+      }),
+    };
+  }
+
+  /** Durable `conversation.read` row: refs become `attachment:` links, never bytes. */
+  private projectTurnSubmit(input: TurnSubmitInput): ContentBlock[] {
+    if (input.type !== 'prompt') return turnSubmitContent(input);
+    return input.blocks.map((block) =>
+      block.type === 'text' ? textBlock(block.text) : this.attachmentLink(block.attachmentId),
+    );
   }
 
   /** Root an attachment in a session, the way persisting a prompt or a resource does on the daemon. */
@@ -2188,6 +2288,17 @@ export class DevMockHost {
   }
 }
 
+function projectMockReadEvent(session: MockSession, entry: MockJournalEntry): AgentEvent {
+  const { event } = entry;
+  if (event.type !== 'user-message' || entry.turnId === undefined) return event;
+  for (let i = 0, len = session.graphTurns.length; i < len; i++) {
+    const turn = session.graphTurns[i];
+    if (turn.graph.turnId !== entry.turnId || turn.readContent === undefined) continue;
+    return { ...event, content: turn.readContent };
+  }
+  return event;
+}
+
 function turnSubmitContent(input: TurnSubmitInput): ContentBlock[] {
   switch (input.type) {
     case 'prompt':
@@ -2235,7 +2346,7 @@ function readMockProjection(session: MockSession): ConversationReadItem[] {
       epoch: entry.epoch,
       seq: entry.seq,
       ts: entry.ts,
-      event: entry.event,
+      event: projectMockReadEvent(session, entry),
     });
     if (
       entry.turnId !== undefined &&

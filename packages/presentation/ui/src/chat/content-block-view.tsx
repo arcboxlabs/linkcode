@@ -1,13 +1,52 @@
 import type { ContentBlock } from '@linkcode/schema';
+import { attachmentIdFromUri } from '@linkcode/schema';
 import { split0th } from 'foxts/split-nth';
 import { useTranslations } from 'use-intl';
 import { fileBasename } from './artifacts/file-kind';
+import { AttachmentCard } from './attachment-card';
+import { useAttachmentPreview } from './attachment-preview';
 import { codeLanguageForResource } from './code-language';
 import { FilePreviewCard } from './file-preview-card';
 import { HighlightedCode } from './highlighted-code';
 import { LinkChip } from './link-chip';
 import { linkTargetForUri } from './link-target';
 import { Markdown, SmoothMarkdown } from './markdown';
+
+function StoredImageAttachment({
+  attachmentId,
+  block,
+}: {
+  attachmentId: string;
+  block: Extract<ContentBlock, { type: 'resource_link' }>;
+}): React.ReactNode {
+  const preview = useAttachmentPreview(attachmentId);
+  return (
+    <AttachmentCard
+      kind="image"
+      mimeType={block.mimeType}
+      name={block.name}
+      previewUrl={preview?.url}
+      size={block.size}
+      unavailable={preview != null && preview.url === undefined}
+    />
+  );
+}
+
+function StoredAttachmentView({
+  attachmentId,
+  block,
+}: {
+  attachmentId: string;
+  block: Extract<ContentBlock, { type: 'resource_link' }>;
+}): React.ReactNode {
+  const kind = block.description;
+  if (kind === 'image') {
+    return <StoredImageAttachment attachmentId={attachmentId} block={block} />;
+  }
+  return (
+    <AttachmentCard kind={kind} mimeType={block.mimeType} name={block.name} size={block.size} />
+  );
+}
 
 function resourceLabel(uri: string, fallback: string): string {
   const visible = split0th(split0th(uri, '#'), '?');
@@ -50,8 +89,15 @@ export function ContentBlockView({
           {t('audio')}
         </audio>
       );
-    case 'resource_link':
-      return <LinkChip target={linkTargetForUri(block.uri)}>{block.title ?? block.name}</LinkChip>;
+    case 'resource_link': {
+      const attachmentId = attachmentIdFromUri(block.uri);
+      if (attachmentId === undefined) {
+        return (
+          <LinkChip target={linkTargetForUri(block.uri)}>{block.title ?? block.name}</LinkChip>
+        );
+      }
+      return <StoredAttachmentView attachmentId={attachmentId} block={block} />;
+    }
     case 'resource': {
       const uri = block.resource.uri;
       const label = resourceLabel(uri, t('resource'));

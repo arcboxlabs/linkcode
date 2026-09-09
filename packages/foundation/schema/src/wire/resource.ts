@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { AttachmentNameSchema, MimeTypeSchema } from '../model/attachment';
 import { MAX_ATTACHMENT_BYTES } from '../model/content';
 import { SessionIdSchema } from '../model/primitives';
 import {
@@ -23,8 +24,8 @@ export const resourceWireVariants = [
     kind: z.literal('resource.source.upload'),
     clientReqId: WireRequestIdSchema,
     sessionId: SessionIdSchema,
-    name: z.string().min(1),
-    mimeType: z.string().min(1).optional(),
+    name: AttachmentNameSchema,
+    mimeType: MimeTypeSchema.optional(),
     data: z.string().max(4 * Math.ceil(MAX_ATTACHMENT_BYTES / 3)),
   }),
   z.object({

@@ -9,7 +9,12 @@ import type {
   WorkspaceId,
   WorkspaceRecord,
 } from '@linkcode/schema';
-import { MessageIdSchema, workspaceKind } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  MessageIdSchema,
+  userRowMessageId,
+  workspaceKind,
+} from '@linkcode/schema';
 import {
   archiveWorkspace,
   cancelTurn,
@@ -27,7 +32,7 @@ import {
   updateWorkspace,
 } from '@linkcode/sdk';
 import type {
-  AttachmentSupportByAgent,
+  AttachmentPreview,
   ComposerAttachment,
   ComposerDirectiveControls,
   ConversationComposerController,
@@ -39,17 +44,19 @@ import type {
   ThreadGroupViewModel,
 } from '@linkcode/ui';
 import {
+  AttachmentPreviewProvider,
   attachmentFromReadFile,
   extractPinnedGroup,
   failedComposerAttachmentFromPath,
   groupThreadsByWorkspace,
+  resetAttachmentPreviews,
   selectCurrentPlan,
   useKeyboardShortcutLabel,
 } from '@linkcode/ui';
 import { noop } from 'foxact/noop';
 import { useSet } from 'foxact/use-set';
-import { extractErrorMessage } from 'foxts/extract-error-message';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAgentRuntimeOnboarding } from '../agent-runtime/onboarding';
 import { captureProductEvent } from '../analytics/product-analytics';
@@ -73,6 +80,21 @@ import { RuntimeTerminalBlock } from '../terminal/block';
 import { useWorkspaces } from '../workspace/hooks';
 import { submitActiveSessionInput } from './active-session-input';
 import { useNewSessionDefaultsStore } from './new-session-defaults-store';
+import {
+  attachmentObjectUrl,
+  clearInflightUserAttachments,
+  isStoredAttachmentBlock,
+  noteInflightUserAttachments,
+  notePendingUserAttachments,
+  overlayPendingUserAttachments,
+  pendingUserAttachmentsSnapshot,
+  promptBlocksFromComposer,
+  revokeAttachmentObjectUrls,
+  stageStoreAttachment,
+  stageStoreAttachmentFromBase64,
+  subscribePendingUserAttachments,
+} from './prompt-attachments';
+import { useSessionSelectionStore } from './selection-store';
 import type { WorkbenchShellComponent } from './shell';
 import { DefaultWorkbenchShell } from './shell';
 import { newlyConfirmedStartupSelection, reflectedStartupSelection } from './startup-selection';
@@ -82,15 +104,6 @@ import { useSeededConversation } from './use-seeded-conversation';
 import { useWorkbenchKeyboardShortcuts } from './use-workbench-keyboard-shortcuts';
 import type { WorkbenchSessions } from './use-workbench-sessions';
 import { useWorkbenchSessions } from './use-workbench-sessions';
-
-// TODO(backend): replace this frontend stub with attachment support advertised by each session.
-const ATTACHMENT_SUPPORT: AttachmentSupportByAgent = {
-  'claude-code': true,
-  codex: true,
-  opencode: true,
-  pi: true,
-  // Headless streaming-json has no image prompt path verified yet.
-};
 
 async function handleHostArtifact(content: string, mimeType: string): Promise<{ url: string }> {
   const { data } = await hostArtifact({ content, mimeType });
@@ -251,12 +264,29 @@ function WorkbenchSessionSurface({
   const { data: providers } = useData(getProviderConfig, {});
   const selectableHarnesses = providers === undefined ? null : selectableHarnessKinds(providers);
   const sdkClient = useWorkbenchSdkClient();
+  const client = sdkClient.raw;
   const activeSessionId = sessions.activeId;
+  const pendingAttachments = useSyncExternalStore(
+    subscribePendingUserAttachments,
+    pendingUserAttachmentsSnapshot,
+  );
+  const displayedConversation = overlayPendingUserAttachments(
+    conversation,
+    activeSessionId,
+    pendingAttachments,
+  );
   // Announce observation of the focused session so the daemon replays buffered per-session state
   // this client missed (e.g. the approval-policy advertisement after a reload). Fire-and-forget.
   useEffect(() => {
     if (activeSessionId) sdkClient.raw.attachSession(activeSessionId);
   }, [sdkClient, activeSessionId]);
+  useEffect(
+    () => () => {
+      revokeAttachmentObjectUrls();
+      resetAttachmentPreviews();
+    },
+    [activeSessionId],
+  );
   const {
     data: workspaces,
     isLoading: workspacesLoading,
@@ -331,8 +361,33 @@ function WorkbenchSessionSurface({
     return submitActiveSessionInput(input, turnInputMutation.trigger);
   }
 
+  async function submitPrompt(sessionId: SessionId, content: ContentBlock[]): Promise<void> {
+    if (!client.supportsConversationGraph) {
+      await submitActiveSessionInput({ type: 'prompt', content }, turnInputMutation.trigger);
+      return;
+    }
+    const blocks = promptBlocksFromComposer(content);
+    if (blocks === undefined || blocks.length === 0) {
+      await submitActiveSessionInput({ type: 'prompt', content }, turnInputMutation.trigger);
+      return;
+    }
+    noteInflightUserAttachments(sessionId, content);
+    try {
+      const { turnId } = await client.submitTurn(sessionId, { type: 'prompt', blocks });
+      notePendingUserAttachments(sessionId, userRowMessageId(turnId), content);
+      clearInflightUserAttachments(sessionId);
+    } catch (error) {
+      clearInflightUserAttachments(sessionId);
+      if (!isRequestFailureReportedInConversation(error)) onError(error);
+      throw error;
+    }
+  }
+
   function handleSend(content: ContentBlock[]): Promise<void> {
-    return submitActiveInput({ type: 'prompt', content }).then(() => {
+    onClearError();
+    const { selectedId: sessionId, draft } = useSessionSelectionStore.getState();
+    if (draft || !sessionId) return Promise.reject(new Error('No active session'));
+    return submitPrompt(sessionId, content).then(() => {
       captureProductEvent('turn submitted', { input_kind: 'prompt' });
     });
   }
@@ -345,11 +400,12 @@ function WorkbenchSessionSurface({
     if (active?.historyCapabilities?.branch !== true) {
       throw new Error('Prompt editing is unavailable for this session');
     }
+    const stripped = content.filter((block) => !isStoredAttachmentBlock(block));
     await rewriteMutation.trigger({
       sourceSessionId: active.sessionId,
       sourceMessageId: MessageIdSchema.parse(messageId),
       branchCursor,
-      content,
+      content: stripped,
     });
     sessions.refresh();
   }
@@ -399,8 +455,11 @@ function WorkbenchSessionSurface({
       submission.branch,
     );
     // The first input rides behind the started session, like any conversation send.
-    void turnInputMutation
-      .trigger({ sessionId, input: submission.input })
+    const firstTurn =
+      submission.input.type === 'prompt'
+        ? submitPrompt(sessionId, submission.input.content)
+        : turnInputMutation.trigger({ sessionId, input: submission.input }).then(noop);
+    void firstTurn
       .then(() => {
         captureProductEvent('turn submitted', { input_kind: submission.input.type });
         // Some process-per-turn adapters can confirm a startup override only after their first
@@ -425,15 +484,52 @@ function WorkbenchSessionSurface({
   async function handleReadAttachmentFile(path: string): Promise<ComposerAttachment> {
     try {
       const { data } = await readWorkspaceFile({ cwd: '/', path });
-      return attachmentFromReadFile(data, {
+      const inline = attachmentFromReadFile(data, {
         tooLarge: tComposer('attachmentTooLarge'),
         unsupportedType: tComposer('attachmentUnsupportedType'),
       });
+      if (
+        !client.supportsAttachmentStore ||
+        inline.status !== 'ready' ||
+        data.encoding !== 'base64'
+      ) {
+        return inline;
+      }
+      return await stageStoreAttachmentFromBase64(
+        client,
+        inline,
+        data.content,
+        data.mimeType,
+        data.size,
+      );
     } catch (err) {
       return failedComposerAttachmentFromPath(
         path,
         extractErrorMessage(err) ?? tComposer('attachmentReadFailed'),
       );
+    }
+  }
+
+  function handlePrepareAttachment(
+    file: File,
+    pending: ComposerAttachment,
+  ): Promise<ComposerAttachment> {
+    return stageStoreAttachment(client, file, pending, {
+      contentMismatch: tComposer('attachmentContentMismatch', { type: file.type }),
+    });
+  }
+
+  async function resolveAttachmentPreview(attachmentId: string): Promise<AttachmentPreview | null> {
+    if (!activeSessionId) return null;
+    try {
+      const { bytes } = await client.getAttachmentBytes(
+        activeSessionId,
+        AttachmentIdSchema.parse(attachmentId),
+      );
+      return { url: attachmentObjectUrl(attachmentId, bytes) };
+    } catch (error) {
+      if (isErrorLikeObject(error) && 'code' in error && error.code === 'not_found') return null;
+      throw error;
     }
   }
 
@@ -499,6 +595,7 @@ function WorkbenchSessionSurface({
   const conversationComposer: ConversationComposerController = {
     onSend: handleSend,
     onStop: handleStopTurn,
+    onPrepareAttachment: client.supportsAttachmentStore ? handlePrepareAttachment : undefined,
     directiveControls,
     onModeChange: handleModeChange,
     onApprovalPolicyChange: handleApprovalPolicyChange,
@@ -652,76 +749,78 @@ function WorkbenchSessionSurface({
   }
 
   return (
-    <ShellComponent
-      resourcesPanel={
-        activeSessionId ? (
-          <RuntimeTaskResourcesPanel sessionId={activeSessionId} plan={currentPlan} />
-        ) : undefined
-      }
-      attachmentSupport={ATTACHMENT_SUPPORT}
-      threadGroups={threadGroups}
-      workspaces={projectWorkspaces}
-      workspacesLoading={workspacesLoading}
-      sessionsLoading={sessions.isLoading}
-      chatWorkspace={chatWorkspace}
-      activeSession={active}
-      draft={draft}
-      newSessionWorkspaceId={newSessionWorkspaceId}
-      onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
-      accountModels={accountModels}
-      selectableHarnesses={selectableHarnesses}
-      agentCatalogs={agentCatalogs}
-      newSessionPreferredEfforts={newSessionPreferredEfforts}
-      newSessionPreferredBranches={newSessionPreferredBranches}
-      NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
-      runtimeCues={onboarding.cues}
-      onDownloadAgent={onboarding.download}
-      onContinueUnverified={onboarding.acknowledgeUnverified}
-      conversation={conversation}
-      onEditPrompt={handleEditPrompt}
-      respondingRequestIds={respondingRequestIds}
-      responseErrors={visibleResponseErrors}
-      header={{
-        title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
-        subtitle: active?.cwd,
-        sessionId: active?.sessionId ?? null,
-        usage: conversation.usage,
-      }}
-      navigation={{
-        canGoBack: sessions.canGoBack,
-        canGoForward: sessions.canGoForward,
-        onBack: sessions.goBack,
-        onForward: sessions.goForward,
-      }}
-      errorMessage={errorMessage}
-      pinnedSessionIds={pinnedSessionIds}
-      collapsedSections={collapsedSections}
-      onSelectSession={sessions.select}
-      onCloseSession={sessions.close}
-      onToggleSessionPinned={toggleSessionPinned}
-      onReorderGroups={handleReorderGroups}
-      onReorderThreads={handleReorderThreads}
-      onStartDraft={sessions.startDraft}
-      onSubmitDraft={handleSubmitDraft}
-      onRegisterWorkspace={handleRegisterWorkspace}
-      onRenameWorkspace={handleRenameWorkspace}
-      onArchiveWorkspace={handleArchiveWorkspace}
-      onToggleGroupCollapsed={toggleGroupCollapsed}
-      onToggleSectionCollapsed={toggleSectionCollapsed}
-      onTogglePreviewExpanded={handleTogglePreviewExpanded}
-      mentionItems={mentionItems}
-      onMentionQueryChange={onMentionQueryChange}
-      conversationComposer={conversationComposer}
-      onRespondPermission={handleRespond}
-      onRespondQuestion={handleRespondQuestion}
-      onHostArtifact={handleHostArtifact}
-      onHostVideoFile={handleHostVideoFile}
-      onReadAttachmentFile={handleReadAttachmentFile}
-      onOpenSearch={openCommandPalette}
-      searchShortcut={searchShortcut}
-      TerminalBlockComponent={RuntimeTerminalBlock}
-      BranchStatusComponent={RuntimeBranchStatus}
-      onDismissError={onClearError}
-    />
+    <AttachmentPreviewProvider resolve={resolveAttachmentPreview}>
+      <ShellComponent
+        resourcesPanel={
+          activeSessionId ? (
+            <RuntimeTaskResourcesPanel sessionId={activeSessionId} plan={currentPlan} />
+          ) : undefined
+        }
+        threadGroups={threadGroups}
+        workspaces={projectWorkspaces}
+        workspacesLoading={workspacesLoading}
+        sessionsLoading={sessions.isLoading}
+        chatWorkspace={chatWorkspace}
+        activeSession={active}
+        draft={draft}
+        newSessionWorkspaceId={newSessionWorkspaceId}
+        onNewSessionWorkspaceChange={handleNewSessionWorkspaceChange}
+        accountModels={accountModels}
+        selectableHarnesses={selectableHarnesses}
+        agentCatalogs={agentCatalogs}
+        newSessionPreferredEfforts={newSessionPreferredEfforts}
+        newSessionPreferredBranches={newSessionPreferredBranches}
+        NewSessionBranchPickerComponent={RuntimeNewSessionBranchPicker}
+        runtimeCues={onboarding.cues}
+        onDownloadAgent={onboarding.download}
+        onContinueUnverified={onboarding.acknowledgeUnverified}
+        conversation={displayedConversation}
+        onEditPrompt={handleEditPrompt}
+        onPrepareAttachment={client.supportsAttachmentStore ? handlePrepareAttachment : undefined}
+        respondingRequestIds={respondingRequestIds}
+        responseErrors={visibleResponseErrors}
+        header={{
+          title: active ? (active.title ?? tk(active.kind)) : 'Link Code',
+          subtitle: active?.cwd,
+          sessionId: active?.sessionId ?? null,
+          usage: conversation.usage,
+        }}
+        navigation={{
+          canGoBack: sessions.canGoBack,
+          canGoForward: sessions.canGoForward,
+          onBack: sessions.goBack,
+          onForward: sessions.goForward,
+        }}
+        errorMessage={errorMessage}
+        pinnedSessionIds={pinnedSessionIds}
+        collapsedSections={collapsedSections}
+        onSelectSession={sessions.select}
+        onCloseSession={sessions.close}
+        onToggleSessionPinned={toggleSessionPinned}
+        onReorderGroups={handleReorderGroups}
+        onReorderThreads={handleReorderThreads}
+        onStartDraft={sessions.startDraft}
+        onSubmitDraft={handleSubmitDraft}
+        onRegisterWorkspace={handleRegisterWorkspace}
+        onRenameWorkspace={handleRenameWorkspace}
+        onArchiveWorkspace={handleArchiveWorkspace}
+        onToggleGroupCollapsed={toggleGroupCollapsed}
+        onToggleSectionCollapsed={toggleSectionCollapsed}
+        onTogglePreviewExpanded={handleTogglePreviewExpanded}
+        mentionItems={mentionItems}
+        onMentionQueryChange={onMentionQueryChange}
+        conversationComposer={conversationComposer}
+        onRespondPermission={handleRespond}
+        onRespondQuestion={handleRespondQuestion}
+        onHostArtifact={handleHostArtifact}
+        onHostVideoFile={handleHostVideoFile}
+        onReadAttachmentFile={handleReadAttachmentFile}
+        onOpenSearch={openCommandPalette}
+        searchShortcut={searchShortcut}
+        TerminalBlockComponent={RuntimeTerminalBlock}
+        BranchStatusComponent={RuntimeBranchStatus}
+        onDismissError={onClearError}
+      />
+    </AttachmentPreviewProvider>
   );
 }

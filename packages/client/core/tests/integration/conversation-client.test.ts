@@ -1,5 +1,5 @@
 import type { RunId, SessionId, TurnId } from '@linkcode/schema';
-import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { AttachmentIdSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { createLocalTransportPair, createWireMessage } from '@linkcode/transport';
 import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
@@ -9,6 +9,7 @@ import { createConnectedLocalClient } from '../support/local-client';
 
 const sessionId = 'sess-conv' as SessionId;
 const leafTurnId = 'turn-leaf' as TurnId;
+const rOperationId = /^op-creq-/;
 
 describe('LinkCodeClient conversation graph API', () => {
   it('advertises the graph path only for hosts at or above its wire version', async () => {
@@ -134,6 +135,56 @@ describe('LinkCodeClient conversation graph API', () => {
     const graph = await client.getConversationGraph(sessionId);
     expect(graph.activeLeafTurnId).toBe(leafTurnId);
     expect(graph.turns).toHaveLength(1);
+
+    client.dispose();
+    serverTransport.close();
+  });
+
+  it('resolves a plain-send turn.submit without parent or revision', async () => {
+    const { client, serverTransport } = await createConnectedLocalClient();
+    const submitted: unknown[] = [];
+    serverTransport.onMessage((msg) => {
+      const p = msg.payload;
+      if (p.kind !== 'turn.submit') return;
+      submitted.push(p);
+      serverTransport.send(
+        createWireMessage({
+          kind: 'turn.submitted',
+          replyTo: p.clientReqId,
+          turnId: leafTurnId,
+        }),
+      );
+    });
+
+    const attachmentId = AttachmentIdSchema.parse('att-1');
+    await expect(
+      client.submitTurn(sessionId, {
+        type: 'prompt',
+        blocks: [
+          { type: 'text', text: 'look' },
+          { type: 'attachment_ref', attachmentId },
+        ],
+      }),
+    ).resolves.toEqual({ turnId: leafTurnId });
+    expect(submitted).toHaveLength(1);
+    expect(submitted[0]).toEqual(
+      expect.objectContaining({
+        kind: 'turn.submit',
+        sessionId,
+        input: {
+          type: 'prompt',
+          blocks: [
+            { type: 'text', text: 'look' },
+            { type: 'attachment_ref', attachmentId },
+          ],
+        },
+      }),
+    );
+    expect(submitted[0]).not.toHaveProperty('parentTurnId');
+    expect(submitted[0]).not.toHaveProperty('expectedGraphRevision');
+    expect(submitted[0]).toEqual(
+      expect.objectContaining({ operationId: expect.stringMatching(rOperationId) }),
+    );
 
     client.dispose();
     serverTransport.close();

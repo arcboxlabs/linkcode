@@ -107,11 +107,7 @@ export function admitPromptAttachments(
     }
     if (attachment.kind === 'image') imageCount += 1;
     else fileCount += 1;
-    const maxCount = limits.maxCount;
-    if (
-      (attachment.kind === 'image' && imageCount > maxCount) ||
-      (attachment.kind === 'file' && fileCount > maxCount)
-    ) {
+    if ((attachment.kind === 'image' ? imageCount : fileCount) > limits.maxCount) {
       throw new RequestError({
         code: 'limit_exceeded',
         message: 'Too many attachments',
