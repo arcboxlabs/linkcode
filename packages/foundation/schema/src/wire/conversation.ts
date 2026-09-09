@@ -39,6 +39,29 @@ export const ConversationEventSchema = z.object({
 });
 export type ConversationEvent = z.infer<typeof ConversationEventSchema>;
 
+/** Turn-scoped marker: this turn's provider output is unavailable (no-history harness, compacted
+ * or deleted transcript, migrated turn, failed provider read) — the host prompt row is all there
+ * is. The deliberate prompt-only fallback, never a broken graph. */
+export const ConversationPlaceholderSchema = z.object({
+  type: z.literal('history-unavailable'),
+  turnId: TurnIdSchema,
+  runId: RunIdSchema.optional(),
+});
+export type ConversationPlaceholder = z.infer<typeof ConversationPlaceholderSchema>;
+
+/** One item of a `conversation.read` page. */
+export const ConversationReadItemSchema = z.union([
+  ConversationEventSchema,
+  ConversationPlaceholderSchema,
+]);
+export type ConversationReadItem = z.infer<typeof ConversationReadItemSchema>;
+
+/** A graph node plus the short input label that renders `← 1/N →` without reading content. */
+export const ConversationGraphTurnSchema = ConversationTurnSchema.extend({
+  inputSummary: z.string().optional(),
+});
+export type ConversationGraphTurn = z.infer<typeof ConversationGraphTurnSchema>;
+
 /** Conversation-graph wire variants. `turn.submit`'s parent/revision contract: `parentTurnId`
  * ABSENT = plain send onto the active leaf; `null` = new root lineage; a turn id = edit/continue
  * under that turn. `expectedGraphRevision` is required iff `parentTurnId` is present (enforced by
@@ -70,7 +93,7 @@ export const conversationWireVariants = [
     sessionId: SessionIdSchema,
     graphRevision: z.number().int().nonnegative(),
     activeLeafTurnId: TurnIdSchema.optional(),
-    turns: z.array(ConversationTurnSchema),
+    turns: z.array(ConversationGraphTurnSchema),
   }),
   /** Session-scoped broadcast: the graph changed shape or moved its default leaf; clients holding
    * a stale snapshot revalidate via `conversation.graph.get`. */
@@ -96,9 +119,10 @@ export const conversationWireVariants = [
     graphRevision: z.number().int().nonnegative(),
     /** The leaf the projection was read toward; absent while the session has no turns. */
     leafTurnId: TurnIdSchema.optional(),
-    /** Merge cut for the live event plane; only the final page's watermark is authoritative. */
-    watermark: ConversationWatermarkSchema,
-    events: z.array(ConversationEventSchema),
+    /** Merge cut for the live event plane. ONLY the final page carries it (and the live tail);
+     * every non-final page omits it — clients merge against the final page's watermark alone. */
+    watermark: ConversationWatermarkSchema.optional(),
+    events: z.array(ConversationReadItemSchema),
     cursor: z.string().optional(),
   }),
 ] as const;
