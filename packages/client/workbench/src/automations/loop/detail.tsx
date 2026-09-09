@@ -5,6 +5,7 @@ import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
 import { AutomationActions } from '../actions';
+import { DetailHeaderPortal } from '../detail-header-slot';
 import { AutomationPaneSkeleton } from '../pane-layout';
 import { useLoopInspection, useLoopLog } from './hooks';
 import { LoopLogView } from './log-view';
@@ -58,7 +59,7 @@ export function LoopDetail({
 
   const { loop, iterations } = inspection;
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-xl flex-col gap-5">
+    <div className="flex w-full min-w-0 flex-col gap-5">
       {error ? (
         <TaskLoadError
           message={t('loadFailed')}
@@ -68,14 +69,16 @@ export function LoopDetail({
           }}
         />
       ) : null}
+      <DetailHeaderPortal>
+        <AutomationActions
+          task={loop}
+          sessionId={iterations.at(-1)?.workerSessionId}
+          onOpenSession={onOpenSession}
+        />
+      </DetailHeaderPortal>
       <header className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <Badge variant={STATUS_BADGE[loop.status]}>{t(`loopStatus.${loop.status}`)}</Badge>
-          <AutomationActions
-            task={loop}
-            sessionId={iterations.at(-1)?.workerSessionId}
-            onOpenSession={onOpenSession}
-          />
         </div>
         <div className="flex items-center gap-2">
           <h2 className="min-w-0 truncate font-semibold text-lg">
@@ -103,7 +106,6 @@ export function LoopDetail({
 
       <TaskDisclosure title={t('loop.log')}>
         <section className="flex flex-col gap-2">
-          <h3 className="font-medium text-sm">{t('loop.log')}</h3>
           <LoopLogView entries={logs} emptyLabel={t('loop.logEmpty')} />
         </section>
       </TaskDisclosure>

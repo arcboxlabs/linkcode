@@ -23,7 +23,6 @@ export const zhCN = {
       discardDescription: '离开后，这些修改将不会保存。',
       keepEditing: '继续编辑',
       discard: '放弃修改',
-      title: '自动化',
       pageTitle: '自动化',
       description: '安排 Agent 定时工作，或让任务循环执行直到验证通过。',
       back: '返回',

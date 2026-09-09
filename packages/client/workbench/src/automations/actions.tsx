@@ -10,6 +10,8 @@ import {
 import {
   AlertDialog,
   AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
   AlertDialogPopup,
   AlertDialogTitle,
 } from 'coss-ui/components/alert-dialog';
@@ -150,14 +152,16 @@ export function AutomationActions({
         }}
       >
         <AlertDialogPopup>
-          <AlertDialogTitle>{t('deleteConfirmTitle')}</AlertDialogTitle>
-          <AlertDialogDescription>{t('deleteConfirmDescription')}</AlertDialogDescription>
-          {error ? (
-            <p role="alert" className="mt-3 text-destructive text-sm">
-              {error}
-            </p>
-          ) : null}
-          <div className="mt-4 flex justify-end gap-2">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('deleteConfirmTitle')}</AlertDialogTitle>
+            <AlertDialogDescription>{t('deleteConfirmDescription')}</AlertDialogDescription>
+            {error ? (
+              <p role="alert" className="text-destructive text-sm">
+                {error}
+              </p>
+            ) : null}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
             <Button variant="outline" disabled={pending} onClick={() => setConfirmDelete(false)}>
               {t('cancel')}
             </Button>
@@ -176,7 +180,7 @@ export function AutomationActions({
             >
               {t('delete')}
             </Button>
-          </div>
+          </AlertDialogFooter>
         </AlertDialogPopup>
       </AlertDialog>
     </>

@@ -1,11 +1,13 @@
 import type { ScheduleId, ScheduleRun, ScheduleStatus, SessionId } from '@linkcode/schema';
-import { TaskDisclosure, TaskLoadError, useRelativeTimeLabel } from '@linkcode/ui';
+import { TaskLoadError, useRelativeTimeLabel } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyDescription, EmptyTitle } from 'coss-ui/components/empty';
+import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AutomationActions } from '../actions';
+import { DetailHeaderPortal } from '../detail-header-slot';
 import { AutomationPaneSkeleton } from '../pane-layout';
 import { ScheduleForm } from './form';
 import { useScheduleRuns, useSchedules } from './hooks';
@@ -63,42 +65,51 @@ export function ScheduleDetail({
     runs?.reduce<SessionId | undefined>((first, run) => first ?? run.sessionId, undefined) ??
     (schedule.spec.target.type === 'session' ? schedule.spec.target.sessionId : undefined);
   return (
-    <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
-      <header className="flex items-center justify-between gap-2">
+    <div className="flex w-full flex-col gap-5">
+      <header className="flex items-center gap-2">
         <Badge variant={STATUS_BADGE[schedule.status]}>{t(`status.${schedule.status}`)}</Badge>
-        {current ? (
-          <AutomationActions task={current} sessionId={sessionId} onOpenSession={onOpenSession} />
-        ) : null}
       </header>
-      <ScheduleForm schedule={schedule} missing={schedules !== undefined && !current} />
-      <TaskDisclosure title={t('schedule.runs')}>
-        {runsError ? (
-          <TaskLoadError
-            message={t('loadFailed')}
-            retryLabel={t('retry')}
-            onRetry={() => {
-              void refreshRuns();
-            }}
-          />
-        ) : null}
+      {current ? (
+        <DetailHeaderPortal>
+          <AutomationActions task={current} sessionId={sessionId} onOpenSession={onOpenSession} />
+        </DetailHeaderPortal>
+      ) : null}
+      <Tabs defaultValue="edit">
+        <TabsList>
+          <TabsTab value="edit">{t('schedule.editTab')}</TabsTab>
+          <TabsTab value="runs">{t('schedule.runs')}</TabsTab>
+        </TabsList>
+        <TabsPanel value="edit" className="pt-4">
+          <ScheduleForm schedule={schedule} missing={schedules !== undefined && !current} />
+        </TabsPanel>
+        <TabsPanel value="runs" className="flex flex-col gap-2 pt-4">
+          {runsError ? (
+            <TaskLoadError
+              message={t('loadFailed')}
+              retryLabel={t('retry')}
+              onRetry={() => {
+                void refreshRuns();
+              }}
+            />
+          ) : null}
 
-        <section className="flex min-h-0 flex-col gap-2">
-          <h3 className="font-medium text-sm">{t('schedule.runs')}</h3>
-          {runs === undefined ? (
-            <AutomationPaneSkeleton />
-          ) : runs.length === 0 ? (
-            <Empty className="py-6">
-              <EmptyDescription>{t('schedule.runsEmpty')}</EmptyDescription>
-            </Empty>
-          ) : (
-            <ul className="flex flex-col gap-1">
-              {runs.map((run) => (
-                <RunRow key={run.runId} run={run} onOpenSession={onOpenSession} />
-              ))}
-            </ul>
-          )}
-        </section>
-      </TaskDisclosure>
+          <section className="flex min-h-0 flex-col gap-2">
+            {runs === undefined ? (
+              <AutomationPaneSkeleton />
+            ) : runs.length === 0 ? (
+              <Empty className="py-6">
+                <EmptyDescription>{t('schedule.runsEmpty')}</EmptyDescription>
+              </Empty>
+            ) : (
+              <ul className="flex flex-col gap-1">
+                {runs.map((run) => (
+                  <RunRow key={run.runId} run={run} onOpenSession={onOpenSession} />
+                ))}
+              </ul>
+            )}
+          </section>
+        </TabsPanel>
+      </Tabs>
     </div>
   );
 }

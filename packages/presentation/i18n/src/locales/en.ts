@@ -25,7 +25,6 @@ export const en = {
       discardDescription: 'Your changes will not be saved if you leave.',
       keepEditing: 'Keep editing',
       discard: 'Discard',
-      title: 'Automations',
       pageTitle: 'Automations',
       description: 'Schedule agent work or run tasks in a loop until verification passes.',
       back: 'Back',

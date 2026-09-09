@@ -1,6 +1,8 @@
 import {
   AlertDialog,
   AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
   AlertDialogPopup,
   AlertDialogTitle,
 } from 'coss-ui/components/alert-dialog';
@@ -40,16 +42,18 @@ export function AutomationDraftGuard(): React.ReactNode {
       }}
     >
       <AlertDialogPopup>
-        <AlertDialogTitle>{t('discardTitle')}</AlertDialogTitle>
-        <AlertDialogDescription>{t('discardDescription')}</AlertDialogDescription>
-        <div className="mt-4 flex justify-end gap-2">
+        <AlertDialogHeader>
+          <AlertDialogTitle>{t('discardTitle')}</AlertDialogTitle>
+          <AlertDialogDescription>{t('discardDescription')}</AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
           <Button variant="outline" onClick={stay}>
             {t('keepEditing')}
           </Button>
           <Button variant="destructive" onClick={discard}>
             {t('discard')}
           </Button>
-        </div>
+        </AlertDialogFooter>
       </AlertDialogPopup>
     </AlertDialog>
   );
