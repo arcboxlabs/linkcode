@@ -93,6 +93,7 @@ function toSessionRow(record: SessionRecord): typeof sessions.$inferInsert {
     automationId: record.automation?.id ?? null,
     activeLeafTurnId: record.activeLeafTurnId ?? null,
     graphRevision: record.graphRevision,
+    eventEpoch: record.eventEpoch,
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
   };
@@ -113,6 +114,7 @@ function toRecord(row: SessionRow, runRows: RunRow[]): SessionRecord {
         : undefined,
     activeLeafTurnId: row.activeLeafTurnId ?? undefined,
     graphRevision: row.graphRevision,
+    eventEpoch: row.eventEpoch,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     runs: runRows.map((run) => ({

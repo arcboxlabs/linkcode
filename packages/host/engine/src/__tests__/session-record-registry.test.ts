@@ -2,6 +2,7 @@ import { asHistoryId } from '@linkcode/agent-adapter';
 import type { RunId, SessionId, SessionRecord } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { describe, expect, it } from 'vitest';
 import { SessionRecordRegistry } from '../session/session-record-registry';
 import { InMemorySessionStore } from '../session/session-store';
@@ -18,6 +19,7 @@ function makeRecord(): SessionRecord {
     updatedAt: 1,
     runs: [],
     graphRevision: 0,
+    eventEpoch: 0,
   };
 }
 
@@ -73,5 +75,36 @@ describe('session record registry run addressing', () => {
 
     expect(registry.beginRun(sessionId, { runId: minted })).toBe(minted);
     expect(registry.get(sessionId)?.runs.at(-1)?.runId).toBe(minted);
+  });
+});
+
+describe('session record registry event epoch', () => {
+  it('bumps the epoch on every run launch', async () => {
+    const registry = await startedRegistry();
+    expect(registry.get(sessionId)?.eventEpoch).toBe(0);
+
+    registry.beginRun(sessionId);
+    expect(registry.get(sessionId)?.eventEpoch).toBe(1);
+    registry.beginRun(sessionId);
+    expect(registry.get(sessionId)?.eventEpoch).toBe(2);
+  });
+
+  it('bumps every loaded record at boot and persists the bump on the next launch', async () => {
+    const store = new InMemorySessionStore();
+    await store.save({ ...makeRecord(), eventEpoch: 5 });
+    const registry = new SessionRecordRegistry(store, noop);
+    await Effect.runPromise(
+      registry.start((effect) => {
+        void Effect.runPromise(effect);
+      }),
+    );
+
+    // In memory immediately: a relaunch after a reboot can never reuse a pre-reboot epoch.
+    expect(registry.get(sessionId)?.eventEpoch).toBe(6);
+
+    registry.beginRun(sessionId);
+    await wait(0);
+    const persisted = await store.load();
+    expect(persisted[0]?.eventEpoch).toBe(7);
   });
 });

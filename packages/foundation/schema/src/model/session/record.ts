@@ -95,6 +95,9 @@ export const SessionRecordSchema = z.object({
   activeLeafTurnId: TurnIdSchema.optional(),
   /** Optimistic-concurrency counter for graph mutations. */
   graphRevision: z.number().int().nonnegative().default(0),
+  /** Event-plane epoch: bumped on every run launch and daemon boot; `agent.event` seq is
+   * daemon-minted and monotone within one epoch (merge rule is lexicographic). */
+  eventEpoch: z.number().int().nonnegative().default(0),
 });
 export type SessionRecord = z.infer<typeof SessionRecordSchema>;
 
