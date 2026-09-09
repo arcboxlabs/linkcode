@@ -19,15 +19,17 @@ const SCOPED = { keepPreviousData: false } as const;
 
 export function useAgentStartCatalogs(cwd?: string): Partial<Record<AgentKind, AgentStartCatalog>> {
   const { data: runtimes } = useAgentRuntimes();
-  const claude = useData(getAgentCatalog, { agentKind: 'claude-code', cwd }, SCOPED);
-  const codex = useData(getAgentCatalog, { agentKind: 'codex', cwd }, SCOPED);
-  const opencode = useData(getAgentCatalog, { agentKind: 'opencode', cwd }, SCOPED);
-  const pi = useData(
-    getAgentCatalog,
-    runtimes?.pi?.status === 'available' ? { agentKind: 'pi', cwd } : null,
-    SCOPED,
-  );
-  const grok = useData(getAgentCatalog, { agentKind: 'grok-build', cwd }, SCOPED);
+  // A runtime the host cannot spawn has no catalog to serve — the adapter throws and SWR retries
+  // the failure indefinitely — so a `missing` kind is not requested (the harness picker already
+  // badges it "Not installed"). Loading pauses every request; a kind the host never evaluated is
+  // absent from the snapshot and stays fail-open, like `deriveAgentRuntimeCues`.
+  const request = (agentKind: AgentKind) =>
+    runtimes !== undefined && runtimes[agentKind]?.status !== 'missing' ? { agentKind, cwd } : null;
+  const claude = useData(getAgentCatalog, request('claude-code'), SCOPED);
+  const codex = useData(getAgentCatalog, request('codex'), SCOPED);
+  const opencode = useData(getAgentCatalog, request('opencode'), SCOPED);
+  const pi = useData(getAgentCatalog, request('pi'), SCOPED);
+  const grok = useData(getAgentCatalog, request('grok-build'), SCOPED);
   return {
     ...(claude.data && { 'claude-code': claude.data }),
     ...(codex.data && { codex: codex.data }),

@@ -23,34 +23,28 @@ afterEach(() => {
   runtimeMock.runtimes = undefined;
 });
 
+const ALL_AVAILABLE: AgentRuntimes = {
+  'claude-code': { status: 'available', source: 'detected' },
+  codex: { status: 'available', source: 'detected' },
+  opencode: { status: 'available', source: 'detected' },
+  pi: { status: 'available', source: 'managed' },
+  'grok-build': { status: 'available', source: 'detected' },
+};
+
 describe('useAgentStartCatalogs', () => {
-  it('pauses only the Pi catalog while runtime availability is loading', () => {
+  it('pauses every catalog while runtime availability is loading', () => {
+    renderHook(() => useAgentStartCatalogs('/repo/app'));
+
+    expect(tayoriMock.params).toEqual([null, null, null, null, null]);
+  });
+
+  it('requests every catalog once the runtimes are available', () => {
+    runtimeMock.runtimes = ALL_AVAILABLE;
+
     renderHook(() => useAgentStartCatalogs('/repo/app'));
 
     // The cwd is what lets an adapter resolve the tier a session would really start under —
     // claude-code reads `permissions.defaultMode` from the workspace's own settings.
-    expect(tayoriMock.params).toEqual([
-      { agentKind: 'claude-code', cwd: '/repo/app' },
-      { agentKind: 'codex', cwd: '/repo/app' },
-      { agentKind: 'opencode', cwd: '/repo/app' },
-      null,
-      { agentKind: 'grok-build', cwd: '/repo/app' },
-    ]);
-  });
-
-  it('keeps the Pi catalog paused while its managed runtime is missing', () => {
-    runtimeMock.runtimes = { pi: { status: 'missing' } };
-
-    renderHook(() => useAgentStartCatalogs('/repo/app'));
-
-    expect(tayoriMock.params[3]).toBeNull();
-  });
-
-  it('requests the Pi catalog once its runtime is available', () => {
-    runtimeMock.runtimes = { pi: { status: 'available', source: 'managed' } };
-
-    renderHook(() => useAgentStartCatalogs('/repo/app'));
-
     expect(tayoriMock.params).toEqual([
       { agentKind: 'claude-code', cwd: '/repo/app' },
       { agentKind: 'codex', cwd: '/repo/app' },
@@ -60,8 +54,27 @@ describe('useAgentStartCatalogs', () => {
     ]);
   });
 
+  it('skips a missing runtime but keeps out-of-range and unevaluated kinds', () => {
+    // The dev mock host's onboarding fixture: one kind per runtime state.
+    runtimeMock.runtimes = {
+      'claude-code': { status: 'missing' },
+      codex: { status: 'out-of-range', source: 'detected', version: '0.99.0' },
+      pi: { status: 'available', source: 'builtin' },
+    };
+
+    renderHook(() => useAgentStartCatalogs('/repo/app'));
+
+    expect(tayoriMock.params).toEqual([
+      null,
+      { agentKind: 'codex', cwd: '/repo/app' },
+      { agentKind: 'opencode', cwd: '/repo/app' },
+      { agentKind: 'pi', cwd: '/repo/app' },
+      { agentKind: 'grok-build', cwd: '/repo/app' },
+    ]);
+  });
+
   it('follows a workspace switch rather than capturing the first cwd', () => {
-    runtimeMock.runtimes = { pi: { status: 'available', source: 'managed' } };
+    runtimeMock.runtimes = ALL_AVAILABLE;
     const { rerender } = renderHook(({ cwd }: { cwd: string }) => useAgentStartCatalogs(cwd), {
       initialProps: { cwd: '/repo/app' },
     });
