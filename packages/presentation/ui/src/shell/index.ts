@@ -22,6 +22,7 @@ export * from './plugins';
 export * from './providers/account-detail';
 export * from './providers/account-master-list';
 export type * from './providers/routing';
+export * from './resize-handle';
 export * from './service-icon';
 export * from './session-sidebar';
 export * from './session-title-menu';

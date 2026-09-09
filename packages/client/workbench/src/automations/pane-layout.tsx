@@ -11,7 +11,7 @@ export function AutomationCreatePane({
 }): React.ReactNode {
   return (
     <div className="min-h-0 flex-1 overflow-y-auto py-6">
-      <div className="mx-auto flex w-full max-w-xl flex-col gap-5">
+      <div className="flex w-full flex-col gap-5">
         <h2 className="sr-only">{title}</h2>
         {children}
       </div>

@@ -1,14 +1,21 @@
 import type { LoopId, ScheduleId, SessionId } from '@linkcode/schema';
-import { cn, SHELL_TRANSITION, TaskLoadError, usePaneTransition } from '@linkcode/ui';
+import { cn, ResizeHandle, SHELL_TRANSITION, TaskLoadError, usePaneTransition } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { InputGroup, InputGroupAddon, InputGroupInput } from 'coss-ui/components/input-group';
 import { Tabs, TabsList, TabsTab } from 'coss-ui/components/tabs';
 import { useMediaQuery } from 'coss-ui/hooks/use-media-query';
 import { useEffect } from 'foxact/use-abortable-effect';
+import { clamp } from 'foxts/clamp';
 import { PlusIcon, SearchIcon, XIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAutomationDefaults } from './defaults';
+import { DetailHeaderSlotProvider } from './detail-header-slot';
+import {
+  AUTOMATION_DETAIL_MAX_WIDTH,
+  AUTOMATION_DETAIL_MIN_WIDTH,
+  useAutomationDetailWidthStore,
+} from './detail-width';
 import { AutomationDraftGuard } from './draft-guard';
 import { AutomationFilters } from './filters';
 import { LoopDetail } from './loop/detail';
@@ -51,6 +58,18 @@ export function AutomationsView({
   const splitLayout = useMediaQuery({ min: 1024 });
   const paneTransition = usePaneTransition({ open: expanded && splitLayout });
   const masterDetailVisible = splitLayout ? paneTransition.paneVisible : expanded;
+  const committedDetailWidth = useAutomationDetailWidthStore((state) => state.width);
+  const setDetailWidth = useAutomationDetailWidthStore((state) => state.setWidth);
+  const resetDetailWidth = useAutomationDetailWidthStore((state) => state.reset);
+  // Live drag frames stay local: writing every frame to the persisted store would hit
+  // localStorage on every pointermove. Only the settled size on release is persisted.
+  const [draggingWidth, setDraggingWidth] = useState<number | null>(null);
+  const clampedDetailWidth = clamp(
+    draggingWidth ?? committedDetailWidth,
+    AUTOMATION_DETAIL_MIN_WIDTH,
+    AUTOMATION_DETAIL_MAX_WIDTH,
+  );
+  const [detailHeaderSlot, setDetailHeaderSlot] = useState<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -147,10 +166,12 @@ export function AutomationsView({
         if (opener) openerRef.current = opener;
       }}
       className={cn(
-        'grid h-full min-h-0 grid-cols-1 bg-background lg:[container-type:inline-size] lg:transition-[grid-template-columns] motion-reduce:transition-none',
-        expanded ? 'lg:grid-cols-[22rem_calc(100%_-_22rem)]' : 'lg:grid-cols-[100%_0%]',
+        'relative grid h-full min-h-0 grid-cols-1 bg-background lg:[container-type:inline-size] lg:transition-[grid-template-columns] motion-reduce:transition-none',
+        !expanded && 'lg:grid-cols-[100%_0%]',
       )}
       style={{
+        ...(expanded &&
+          splitLayout && { gridTemplateColumns: `minmax(0,1fr) ${clampedDetailWidth}px` }),
         transitionDuration:
           splitLayout && paneTransition.isAnimating && !paneTransition.reducedMotion
             ? `${SHELL_TRANSITION.durationMs}ms`
@@ -167,21 +188,11 @@ export function AutomationsView({
       >
         <div
           className={cn(
-            'flex h-full min-h-0 flex-col overflow-y-auto',
-            masterDetailVisible
-              ? 'border-border border-r px-4 py-3 lg:w-[22rem]'
-              : 'px-6 py-10 lg:py-16',
+            'flex h-full min-h-0 flex-col overflow-y-auto px-4 py-6',
+            masterDetailVisible && 'border-border border-r',
           )}
         >
-          <div
-            className={cn(
-              'mx-auto flex min-h-0 w-full flex-1 flex-col',
-              !masterDetailVisible && 'max-w-4xl',
-            )}
-          >
-            {masterDetailVisible ? null : (
-              <h1 className="mb-5 font-semibold text-3xl tracking-tight">{t('title')}</h1>
-            )}
+          <div className="flex min-h-0 w-full flex-1 flex-col">
             <header className="flex shrink-0 items-center justify-between gap-2">
               <Tabs
                 value={tab}
@@ -197,43 +208,61 @@ export function AutomationsView({
               {creating ? null : (
                 <Button
                   data-automation-open
-                  size={masterDetailVisible ? 'icon-sm' : 'sm'}
+                  size="icon-sm"
                   aria-label={createLabel}
                   onClick={startCurrentCreate}
                 >
                   <PlusIcon className="size-4" />
-                  {masterDetailVisible ? null : createLabel}
                 </Button>
               )}
             </header>
-            <AutomationSearch
-              compact={masterDetailVisible}
-              query={query}
-              onQueryChange={setQuery}
-            />
+            <AutomationSearch query={query} onQueryChange={setQuery} />
             <AutomationFilters />
             <div className="mt-3 flex min-h-0 flex-1 flex-col">{list}</div>
           </div>
         </div>
       </section>
       {masterDetailVisible ? (
+        <ResizeHandle
+          orientation="vertical"
+          edge="end"
+          label={t('resizeDetail')}
+          size={clampedDetailWidth}
+          minSize={AUTOMATION_DETAIL_MIN_WIDTH}
+          maxSize={AUTOMATION_DETAIL_MAX_WIDTH}
+          className="absolute inset-y-0 z-10 hidden -translate-x-1/2 hover:bg-border focus-visible:bg-border data-[dragging]:bg-border lg:block"
+          style={{ right: clampedDetailWidth }}
+          onResize={setDraggingWidth}
+          onResizeEnd={(next) => {
+            setDetailWidth(next);
+            setDraggingWidth(null);
+          }}
+          onReset={() => {
+            resetDetailWidth();
+            setDraggingWidth(null);
+          }}
+        />
+      ) : null}
+      {masterDetailVisible ? (
         <section
           aria-hidden={!expanded}
           inert={!expanded}
           className="relative min-h-0 min-w-0 overflow-hidden bg-background"
         >
-          <div className="h-full min-h-0 w-full lg:w-[calc(100cqw_-_22rem)]">
-            <Button
-              className="absolute top-3 right-3 z-10"
-              size="icon-sm"
-              variant="ghost"
-              aria-label={t('closeDetails')}
-              onClick={collapse}
-            >
-              <XIcon className="size-4" />
-            </Button>
-            <div className="h-full min-h-0 overflow-y-auto px-6 py-8 pr-14 lg:px-10 lg:py-10 lg:pr-16">
-              {detail}
+          <div className="h-full min-h-0 w-full">
+            <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
+              <div ref={setDetailHeaderSlot} className="flex items-center gap-1" />
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                aria-label={t('closeDetails')}
+                onClick={collapse}
+              >
+                <XIcon className="size-4" />
+              </Button>
+            </div>
+            <div className="h-full min-h-0 overflow-y-auto px-2.5 py-8 pr-12 lg:px-4 lg:py-10 lg:pr-12">
+              <DetailHeaderSlotProvider value={detailHeaderSlot}>{detail}</DetailHeaderSlotProvider>
             </div>
           </div>
         </section>
@@ -287,17 +316,15 @@ function detailTargetIdentity(target: AutomationDetailTarget | null): string | n
 }
 
 function AutomationSearch({
-  compact = false,
   query,
   onQueryChange,
 }: {
-  compact?: boolean;
   query: string;
   onQueryChange: (query: string) => void;
 }): React.ReactNode {
   const t = useTranslations('workbench.automations');
   return (
-    <InputGroup className={compact ? 'mt-3 shrink-0 shadow-none' : 'mt-8 shrink-0 shadow-none'}>
+    <InputGroup className="mt-3 shrink-0 shadow-none">
       <InputGroupAddon>
         <SearchIcon className="text-muted-foreground" />
       </InputGroupAddon>
