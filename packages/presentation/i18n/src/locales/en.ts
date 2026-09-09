@@ -30,6 +30,7 @@ export const en = {
       description: 'Schedule agent work or run tasks in a loop until verification passes.',
       back: 'Back',
       closeDetails: 'Close details',
+      resizeDetail: 'Resize detail panel',
       searchPlaceholder: 'Search automations',
       noMatches: 'No matching automations.',
       notFound: 'Automation not found',
@@ -80,6 +81,7 @@ export const en = {
           '5': 'Friday',
           '6': 'Saturday',
         },
+        weekdaySeparator: ', ',
         timezone: 'Time zone',
         intervalMinutes: 'Interval (minutes)',
         shortMonth: 'Months without the selected day are skipped.',
@@ -111,6 +113,7 @@ export const en = {
         pause: 'Pause',
         resume: 'Resume',
         runNow: 'Run now',
+        editTab: 'Edit',
         runs: 'Run history',
         runsEmpty: 'No runs yet.',
         runStatus: {

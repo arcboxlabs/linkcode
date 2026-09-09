@@ -17,7 +17,10 @@ export function cadenceLabel(
       preset.cadenceKind === 'hourly'
         ? `${t('schedule.hourly')} · :${String(preset.minute ?? 0).padStart(2, '0')}`
         : `${t(`schedule.${preset.cadenceKind}`)} · ${time}`;
-    if (preset.weekday !== undefined) label += ` · ${t(`schedule.weekdayNames.${preset.weekday}`)}`;
+    if (preset.weekdays && preset.weekdays.length > 0) {
+      const weekdaySeparator = t('schedule.weekdaySeparator');
+      label += ` · ${preset.weekdays.map((day) => t(`schedule.weekdayNames.${day}`)).join(weekdaySeparator)}`;
+    }
     if (preset.monthDay !== undefined) {
       label += ` · ${t('schedule.onDay', { day: preset.monthDay })}`;
     }

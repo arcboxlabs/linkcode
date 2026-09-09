@@ -135,6 +135,21 @@ export function LoopForm(): React.ReactNode {
           render={({ field }) => <CwdField value={field.value} onChange={field.onChange} />}
         />
 
+        <Field name="kind">
+          <FieldLabel>{t('agentLabel')}</FieldLabel>
+          <Controller
+            control={control}
+            name="kind"
+            render={({ field }) => (
+              <TaskSelect
+                value={field.value}
+                onChange={field.onChange}
+                items={defaults.kinds.map((kind) => ({ value: kind, label: tAgent(kind) }))}
+              />
+            )}
+          />
+        </Field>
+
         <Controller
           control={control}
           name="verification"
@@ -217,22 +232,8 @@ export function LoopForm(): React.ReactNode {
 
         <TaskDisclosure
           title={t('advanced')}
-          invalid={Boolean(errors.maxIterations || errors.sleepSeconds || errors.kind)}
+          invalid={Boolean(errors.maxIterations || errors.sleepSeconds)}
         >
-          <Field name="kind">
-            <FieldLabel>{t('agentLabel')}</FieldLabel>
-            <Controller
-              control={control}
-              name="kind"
-              render={({ field }) => (
-                <TaskSelect
-                  value={field.value}
-                  onChange={field.onChange}
-                  items={defaults.kinds.map((kind) => ({ value: kind, label: tAgent(kind) }))}
-                />
-              )}
-            />
-          </Field>
           <div className="flex gap-3">
             <Field name="maxIterations" className="flex-1">
               <FieldLabel>{t('loop.maxIterationsLabel')}</FieldLabel>

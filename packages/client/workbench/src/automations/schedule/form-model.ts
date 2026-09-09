@@ -1,9 +1,10 @@
 import type { Schedule, ScheduleSpec, ScheduleUpdate } from '@linkcode/schema';
 import { AgentKindSchema } from '@linkcode/schema';
+import type { FieldNamesMarkedBoolean } from 'react-hook-form';
 import { z } from 'zod';
 
 const RE_INTEGER = /^\d+$/;
-const RE_WEEKDAY = /^[0-6]$/;
+const RE_WEEKDAYS = /^[0-6](?:,[0-6])*$/;
 
 export const scheduleFormSchema = z
   .object({
@@ -16,7 +17,7 @@ export const scheduleFormSchema = z
     intervalMinutes: z.number().or(z.nan()),
     hour: z.number().or(z.nan()),
     minute: z.number().or(z.nan()),
-    weekday: z.number().or(z.nan()),
+    weekdays: z.array(z.number()),
     monthDay: z.number().or(z.nan()),
     cronExpression: z.string().trim(),
     timezone: z.string().trim(),
@@ -26,7 +27,7 @@ export const scheduleFormSchema = z
   })
   .superRefine((draft, ctx) => {
     const check = (
-      field: 'intervalMinutes' | 'hour' | 'minute' | 'weekday' | 'monthDay',
+      field: 'intervalMinutes' | 'hour' | 'minute' | 'monthDay',
       min: number,
       max: number,
     ): void => {
@@ -47,7 +48,12 @@ export const scheduleFormSchema = z
     } else if (draft.cadenceKind !== 'cron') {
       check('minute', 0, 59);
       if (draft.cadenceKind !== 'hourly') check('hour', 0, 23);
-      if (draft.cadenceKind === 'weekly') check('weekday', 0, 6);
+      if (
+        draft.cadenceKind === 'weekly' &&
+        (draft.weekdays.length === 0 || draft.weekdays.some((day) => day < 0 || day > 6))
+      ) {
+        ctx.addIssue({ code: 'custom', path: ['weekdays'], message: 'required' });
+      }
       if (draft.cadenceKind === 'monthly') check('monthDay', 1, 31);
     }
     if (!draft.targetSession && !draft.cwd) {
@@ -76,7 +82,7 @@ export function scheduleDraft(schedule?: Schedule): ScheduleFormDraft {
     intervalMinutes: cadence?.type === 'interval' ? cadence.everyMs / 60000 : 60,
     hour: 9,
     minute: 0,
-    weekday: 1,
+    weekdays: [1],
     monthDay: 1,
     cronExpression: cadence?.type === 'cron' ? cadence.expression : '',
     timezone:
@@ -99,12 +105,12 @@ export function scheduleCadence(draft: ScheduleFormDraft): ScheduleSpec['cadence
   if (draft.cadenceKind === 'interval') {
     return { type: 'interval', everyMs: draft.intervalMinutes * 60000 };
   }
-  const { hour, minute, weekday, monthDay } = draft;
+  const { hour, minute, weekdays, monthDay } = draft;
   const expressions = {
     hourly: `${minute} * * * *`,
     daily: `${minute} ${hour} * * *`,
     weekdays: `${minute} ${hour} * * 1-5`,
-    weekly: `${minute} ${hour} * * ${weekday}`,
+    weekly: `${minute} ${hour} * * ${[...new Set(weekdays)].sort((a, b) => a - b).join(',')}`,
     monthly: `${minute} ${hour} ${monthDay} * *`,
     cron: draft.cronExpression,
   };
@@ -118,7 +124,7 @@ export function scheduleCadence(draft: ScheduleFormDraft): ScheduleSpec['cadence
 export function schedulePatch(
   draft: ScheduleFormDraft,
   current: Schedule,
-  dirty: Partial<Record<keyof ScheduleFormDraft, boolean>>,
+  dirty: Partial<Readonly<FieldNamesMarkedBoolean<ScheduleFormDraft>>>,
 ): ScheduleUpdate {
   const cadence = scheduleCadence(draft);
   const unchangedCadence =
@@ -136,7 +142,7 @@ export function schedulePatch(
       (dirty.cadenceKind ||
         dirty.hour ||
         dirty.minute ||
-        dirty.weekday ||
+        dirty.weekdays ||
         dirty.monthDay ||
         dirty.cronExpression ||
         dirty.timezone ||
@@ -159,8 +165,9 @@ export function recognizePreset(expression: string): Partial<ScheduleFormDraft> 
   if (!RE_INTEGER.test(hour)) return {};
   if (day === '*' && weekday === '*') return { cadenceKind: 'daily', ...time };
   if (day === '*' && weekday === '1-5') return { cadenceKind: 'weekdays', ...time };
-  if (day === '*' && RE_WEEKDAY.test(weekday)) {
-    return { cadenceKind: 'weekly', weekday: Number(weekday), ...time };
+  if (day === '*' && RE_WEEKDAYS.test(weekday)) {
+    const weekdays = [...new Set(weekday.split(',').map(Number))].sort((a, b) => a - b);
+    return { cadenceKind: 'weekly', weekdays, ...time };
   }
   if (weekday === '*' && RE_INTEGER.test(day)) {
     return { cadenceKind: 'monthly', monthDay: Number(day), ...time };

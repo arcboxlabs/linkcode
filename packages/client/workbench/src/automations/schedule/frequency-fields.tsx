@@ -1,4 +1,4 @@
-import { TaskSelect } from '@linkcode/ui';
+import { TaskMultiSelect, TaskSelect } from '@linkcode/ui';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Input } from 'coss-ui/components/input';
 import type { Control, UseFormRegister } from 'react-hook-form';
@@ -75,15 +75,23 @@ export function ScheduleFrequencyFields({
                 </Field>
               ) : null}
               {field.value === 'weekly' ? (
-                <Field name="weekday" className="min-w-32 flex-1">
+                <Field name="weekdays" className="min-w-32 flex-1">
                   <FieldLabel>{t('schedule.weekday')}</FieldLabel>
                   <Controller
                     control={control}
-                    name="weekday"
-                    render={({ field: day }) => (
-                      <TaskSelect
-                        value={String(day.value)}
-                        onChange={(value) => day.onChange(Number(value))}
+                    name="weekdays"
+                    render={({ field: days }) => (
+                      <TaskMultiSelect
+                        value={days.value.map(String)}
+                        onChange={(value) => days.onChange(value.map(Number))}
+                        summary={
+                          days.value.length === 0
+                            ? t('schedule.weekday')
+                            : days.value
+                                .toSorted((a, b) => a - b)
+                                .map((value) => t(`schedule.weekdayNames.${value}`))
+                                .join(t('schedule.weekdaySeparator'))
+                        }
                         items={[0, 1, 2, 3, 4, 5, 6].map((value) => ({
                           value: String(value),
                           label: t(`schedule.weekdayNames.${value}`),
@@ -91,6 +99,7 @@ export function ScheduleFrequencyFields({
                       />
                     )}
                   />
+                  <FieldError />
                 </Field>
               ) : null}
               {field.value === 'hourly' ? null : (
@@ -120,6 +129,27 @@ export function ScheduleFrequencyFields({
           {field.value === 'monthly' ? (
             <p className="text-muted-foreground text-xs">{t('schedule.shortMonth')}</p>
           ) : null}
+        </>
+      )}
+    />
+  );
+}
+
+/** Rendered inside the Advanced-settings disclosure; hidden for interval cadence, which has no timezone concept. */
+export function ScheduleTimezoneField({
+  control,
+  register,
+}: {
+  control: Control<ScheduleFormDraft>;
+  register: UseFormRegister<ScheduleFormDraft>;
+}): React.ReactNode {
+  const t = useTranslations('workbench.automations');
+  return (
+    <Controller
+      control={control}
+      name="cadenceKind"
+      render={({ field }) => (
+        <>
           {field.value === 'interval' ? null : (
             <Field name="timezone">
               <FieldLabel>{t('schedule.timezone')}</FieldLabel>

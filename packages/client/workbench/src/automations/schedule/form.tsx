@@ -7,7 +7,6 @@ import { Button } from 'coss-ui/components/button';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
-import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
 import { Textarea } from 'coss-ui/components/textarea';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
@@ -22,7 +21,7 @@ import { useAutomationDraftState } from '../draft-state';
 import { useAutomationsViewStore } from '../store';
 import type { ScheduleFormDraft } from './form-model';
 import { scheduleCadence, scheduleDraft, scheduleFormSchema, schedulePatch } from './form-model';
-import { ScheduleFrequencyFields } from './frequency-fields';
+import { ScheduleFrequencyFields, ScheduleTimezoneField } from './frequency-fields';
 import { useSchedules } from './hooks';
 
 function toSpec(draft: ScheduleFormDraft): ScheduleSpec {
@@ -193,6 +192,7 @@ export function ScheduleForm({
 
         <ScheduleFrequencyFields control={control} register={register} />
         <TaskDisclosure title={t('advanced')} invalid={Boolean(errors.maxRuns || errors.expiresAt)}>
+          <ScheduleTimezoneField control={control} register={register} />
           <Field name="maxRuns">
             <FieldLabel>{t('schedule.maxRuns')}</FieldLabel>
             <Input
@@ -214,21 +214,14 @@ export function ScheduleForm({
               control={control}
               name="misfire"
               render={({ field }) => (
-                <RadioGroup
-                  className="flex flex-row flex-wrap gap-2"
+                <TaskSelect
                   value={field.value}
-                  onValueChange={field.onChange}
-                >
-                  {(['default', 'catch-up', 'skip'] as const).map((policy) => (
-                    <label
-                      key={policy}
-                      className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm"
-                    >
-                      <RadioGroupItem value={policy} aria-label={t(`schedule.misfire.${policy}`)} />
-                      {t(`schedule.misfire.${policy}`)}
-                    </label>
-                  ))}
-                </RadioGroup>
+                  onChange={field.onChange}
+                  items={(['default', 'catch-up', 'skip'] as const).map((policy) => ({
+                    value: policy,
+                    label: t(`schedule.misfire.${policy}`),
+                  }))}
+                />
               )}
             />
           </Field>

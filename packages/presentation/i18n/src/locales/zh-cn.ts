@@ -28,6 +28,7 @@ export const zhCN = {
       description: '安排 Agent 定时工作，或让任务循环执行直到验证通过。',
       back: '返回',
       closeDetails: '关闭详情',
+      resizeDetail: '拖拽调整详情面板宽度',
       searchPlaceholder: '搜索自动化',
       noMatches: '没有匹配的自动化。',
       notFound: '未找到该自动化',
@@ -77,6 +78,7 @@ export const zhCN = {
           '5': '星期五',
           '6': '星期六',
         },
+        weekdaySeparator: '、',
         timezone: '时区',
         intervalMinutes: '间隔（分钟）',
         shortMonth: '没有所选日期的月份将跳过。',
@@ -108,6 +110,7 @@ export const zhCN = {
         pause: '暂停',
         resume: '恢复',
         runNow: '立即运行',
+        editTab: '编辑',
         runs: '运行历史',
         runsEmpty: '还没有运行记录。',
         runStatus: {

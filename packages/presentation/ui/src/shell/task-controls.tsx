@@ -1,7 +1,11 @@
 import { Button } from 'coss-ui/components/button';
+import { Checkbox } from 'coss-ui/components/checkbox';
+import { CheckboxGroup } from 'coss-ui/components/checkbox-group';
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from 'coss-ui/components/collapsible';
+import { Popover, PopoverPopup, PopoverTrigger } from 'coss-ui/components/popover';
 import {
   Select,
+  SelectButton,
   SelectGroup,
   SelectGroupLabel,
   SelectItem,
@@ -77,6 +81,50 @@ export function TaskSelect<T extends string>({
         ))}
       </SelectPopup>
     </Select>
+  );
+}
+
+/** A select-styled trigger opening a checklist popup, for choosing several values at once. */
+export function TaskMultiSelect<T extends string>({
+  value,
+  onChange,
+  items,
+  summary,
+  label,
+}: {
+  value: T[];
+  onChange: (value: T[]) => void;
+  items: Array<{ value: T; label: string }>;
+  summary: string;
+  label?: string;
+}): React.ReactNode {
+  const trigger = (
+    <SelectButton className="w-full" aria-label={label}>
+      {summary}
+    </SelectButton>
+  );
+  return (
+    <Popover>
+      <PopoverTrigger render={trigger} />
+      <PopoverPopup align="start" className="w-56 p-1">
+        <CheckboxGroup
+          aria-label={label}
+          className="w-full gap-0.5"
+          value={value}
+          onValueChange={(next) => onChange(next as T[])}
+        >
+          {items.map((item) => (
+            <label
+              key={item.value}
+              className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-accent/50"
+            >
+              <Checkbox value={item.value} />
+              {item.label}
+            </label>
+          ))}
+        </CheckboxGroup>
+      </PopoverPopup>
+    </Popover>
   );
 }
 
