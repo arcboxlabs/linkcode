@@ -1,6 +1,6 @@
 # apps/mobile — Expo / React Native client
 
-Expo + React Native. List/form screens render **`@expo/ui`** (real SwiftUI); **HeroUI Native**
+Expo + React Native. List/form screens render **`@expo/ui`** (SwiftUI on iOS, Jetpack Compose on Android); **HeroUI Native**
 covers the RN surfaces that cannot cross over ("What deliberately stays React Native" below).
 Reaches the host through the `server` tunnel; business data still travels over `transport` +
 `@linkcode/schema`, the same contract as every other client.
@@ -44,6 +44,27 @@ Native. Mobile consumes `@linkcode/ui` only through its **native** components
   under Node, suspect this class first and probe the runtime rather than reasoning from the API's
   documentation.
 
+## Native UI boundaries
+
+Platform views share `runtime/` hooks for data and actions. Keep `.ios.tsx` responsible for
+SwiftUI and the Android implementation responsible for Compose; shared routes and runtime must
+not import either platform's UI package. Android hosts use `ThemedHost` so Material colors follow
+the app's appearance preference. Each visible list row must be a direct `LazyColumn` child.
+
+Expo's Compose `Switch` always receives a native callback, even without a JS handler. Wire
+`onCheckedChange` alongside a toggleable row; a tap on the thumb is consumed by the switch.
+Single-choice rows use `selectable` and their parent uses `selectableGroup` for TalkBack.
+
+List-item management actions use SwiftUI `SwipeActions` on iOS (horizontal row swipes) and
+`RowActions` on Android (Compose long-press dropdown menus under `MaterialExpressiveTheme`).
+Keep a row's normal tap for navigation; rows without a primary action may also open the menu on
+tap. Destructive actions belong in these native action surfaces, not permanent trailing buttons.
+Children of `RowActions` must not add their own click handler, which would consume the gesture.
+
+Android question batches open from a compact transcript dock into a Compose modal sheet. Closing
+the sheet preserves drafts; cancelling the request requires confirmation. Keep permission actions
+inline with one-time approval emphasized, and allow the action row to wrap for longer labels.
+
 ## `@expo/ui` (SwiftUI) — its layout rules are not RN's
 
 Settings, terminal appearance, and connect render a real `Form` inside a `Host` (`style={{flex:1}}`
@@ -80,13 +101,16 @@ only by driving the simulator:
 RN→SwiftUI is the supported direction; going back needs `RNHostView`, whose bidirectional nesting is
 the very thing 57.0.5 had to fix. So anything whose indispensable part is an RN view cannot cross
 over: **sign-in** (`AppleAuthenticationButton` is an RN view and `@expo/ui` has no Sign in with
-Apple), the **conversation surface** — timeline, composer, and the screen holding them (excluded by
-the redesign decision; the composer also rides `react-native-keyboard-controller`), the **terminal
+Apple), the **conversation layout** — virtualized Markdown timeline and controlled multiline input
+with `react-native-keyboard-controller` (its controls, disclosures, prompts, and transcript records
+use SwiftUI / Compose), the **terminal
 canvas** (`expo-libghostty`), the **startup splash** (`BrandMark` is a bundled RN image), and the
-**navigation header** (react-navigation). Two smaller losses are accepted rather than worked
+**navigation header** (react-navigation). One smaller loss is accepted rather than worked
 around: `Image` takes SF Symbols, asset-catalog names, and local file URIs but **never a remote
-URL**, so the account avatar is an SF Symbol; and the agent brand marks are RN SVG components, so
-thread rows and the new-thread picker name the agent in text instead.
+URL**, so the account avatar is an SF Symbol. The agent brand marks (RN SVG) do cross into rows
+now: the iOS thread row hosts `AgentIcon` through `RNHostView` (`matchContents`, pointer events
+off), and the Android row uses vector-drawable copies of the lobe glyphs in `assets/icons/` —
+but the new-thread picker and selector sheets still name the agent in text.
 
 ## Styling & version pins
 
@@ -161,6 +185,9 @@ thread rows and the new-thread picker name the agent in text instead.
 
 ## Build & run
 
+- Expo SDK 57 requires Xcode 26.4 or newer. Older Xcode can fail while compiling
+  `expo-modules-jsi`'s Swift/C++ bridging annotations before app code is built.
+
 - **Dev builds, not Expo Go.** Cloud sign-in needs the real `linkcode://` scheme: production HQ
   trusts only `https://linkcode.ai,linkcode://` (`TRUSTED_ORIGINS`), and the `@better-auth/expo`
   server plugin auto-trusts `exp://` only under `NODE_ENV=development`, so "Sign in" from Expo Go
@@ -182,6 +209,8 @@ thread rows and the new-thread picker name the agent in text instead.
   `scripts.mobile` in `devenv.nix` unsets both groups (and sets `SENTRY_DISABLE_AUTO_UPLOAD`, since
   the Sentry Xcode phase otherwise fails the build without org/project credentials). Outside devenv
   the shell is already clean and `pnpm -F @linkcode/mobile ios` works as-is.
+  CocoaPods comes from devenv with its own Ruby runtime; a user-installed `pod` using env Ruby
+  breaks when this runner puts `/usr/bin` first and resolves Apple's older system Ruby.
 
   Symptoms are misleading: the first thing to fail is usually the `[RNDeps] Replace React Native
   Dependencies` script phase, which is collateral — that script runs fine on its own.

@@ -1,10 +1,8 @@
-import { BrandMark } from '@mobile/components/shell/brand-mark';
+import { AppLoadingScreen } from '@mobile/components/shell/app-loading-screen';
 import { useCloudAccount } from '@mobile/runtime/cloud/account';
 import { resolveStartupTarget } from '@mobile/runtime/startup';
 import { useHostRegistryHydrated, useHostRegistryStore } from '@mobile/stores/host-store';
 import { Redirect } from 'expo-router';
-import { Spinner } from 'heroui-native';
-import { View } from 'react-native';
 
 /**
  * Startup router: waits for the persisted registry and the account state,
@@ -19,12 +17,7 @@ export default function StartupScreen() {
   // Only first-run routing waits on account state — LAN/direct users with
   // saved hosts must not block on a slow or offline cloud session check.
   if (!hydrated || (hosts.length === 0 && account.status === 'loading')) {
-    return (
-      <View className="flex-1 items-center justify-center gap-6 bg-background">
-        <BrandMark />
-        <Spinner />
-      </View>
-    );
+    return <AppLoadingScreen />;
   }
 
   const target = resolveStartupTarget({

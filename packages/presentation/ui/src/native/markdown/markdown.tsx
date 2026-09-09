@@ -3,9 +3,10 @@
 import type { ListItem, PhrasingContent, RootContent } from 'mdast';
 import { Linking, Text, View } from 'react-native';
 import { CodeBlock } from './code-block';
+import { MONO_FONT_FAMILY } from './mono-font';
 import { parseMarkdown } from './parse';
 
-const MONO = { fontFamily: 'Menlo', fontSize: 13 } as const;
+const MONO = { fontFamily: MONO_FONT_FAMILY, fontSize: 13 } as const;
 
 function renderInline(nodes: PhrasingContent[]): React.ReactNode {
   return nodes.map((node, key) => {

@@ -1,5 +1,6 @@
 import type { AgentKind } from '@linkcode/schema';
 import { useThemeColor } from 'heroui-native';
+import type { ColorValue } from 'react-native';
 import { Text, View } from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 import { AGENT_INITIALS } from '../agent-meta';
@@ -24,7 +25,7 @@ export interface AgentIconProps {
   /** Outer box size in dp (the glyph scales inside it). */
   size?: number;
   /** Glyph tint override; defaults to accent-foreground (solid) / foreground (ghost). */
-  color?: string;
+  color?: ColorValue;
 }
 
 /** Agent brand chip — the native counterpart of chat/agent-icon.tsx. */

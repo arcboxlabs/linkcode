@@ -1,59 +1,68 @@
-import { HStack, Image, Spacer, Text, VStack } from '@expo/ui/swift-ui';
-import {
-  contentShape,
-  foregroundStyle,
-  lineLimit,
-  onTapGesture,
-  shapes,
-} from '@expo/ui/swift-ui/modifiers';
-import type { SessionInfo, SessionStatus } from '@linkcode/schema';
-import { AGENT_LABELS, repositoryLabel } from '@linkcode/ui/native';
-import { FOOTNOTE, SECONDARY, TERTIARY } from '@mobile/components/form/styles';
+import { Box, Icon, ListItem, Text } from '@expo/ui/jetpack-compose';
+import { background, clickable, clip, Shapes, size } from '@expo/ui/jetpack-compose/modifiers';
+import type { AgentKind, SessionStatus } from '@linkcode/schema';
+import { AGENT_INITIALS } from '@linkcode/ui/native';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
 import { formatRelativeShort } from '@mobile/utils/relative-time';
+import { threadTitle } from '@mobile/utils/thread-title';
+import agentClaudeCodeGlyph from '../../../../assets/icons/agent-claude-code.xml';
+import agentCodexGlyph from '../../../../assets/icons/agent-codex.xml';
+import agentOpencodeGlyph from '../../../../assets/icons/agent-opencode.xml';
+import type { ThreadRowProps } from './thread-row.types';
 
-/** SwiftUI's semantic colours standing in for the `bg-*` tokens the RN dot used. */
-const STATUS_COLOR = {
-  starting: 'orange',
-  idle: 'gray',
-  running: 'green',
-  'awaiting-input': 'orange',
-  stopped: 'secondary',
-} as const satisfies Record<SessionStatus, string>;
+/** Brand marks vendored as vector drawables from `@proj-airi/lobe-icons` (the web glyph set);
+ * kinds without a lobe glyph fall back to initials, matching the web sidebar. */
+const AGENT_GLYPHS: Partial<Record<AgentKind, number>> = {
+  'claude-code': agentClaudeCodeGlyph,
+  codex: agentCodexGlyph,
+  opencode: agentOpencodeGlyph,
+};
 
-const WHOLE_ROW = contentShape(shapes.rectangle());
+const GLYPH_SIZE = 18;
 
-/** One thread row: title (desktop-matching fallback), which agent is driving it and how long ago it
- * moved, then a status dot and the chevron `NavigationLink` would have drawn.
- *
- * The subtitle names the agent rather than the project because the list is already grouped by
- * project — repeating it there would spend the line on something the section header already says.
- * The agent is text, not a glyph: the brand marks are RN SVG components and cannot cross into
- * SwiftUI. */
-export function ThreadRow({
-  session,
-  now,
-  onPress,
-}: {
-  session: SessionInfo;
-  now: number;
-  onPress: () => void;
-}): React.ReactNode {
-  const title = session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
-  const subtitle = `${AGENT_LABELS[session.kind]} · ${formatRelativeShort(session.updatedAt, now)}`;
+/** Android thread row: MD3 ListItem with the harness brand mark leading (the web sidebar's ghost
+ * glyph), the status dot drawn as a clipped Box, and no disclosure chevron, per MD3. The dot
+ * speaks Material roles — MD3 has no success/warning — running reads as the active accent,
+ * waiting states as tertiary. */
+export function ThreadRow({ session, now, onPress }: ThreadRowProps): React.ReactNode {
+  const colors = useAppMaterialColors();
+  const statusColor = {
+    starting: colors.tertiary,
+    idle: colors.outline,
+    running: colors.primary,
+    'awaiting-input': colors.tertiary,
+    stopped: colors.outline,
+  } satisfies Record<SessionStatus, string>;
+  const glyph = AGENT_GLYPHS[session.kind];
 
   return (
-    <HStack spacing={10} modifiers={[WHOLE_ROW, onTapGesture(onPress)]}>
-      <VStack alignment="leading" spacing={2}>
-        <Text modifiers={[lineLimit(1)]}>{title}</Text>
-        <Text modifiers={[FOOTNOTE, SECONDARY, lineLimit(1)]}>{subtitle}</Text>
-      </VStack>
-      <Spacer />
-      <Image
-        systemName="circle.fill"
-        size={8}
-        modifiers={[foregroundStyle(STATUS_COLOR[session.status])]}
-      />
-      <Image systemName="chevron.right" size={13} modifiers={[TERTIARY]} />
-    </HStack>
+    <ListItem modifiers={[clickable(onPress)]}>
+      <ListItem.LeadingContent>
+        {glyph === undefined ? (
+          <Box contentAlignment="center" modifiers={[size(GLYPH_SIZE, GLYPH_SIZE)]}>
+            <Text style={{ typography: 'labelSmall' }} color={colors.onSurface}>
+              {AGENT_INITIALS[session.kind]}
+            </Text>
+          </Box>
+        ) : (
+          <Icon source={glyph} size={GLYPH_SIZE} tint={colors.onSurface} />
+        )}
+      </ListItem.LeadingContent>
+      <ListItem.HeadlineContent>
+        <Text maxLines={1} overflow="ellipsis">
+          {threadTitle(session)}
+        </Text>
+      </ListItem.HeadlineContent>
+      <ListItem.SupportingContent>
+        <Text style={{ typography: 'bodySmall' }} color={colors.onSurfaceVariant} maxLines={1}>
+          {formatRelativeShort(session.updatedAt, now)}
+        </Text>
+      </ListItem.SupportingContent>
+      <ListItem.TrailingContent>
+        <Box
+          modifiers={[size(8, 8), clip(Shapes.Circle), background(statusColor[session.status])]}
+        />
+      </ListItem.TrailingContent>
+    </ListItem>
   );
 }

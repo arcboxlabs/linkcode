@@ -1,54 +1,38 @@
-import {
-  Form,
-  Host,
-  ProgressView,
-  Section,
-  Button as UIButton,
-  Text as UIText,
-} from '@expo/ui/swift-ui';
-import { useSessions } from '@linkcode/client-core';
-import type { SessionInfo } from '@linkcode/schema';
-import type { ThreadGroup } from '@linkcode/ui/native';
-import {
-  AGENT_LABELS,
-  groupThreadsByWorkspace,
-  repositoryLabel,
-  withoutAutomationSessions,
-} from '@linkcode/ui/native';
-import { SECONDARY } from '@mobile/components/form/styles';
+import { useSearchHeaderOptions } from '@mobile/components/form/use-search-header-options';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
-import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
-import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
+import { ThreadsScreen } from '@mobile/components/host/threads-screen';
+import { useHostHeaderOptions } from '@mobile/components/host/use-host-header-options';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
 import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { PrimaryActionFab } from '@mobile/components/shell/primary-action-fab';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useHostConnection } from '@mobile/runtime/host-connection';
-import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
 import { useCallback, useState } from 'react';
-import { View } from 'react-native';
+import { Platform, View } from 'react-native';
 import { useTranslations } from 'use-intl';
-
-/** Taken from the search bar itself: RN's own replacement for the event it declares carries no text. */
-type SearchBarChangeEvent = Parameters<
-  NonNullable<React.ComponentProps<typeof Stack.SearchBar>['onChangeText']>
->[0];
-
-/** The title a thread is listed and searched under — the same fallback the row renders. */
-function threadTitle(session: SessionInfo): string {
-  return session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`;
-}
 
 /** The header outlives the connection: it carries the host switcher, which is the way out of a host
  * that cannot be reached, so it is mounted above the gate rather than inside it. New-thread needs a
  * client, so its entry points are dropped until the connection is ready. */
 export default function ThreadsRoute(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
+  const tChat = useTranslations('mobile.chat');
   const router = useRouter();
-  const hostMenuItems = useHostMenuItems();
+  const hostHeaderOptions = useHostHeaderOptions();
+  const palette = useNativePalette();
   const connection = useHostConnection();
+  // Android-only affordance: iOS search lives in the screen's native search bar instead.
+  const [searchOpen, setSearchOpen] = useState(false);
+  // Toggling the search resets the filter: the field remounts empty, so the query must too.
+  const [query, setQuery] = useState('');
+  const closeSearch = useCallback(() => {
+    setSearchOpen(false);
+    setQuery('');
+  }, []);
 
   const primaryAction: PrimaryAction | null =
     connection?.status === 'ready'
@@ -60,108 +44,44 @@ export default function ThreadsRoute(): React.ReactNode {
         }
       : null;
   usePrimaryAction('threads', primaryAction);
-  const trailingActions = useTrailingActions(primaryAction);
+  const trailingActions = useTrailingActions(primaryAction, {
+    ...(Platform.OS === 'android' && {
+      onSearchPress() {
+        setQuery('');
+        setSearchOpen((open) => !open);
+      },
+    }),
+  });
+  const searchHeaderOptions = useSearchHeaderOptions({
+    open: searchOpen,
+    placeholder: t('searchPlaceholder'),
+    closeLabel: tChat('cancel'),
+    onQueryChange: setQuery,
+    onClose: closeSearch,
+  });
 
   return (
-    <View className="flex-1 bg-background">
+    <View className="flex-1" style={{ backgroundColor: palette.background }}>
       <Stack.Screen
         options={{
           ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
-          unstable_headerLeftItems: () => hostMenuItems,
+          ...hostHeaderOptions,
           ...trailingActions,
+          // The search view swaps the top app bar's content, replacing the switcher and actions;
+          // the toolbar itself stays mounted so the header never changes height (no flicker).
+          ...searchHeaderOptions,
         }}
       />
       <HostClientGate>
-        <ThreadsScreen />
+        <ThreadsScreen
+          searchOpen={searchOpen}
+          onCloseSearch={closeSearch}
+          query={query}
+          onQueryChange={setQuery}
+        />
       </HostClientGate>
+      <PrimaryActionFab action={primaryAction} />
     </View>
-  );
-}
-
-/** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
- * native search bar stacked below the navigation bar. Empty workspace groups are hidden — the
- * new-thread page is where they surface. */
-function ThreadsScreen(): React.ReactNode {
-  const t = useTranslations('mobile.sessions');
-  const router = useRouter();
-  const { sessions, refresh, loading } = useSessions();
-  const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
-
-  const [query, setQuery] = useState('');
-
-  // Stable so the search bar's options object survives a keystroke without re-registering.
-  const onSearchChange = useCallback(
-    (event: SearchBarChangeEvent) => setQuery(event.nativeEvent.text),
-    [],
-  );
-
-  const needle = query.trim().toLowerCase();
-  const groups = groupThreadsByWorkspace(withoutAutomationSessions(sessions), workspaces).reduce<
-    ThreadGroup[]
-  >((kept, group) => {
-    const matched =
-      needle === ''
-        ? group.sessions
-        : group.sessions.filter((session) => threadTitle(session).toLowerCase().includes(needle));
-    if (matched.length > 0) kept.push({ ...group, sessions: matched });
-    return kept;
-  }, []);
-
-  const groupLabel = (group: ThreadGroup): string => {
-    if (group.isChat) return t('chats');
-    if (!group.workspace) return t('otherThreads');
-    return group.workspace.name ?? repositoryLabel(group.workspace.cwd);
-  };
-
-  const onRefresh = async () => {
-    await Promise.all([refresh(), refreshWorkspaces()]);
-  };
-
-  return (
-    <>
-      {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar. */}
-      <Stack.SearchBar
-        placeholder={t('searchPlaceholder')}
-        placement="stacked"
-        hideWhenScrolling
-        hideNavigationBar={false}
-        autoCapitalize="none"
-        onChangeText={onSearchChange}
-      />
-      {/* The list needs the viewport as its proposed size, otherwise SwiftUI collapses it. */}
-      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-        {loading ? (
-          <Form>
-            <Section>
-              <ProgressView />
-            </Section>
-          </Form>
-        ) : groups.length === 0 ? (
-          // A query that matched nothing is not an empty inbox: saying "no threads yet" there
-          // reads as though the existing threads were lost, and offering to start one is no
-          // remedy for a bad search.
-          <Form>
-            {needle === '' ? (
-              <Section footer={<UIText>{t('emptyHint')}</UIText>}>
-                <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
-                <UIButton label={t('newThread')} onPress={() => router.push('/new-thread')} />
-              </Section>
-            ) : (
-              <Section>
-                <UIText modifiers={[SECONDARY]}>{t('searchEmpty')}</UIText>
-              </Section>
-            )}
-          </Form>
-        ) : (
-          <ThreadList
-            groups={groups}
-            labelFor={groupLabel}
-            onOpenThread={(sessionId) => router.push(`/session/${sessionId}`)}
-            onRefresh={onRefresh}
-          />
-        )}
-      </Host>
-    </>
   );
 }

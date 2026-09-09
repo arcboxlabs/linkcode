@@ -1,3 +1,4 @@
+import { AppLoadingScreen } from '@mobile/components/shell/app-loading-screen';
 import { HostConnectionScope } from '@mobile/components/shell/host-connection-scope';
 import {
   useStackScreenOptions,
@@ -11,7 +12,7 @@ import { Stack } from 'expo-router';
 export function RootNavigator(): React.ReactNode {
   const configurationReady = useMobileConfiguration();
   const screenOptions = useStackScreenOptions();
-  if (!configurationReady) return null;
+  if (!configurationReady) return <AppLoadingScreen />;
   return (
     <HostConnectionScope>
       <Stack screenOptions={screenOptions}>
@@ -19,11 +20,15 @@ export function RootNavigator(): React.ReactNode {
           name="add-host"
           options={{
             ...VISIBLE_HEADER_OPTIONS,
-            presentation: 'formSheet',
-            sheetAllowedDetents: [1],
-            sheetGrabberVisible: false,
-            headerBackVisible: false,
             title: '',
+            // iOS-only: Android's formSheet drops the native header (no title, no dismissal),
+            // so the deep-linked route pushes with the standard toolbar there instead.
+            ...(process.env.EXPO_OS === 'ios' && {
+              presentation: 'formSheet' as const,
+              sheetAllowedDetents: [1],
+              sheetGrabberVisible: false,
+              headerBackVisible: false,
+            }),
           }}
         />
       </Stack>

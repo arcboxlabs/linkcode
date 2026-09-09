@@ -1,65 +1,84 @@
-import { List, Section } from '@expo/ui/swift-ui';
-import { listStyle, refreshable } from '@expo/ui/swift-ui/modifiers';
-import type { SessionInfo } from '@linkcode/schema';
-import type { ThreadGroup } from '@linkcode/ui/native';
-import { useEffect, useState } from 'react';
+import { Icon, LazyColumn, PullToRefreshBox, Row, Text } from '@expo/ui/jetpack-compose';
+import {
+  clickable,
+  defaultMinSize,
+  fillMaxWidth,
+  padding,
+  weight,
+} from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
+import { useState } from 'react';
+import expandLessGlyph from '../../../../assets/icons/expand-less.xml';
+import expandMoreGlyph from '../../../../assets/icons/expand-more.xml';
+import type { ThreadListProps } from './thread-list.types';
 import { ThreadRow } from './thread-row';
+import { useThreadListState } from './use-thread-list-state';
 
-const MINUTE = 60000;
-
-/** The thread inbox body: one collapsible section per group. Grouping is decided by the
- *  caller — this only renders it. Collapsed keys live here because the state is presentational:
- *  nothing outside the list cares which groups are open.
- *
- *  `sidebar` is not cosmetic — SwiftUI only honours a `Section`'s expanded state under that list
- *  style, so it is what makes the groups collapsible at all. */
+// Each visible thread must be a direct LazyColumn child; grouping rows in a Column defeats laziness.
 export function ThreadList({
   groups,
   labelFor,
   onOpenThread,
   onRefresh,
-}: {
-  groups: ThreadGroup[];
-  labelFor: (group: ThreadGroup) => string;
-  onOpenThread: (sessionId: SessionInfo['sessionId']) => void;
-  /** Drives SwiftUI's own pull-to-refresh, which holds its spinner until this resolves. */
-  onRefresh: () => Promise<void>;
-}): React.ReactNode {
-  const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  const [now, setNow] = useState(Date.now);
+}: ThreadListProps): React.ReactNode {
+  const { collapsed, setGroupExpanded, now } = useThreadListState();
+  const colors = useAppMaterialColors();
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), MINUTE);
-    return () => clearInterval(timer);
-  }, []);
-
-  const setGroupExpanded = (key: string, expanded: boolean) =>
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (expanded) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const refresh = () => {
+    setRefreshing(true);
+    void onRefresh().finally(() => setRefreshing(false));
+  };
 
   return (
-    <List modifiers={[listStyle('sidebar'), refreshable(onRefresh)]}>
-      {groups.map((group) => (
-        <Section
-          key={group.key}
-          title={labelFor(group)}
-          isExpanded={!collapsed.has(group.key)}
-          onIsExpandedChange={(expanded) => setGroupExpanded(group.key, expanded)}
-        >
-          {group.sessions.map((session) => (
-            <ThreadRow
-              key={session.sessionId}
-              session={session}
-              now={now}
-              onPress={() => onOpenThread(session.sessionId)}
-            />
-          ))}
-        </Section>
-      ))}
-    </List>
+    <ThemedHost style={{ flex: 1 }} useViewportSizeMeasurement>
+      {/* expo-ui's indicator slot drops Compose's align(TopCenter); topCenter restores it, and the
+       * fillMaxWidth child is unaffected. */}
+      <PullToRefreshBox contentAlignment="topCenter" isRefreshing={refreshing} onRefresh={refresh}>
+        <LazyColumn contentPadding={{ top: 4, bottom: 24 }} modifiers={[fillMaxWidth()]}>
+          {groups.flatMap((group) => {
+            const expanded = !collapsed.has(group.key);
+            return [
+              <Row
+                key={`group:${group.key}`}
+                verticalAlignment="center"
+                modifiers={[
+                  clickable(() => setGroupExpanded(group.key, !expanded)),
+                  fillMaxWidth(),
+                  defaultMinSize({ minHeight: 48 }),
+                  padding(16, 14, 16, 4),
+                ]}
+              >
+                <Text
+                  style={{ typography: 'titleSmall' }}
+                  color={colors.primary}
+                  modifiers={[weight(1)]}
+                  maxLines={1}
+                  overflow="ellipsis"
+                >
+                  {labelFor(group)}
+                </Text>
+                <Icon
+                  source={expanded ? expandLessGlyph : expandMoreGlyph}
+                  size={20}
+                  tint={colors.onSurfaceVariant}
+                />
+              </Row>,
+              ...(expanded
+                ? group.sessions.map((session) => (
+                    <ThreadRow
+                      key={`session:${session.sessionId}`}
+                      session={session}
+                      now={now}
+                      onPress={() => onOpenThread(session.sessionId)}
+                    />
+                  ))
+                : []),
+            ];
+          })}
+        </LazyColumn>
+      </PullToRefreshBox>
+    </ThemedHost>
   );
 }

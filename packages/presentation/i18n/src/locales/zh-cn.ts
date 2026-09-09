@@ -1362,6 +1362,8 @@ export const zhCN = {
       compactedTokens: '{pre} → {post} tokens',
     },
     chat: {
+      answer: '回答',
+      close: '关闭',
       allowTitle: '允许「{title}」？',
       skip: '跳过',
       next: '下一步',
@@ -1375,7 +1377,6 @@ export const zhCN = {
       cancel: '取消',
     },
     connection: {
-      connecting: '正在连接 host…',
       unavailableTitle: '无法连接 host',
       error: '无法连接 host（{url}）。',
       retry: '重试',

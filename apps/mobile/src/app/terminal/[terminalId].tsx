@@ -1,11 +1,12 @@
 import { TerminalIdSchema } from '@linkcode/schema';
+import { ActionButton } from '@mobile/components/form/action-button';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import TerminalRenderer from '@mobile/components/terminal/terminal-renderer';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useTerminalSession } from '@mobile/runtime/use-terminal-session';
 import { resolveTerminalTheme, useTerminalPrefsStore } from '@mobile/stores/terminal-prefs-store';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { Button, Chip, Spinner } from 'heroui-native';
-import { Text, View } from 'react-native';
+import { ActivityIndicator, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
 
@@ -24,6 +25,7 @@ function TerminalScreen(): React.ReactNode {
   const t = useTranslations('mobile.terminal');
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const palette = useNativePalette();
   const params = useLocalSearchParams<{ terminalId: string; takeover?: string }>();
   const parsed = TerminalIdSchema.safeParse(params.terminalId);
   const terminalId = parsed.success ? parsed.data : null;
@@ -55,49 +57,66 @@ function TerminalScreen(): React.ReactNode {
 
   return (
     <View
-      className="flex-1 bg-background"
-      style={{ paddingTop: insets.top, paddingBottom: insets.bottom }}
+      className="flex-1"
+      style={{
+        backgroundColor: palette.background,
+        paddingTop: insets.top,
+        paddingBottom: insets.bottom,
+      }}
     >
       <View className="flex-row items-center gap-2 px-3 py-2">
-        <Button variant="ghost" size="sm" onPress={detach}>
-          <Button.Label>{t('detach')}</Button.Label>
-        </Button>
+        <ActionButton variant="text" onPress={detach} label={t('detach')} />
         <View className="min-w-0 flex-1">
-          <Text className="text-body text-foreground" numberOfLines={1}>
+          <Text className="text-body" style={{ color: palette.text }} numberOfLines={1}>
             {terminal?.cwd ?? t('title')}
           </Text>
         </View>
         {status === 'ready' ? (
-          <Chip variant="soft" size="sm" color={canControl ? 'success' : 'warning'}>
-            <Chip.Label>{canControl ? t('controlling') : t('readOnly')}</Chip.Label>
-          </Chip>
+          <Text className="text-footnote" style={{ color: palette.textSecondary }}>
+            {canControl ? t('controlling') : t('readOnly')}
+          </Text>
         ) : null}
       </View>
 
       {truncated ? (
-        <Text className="bg-warning/10 px-4 py-2 text-footnote text-warning">{t('truncated')}</Text>
+        <Text
+          className="px-4 py-2 text-footnote"
+          style={{ backgroundColor: palette.surface, color: palette.textSecondary }}
+        >
+          {t('truncated')}
+        </Text>
       ) : null}
       {error ? (
-        <Text className="bg-danger/10 px-4 py-2 text-danger text-footnote">
+        <Text
+          accessibilityRole="alert"
+          className="px-4 py-2 text-footnote"
+          style={{ backgroundColor: palette.surface, color: palette.danger }}
+        >
           {t('error', { error })}
         </Text>
       ) : null}
       {exit ? (
-        <Text className="bg-default/10 px-4 py-2 text-footnote text-muted">
+        <Text
+          className="px-4 py-2 text-footnote"
+          style={{ backgroundColor: palette.surface, color: palette.textSecondary }}
+        >
           {exit.code === null ? t('exitedSignal') : t('exited', { code: exit.code })}
         </Text>
       ) : null}
 
       {status === 'attaching' ? (
         <View className="flex-1 items-center justify-center gap-3">
-          <Spinner />
-          <Text className="text-muted text-subhead">{t('attaching')}</Text>
+          <ActivityIndicator color={palette.tint} />
+          <Text className="text-subhead" style={{ color: palette.textSecondary }}>
+            {t('attaching')}
+          </Text>
         </View>
       ) : status === 'error' ? (
         <View className="flex-1 items-center justify-center">
-          <Button onPress={terminalId ? retry : detach}>
-            <Button.Label>{terminalId ? t('retry') : t('detach')}</Button.Label>
-          </Button>
+          <ActionButton
+            onPress={terminalId ? retry : detach}
+            label={terminalId ? t('retry') : t('detach')}
+          />
         </View>
       ) : (
         <TerminalRenderer
@@ -115,17 +134,25 @@ function TerminalScreen(): React.ReactNode {
       {status === 'ready' && exit === null ? (
         <View className="flex-row gap-2 px-3 py-2">
           {canControl ? (
-            <Button className="flex-1" variant="danger-soft" onPress={close}>
-              <Button.Label>{t('close')}</Button.Label>
-            </Button>
+            <View className="flex-1">
+              <ActionButton fullWidth variant="destructive" onPress={close} label={t('close')} />
+            </View>
           ) : terminal?.managed ? (
-            <Text className="flex-1 py-2 text-center text-muted text-subhead">
+            <Text
+              className="flex-1 py-2 text-center text-subhead"
+              style={{ color: palette.textSecondary }}
+            >
               {t('managedReadOnly')}
             </Text>
           ) : (
-            <Button className="flex-1" onPress={takeControl} isDisabled={takingControl}>
-              <Button.Label>{takingControl ? t('takingControl') : t('takeControl')}</Button.Label>
-            </Button>
+            <View className="flex-1">
+              <ActionButton
+                fullWidth
+                onPress={takeControl}
+                disabled={takingControl}
+                label={takingControl ? t('takingControl') : t('takeControl')}
+              />
+            </View>
           )}
         </View>
       ) : null}

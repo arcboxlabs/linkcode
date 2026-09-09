@@ -3,6 +3,7 @@ import type { SessionId, ToolCall } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import {
   AGENT_LABELS,
+  conversationFlowItems,
   EFFORT_OPTIONS_BY_ID,
   EmptyState,
   effortOptionsForModel,
@@ -22,20 +23,18 @@ import {
 import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
-import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
+import { HeaderMenuButton } from '@mobile/components/shell/header-menu-button';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useNativePalette } from '@mobile/components/theme/native-palette';
 import { useAccountModels } from '@mobile/runtime/use-account-models';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
 import * as Clipboard from 'expo-clipboard';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
-import { useHeaderHeight } from 'expo-router/react-navigation';
 import { noop } from 'foxact/noop';
-import { useThemeColor } from 'heroui-native';
-import { EllipsisIcon } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Pressable, View } from 'react-native';
+import { FlatList, View } from 'react-native';
 import { KeyboardStickyView } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTranslations } from 'use-intl';
@@ -59,8 +58,7 @@ function SessionScreen(): React.ReactNode {
   const tChat = useTranslations('mobile.chat');
   const tSettings = useTranslations('mobile.settings');
   const insets = useSafeAreaInsets();
-  const headerHeight = useHeaderHeight();
-  const muted = useThemeColor('muted');
+  const palette = useNativePalette();
   const router = useRouter();
   const { sessionId: rawSessionId, autoResume } = useLocalSearchParams<{
     sessionId: string;
@@ -85,9 +83,6 @@ function SessionScreen(): React.ReactNode {
   const actions = useSessionActions(sessionId, conversation.status);
   const { stop } = useSessionAutoResume(sessionId, session?.status, autoResumeSuppressed);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
-  // Measured height of the floating composer block, fed back to the list as its bottom inset so
-  // resting content clears the card while scrolling still flows under the glass.
-  const [dockHeight, setDockHeight] = useState(0);
 
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
@@ -133,27 +128,23 @@ function SessionScreen(): React.ReactNode {
     if (sessionId) void Clipboard.setStringAsync(sessionId);
   };
 
-  // Android fallback only — native bar items are iOS-only, so the menu degrades to an alert.
-  const showMenu = (): void => {
-    if (!sessionId) return;
-    Alert.alert(title, undefined, [
-      { text: tChat('stopThread'), style: 'destructive', onPress: stopThread },
-      { text: tChat('copyThreadId'), onPress: copyThreadId },
-      { text: tChat('cancel'), style: 'cancel' },
-    ]);
-  };
-
   // Inverted list: index 0 renders at the visual bottom, so newest items pin there.
-  const reversed = [...conversation.items].reverse();
+  const reversed = conversationFlowItems(conversation.items).reverse();
 
   return (
     <View
-      className="flex-1 bg-background"
-      style={{ paddingBottom: USES_IOS_26_NAVIGATION ? 0 : insets.bottom }}
+      className="flex-1"
+      style={{
+        backgroundColor: palette.background,
+        paddingBottom: insets.bottom,
+      }}
     >
       <Stack.Screen
         options={{
           ...VISIBLE_HEADER_OPTIONS,
+          // Transparent header blur washes out content in UIKit's inverted scroll coordinates.
+          headerBackground: undefined,
+          headerTransparent: false,
           title,
           headerTitle: () => <SessionTitle title={title} status={conversation.status} />,
           ...(process.env.EXPO_OS === 'ios'
@@ -185,14 +176,18 @@ function SessionScreen(): React.ReactNode {
               }
             : {
                 headerRight: () => (
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel={tSettings('more')}
-                    onPress={showMenu}
-                    className="size-8 items-center justify-center"
-                  >
-                    <EllipsisIcon size={18} color={muted} />
-                  </Pressable>
+                  <HeaderMenuButton
+                    label={tSettings('more')}
+                    actions={[
+                      { id: 'copy', label: tChat('copyThreadId'), onPress: copyThreadId },
+                      {
+                        id: 'stop',
+                        label: tChat('stopThread'),
+                        destructive: true,
+                        onPress: stopThread,
+                      },
+                    ]}
+                  />
                 ),
               }),
         }}
@@ -212,29 +207,11 @@ function SessionScreen(): React.ReactNode {
               onPressTool={(toolCall) => setOpenToolCallId(toolCall.toolCallId)}
             />
           )}
-          ListFooterComponent={
-            process.env.EXPO_OS === 'ios' ? <View style={{ height: headerHeight }} /> : null
-          }
-          // Inverted list: the header renders at the visual bottom — the clearance that keeps
-          // resting content out from under the floating composer.
-          ListHeaderComponent={
-            USES_IOS_26_NAVIGATION && dockHeight > 0 ? (
-              <View style={{ height: dockHeight }} />
-            ) : null
-          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
           className="flex-1"
         />
       )}
-      {/* Sticky rather than an avoiding view: the inverted list already pins to the bottom, so
-          the composer only has to ride the keyboard instead of resizing the whole screen. On
-          iOS 26 the block floats over the list so content scrolls under the glass. */}
-      <View
-        className={USES_IOS_26_NAVIGATION ? 'absolute inset-x-0 bottom-0' : undefined}
-        style={USES_IOS_26_NAVIGATION ? { paddingBottom: insets.bottom } : undefined}
-        pointerEvents="box-none"
-        onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}
-      >
+      <View>
         <KeyboardStickyView>
           <PromptDock
             prompts={prompts}

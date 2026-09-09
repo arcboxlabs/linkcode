@@ -1,0 +1,151 @@
+import { Form, Host, Link, Picker, Section, Text, Toggle, VStack } from '@expo/ui/swift-ui';
+import { disabled, font, foregroundStyle, pickerStyle, tag } from '@expo/ui/swift-ui/modifiers';
+import { AgentKindSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import { NavigationRow } from '@mobile/components/form/navigation-row';
+import {
+  PRIVACY_POLICY_URL,
+  SUPPORT_URL,
+  TERMS_OF_SERVICE_URL,
+  THEME_LABEL_KEY,
+  THEME_PREFERENCES,
+} from '@mobile/components/settings/settings-screen.shared';
+import { LARGE_TITLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useCloudAccount } from '@mobile/runtime/cloud/account';
+import { setMobileProductAnalyticsEnabled } from '@mobile/runtime/product-analytics';
+import { useNotificationSettings } from '@mobile/runtime/use-notification-settings';
+import { useAnalyticsPreferenceStore } from '@mobile/stores/analytics-store';
+import { useSettingsStore } from '@mobile/stores/settings-store';
+import { Stack, useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { useTranslations } from 'use-intl';
+
+const SECONDARY = foregroundStyle({ type: 'hierarchical', style: 'secondary' });
+
+/** App settings: account + host management entries plus the About/contract summary. Nothing here is
+ * host-scoped, and the screen is deliberately ungated — this is where "Manage hosts" lives, so it
+ * has to survive the selected host being unreachable. */
+export function SettingsScreen(): React.ReactNode {
+  const t = useTranslations('mobile.settings');
+  const tAbout = useTranslations('mobile.about');
+  const router = useRouter();
+  const account = useCloudAccount();
+  const productAnalyticsEnabled = useAnalyticsPreferenceStore((state) => state.enabled);
+  const themePreference = useSettingsStore((state) => state.themePreference);
+  const {
+    enabled: notificationsEnabled,
+    canUpdate: notificationsToggleEnabled,
+    update: updateNotifications,
+  } = useNotificationSettings();
+  const setThemePreference = useSettingsStore((state) => state.setThemePreference);
+  const keepHostsConnected = useSettingsStore((state) => state.keepHostsConnected);
+  const setKeepHostsConnected = useSettingsStore((state) => state.setKeepHostsConnected);
+
+  // The flex container is load-bearing: a SwiftUI host left as the screen's direct child is
+  // proposed the whole window and paints straight over the large title.
+  return (
+    <View className="flex-1">
+      <Stack.Screen
+        options={{
+          ...LARGE_TITLE_HEADER_OPTIONS,
+          title: t('title'),
+        }}
+      />
+      {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
+      <Host style={{ flex: 1 }} useViewportSizeMeasurement>
+        <Form>
+          <Section>
+            {account.status === 'signed-in' ? (
+              <NavigationRow
+                title={account.user.name || account.user.email}
+                subtitle={account.user.email}
+                onPress={() => router.push('/account')}
+              />
+            ) : account.status === 'signed-out' ? (
+              <NavigationRow title={t('signIn')} onPress={() => router.push('/sign-in')} />
+            ) : null}
+            <NavigationRow title={t('manageHosts')} onPress={() => router.push('/connect')} />
+            <NavigationRow
+              title={t('terminalAppearance')}
+              onPress={() => router.push('/terminal-appearance')}
+            />
+          </Section>
+
+          <Section title={t('connections')} footer={<Text>{t('keepHostsConnectedHint')}</Text>}>
+            <Toggle
+              isOn={keepHostsConnected}
+              onIsOnChange={setKeepHostsConnected}
+              label={t('keepHostsConnected')}
+            />
+          </Section>
+
+          <Section title={t('appearance')}>
+            <Picker
+              selection={themePreference}
+              onSelectionChange={setThemePreference}
+              modifiers={[pickerStyle('segmented')]}
+            >
+              {THEME_PREFERENCES.map((preference) => (
+                <Text key={preference} modifiers={[tag(preference)]}>
+                  {t(THEME_LABEL_KEY[preference])}
+                </Text>
+              ))}
+            </Picker>
+          </Section>
+
+          <Section title={t('privacy')} footer={<Text>{t('analyticsHint')}</Text>}>
+            <Toggle
+              isOn={productAnalyticsEnabled}
+              onIsOnChange={setMobileProductAnalyticsEnabled}
+              label={t('analytics')}
+            />
+          </Section>
+
+          <Section
+            title={t('notifications')}
+            footer={
+              <Text>
+                {account.status === 'signed-in'
+                  ? t('notificationsHint')
+                  : t('notificationsRequiresCloud')}
+              </Text>
+            }
+          >
+            <Toggle
+              isOn={notificationsEnabled}
+              onIsOnChange={updateNotifications}
+              label={t('notifications')}
+              modifiers={[disabled(!notificationsToggleEnabled)]}
+            />
+          </Section>
+
+          {/* Native links open the URL themselves — no Linking.openURL fallback to get wrong. */}
+          <Section title={t('legalAndSupport')}>
+            <Link label={t('privacyPolicy')} destination={PRIVACY_POLICY_URL} />
+            <Link label={t('termsOfService')} destination={TERMS_OF_SERVICE_URL} />
+            <Link label={t('support')} destination={SUPPORT_URL} />
+          </Section>
+
+          <Section title={t('about')}>
+            <VStack alignment="leading" spacing={4}>
+              <Text modifiers={[font({ textStyle: 'headline' })]}>{tAbout('title')}</Text>
+              <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>
+                {tAbout('contract', { version: WIRE_PROTOCOL_VERSION })}
+              </Text>
+            </VStack>
+          </Section>
+
+          <Section
+            title={tAbout('registeredAgents')}
+            footer={
+              <Text modifiers={[font({ textStyle: 'footnote' }), SECONDARY]}>{tAbout('note')}</Text>
+            }
+          >
+            {AgentKindSchema.options.map((kind) => (
+              <Text key={kind}>{kind}</Text>
+            ))}
+          </Section>
+        </Form>
+      </Host>
+    </View>
+  );
+}

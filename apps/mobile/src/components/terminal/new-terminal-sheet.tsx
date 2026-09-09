@@ -1,39 +1,31 @@
 import {
-  BottomSheet,
   Button,
-  Form,
-  Host,
-  HStack,
-  Section,
+  Column,
+  ModalBottomSheet,
+  OutlinedTextField,
   Text,
-  TextField,
   useNativeState,
-} from '@expo/ui/swift-ui';
-import {
-  autocorrectionDisabled,
-  disabled,
-  foregroundStyle,
-  onSubmit,
-  submitLabel,
-  textInputAutocapitalization,
-} from '@expo/ui/swift-ui/modifiers';
+} from '@expo/ui/jetpack-compose';
+import { fillMaxWidth, imePadding, padding, testID } from '@expo/ui/jetpack-compose/modifiers';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
 import { useTranslations } from 'use-intl';
+import type { NewTerminalSheetProps } from './new-terminal-sheet.types';
 
+/** Android new-terminal sheet. Compose's ModalBottomSheet has no `isPresented` — mounting shows
+ * it — so this renders nothing while closed and maps dismissal back through the prop. */
 export function NewTerminalSheet({
   isPresented,
   onIsPresentedChange,
   creating,
   error,
   onCreate,
-}: {
-  isPresented: boolean;
-  onIsPresentedChange: (isPresented: boolean) => void;
-  creating: boolean;
-  error: string | null;
-  onCreate: (cwd: string) => Promise<boolean>;
-}): React.ReactNode {
+}: NewTerminalSheetProps): React.ReactNode {
   const t = useTranslations('mobile.terminals');
+  const colors = useAppMaterialColors();
   const cwd = useNativeState('');
+
+  if (!isPresented) return null;
 
   const create = () => {
     if (creating) return;
@@ -43,45 +35,43 @@ export function NewTerminalSheet({
   };
 
   return (
-    <Host style={{ position: 'absolute' }} pointerEvents="box-none">
-      <BottomSheet
-        isPresented={isPresented}
-        onIsPresentedChange={onIsPresentedChange}
-        fitToContents
-      >
-        <Form>
+    <ThemedHost style={{ position: 'absolute' }} pointerEvents="box-none">
+      <ModalBottomSheet onDismissRequest={() => onIsPresentedChange(false)}>
+        <Column
+          verticalArrangement={{ spacedBy: 12 }}
+          modifiers={[padding(16, 4, 16, 24), imePadding()]}
+        >
+          <Text style={{ typography: 'titleSmall' }} color={colors.primary}>
+            {t('newTerminal')}
+          </Text>
           {error ? (
-            <Section>
-              <Text modifiers={[foregroundStyle('red')]}>{t('createError', { error })}</Text>
-            </Section>
+            <Text style={{ typography: 'bodyMedium' }} color={colors.error}>
+              {t('createError', { error })}
+            </Text>
           ) : null}
-
-          <Section title={t('newTerminal')}>
-            <HStack spacing={12}>
+          <OutlinedTextField
+            value={cwd}
+            singleLine
+            keyboardOptions={{
+              capitalization: 'none',
+              autoCorrectEnabled: false,
+              imeAction: 'go',
+            }}
+            keyboardActions={{ onGo: create }}
+            modifiers={[testID('terminal-cwd-input'), fillMaxWidth()]}
+          >
+            <OutlinedTextField.Label>
               <Text>{t('cwdLabel')}</Text>
-              <TextField
-                testID="terminal-cwd-input"
-                text={cwd}
-                placeholder={t('cwdPlaceholder')}
-                modifiers={[
-                  textInputAutocapitalization('never'),
-                  autocorrectionDisabled(),
-                  submitLabel('go'),
-                  onSubmit(create),
-                ]}
-              />
-            </HStack>
-          </Section>
-
-          <Section>
-            <Button
-              label={creating ? t('creating') : t('create')}
-              onPress={create}
-              modifiers={[disabled(creating)]}
-            />
-          </Section>
-        </Form>
-      </BottomSheet>
-    </Host>
+            </OutlinedTextField.Label>
+            <OutlinedTextField.Placeholder>
+              <Text color={colors.onSurfaceVariant}>{t('cwdPlaceholder')}</Text>
+            </OutlinedTextField.Placeholder>
+          </OutlinedTextField>
+          <Button enabled={!creating} onClick={create} modifiers={[fillMaxWidth()]}>
+            <Text>{creating ? t('creating') : t('create')}</Text>
+          </Button>
+        </Column>
+      </ModalBottomSheet>
+    </ThemedHost>
   );
 }

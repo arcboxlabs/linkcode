@@ -1407,6 +1407,8 @@ export const en = {
     },
     chat: {
       allowTitle: 'Allow "{title}"?',
+      answer: 'Answer',
+      close: 'Close',
       skip: 'Skip',
       next: 'Next',
       submitAnswers: 'Submit answers',
@@ -1419,7 +1421,6 @@ export const en = {
       cancel: 'Cancel',
     },
     connection: {
-      connecting: 'Connecting to the host…',
       unavailableTitle: 'Host unavailable',
       error: 'Unable to reach the host at {url}.',
       retry: 'Retry',

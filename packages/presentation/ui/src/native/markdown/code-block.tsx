@@ -3,8 +3,9 @@ import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
 import { useState } from 'react';
 import { ScrollView, Text, useColorScheme, View } from 'react-native';
+import { MONO_FONT_FAMILY } from './mono-font';
 
-const CODE_FONT = { fontFamily: 'Menlo', fontSize: 12, lineHeight: 18 } as const;
+const CODE_FONT = { fontFamily: MONO_FONT_FAMILY, fontSize: 12, lineHeight: 18 } as const;
 
 interface HighlightedCode {
   code: string;

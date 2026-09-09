@@ -1,25 +1,15 @@
-import { Button, Host, Image, ProgressView, Text, VStack } from '@expo/ui/swift-ui';
-import {
-  buttonStyle,
-  font,
-  multilineTextAlignment,
-  textSelection,
-} from '@expo/ui/swift-ui/modifiers';
-import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
+import { Button, Text as ComposeText } from '@expo/ui/jetpack-compose';
+import { useAppMaterialColors } from '@mobile/components/form/compose-theme.android';
+import { LoadingView } from '@mobile/components/form/loading-view.android';
+import { ThemedHost } from '@mobile/components/form/themed-host.android';
+import type { HostConnectionStateProps } from '@mobile/components/host/host-connection-state.types';
+import { WifiOffIcon } from 'lucide-react-native';
+import { Text, View } from 'react-native';
 import { useTranslations } from 'use-intl';
 
-const CENTERED = multilineTextAlignment('center');
-const TITLE = font({ textStyle: 'title2', weight: 'semibold' });
-
-export interface HostConnectionStateProps {
-  status: 'connecting' | 'error';
-  url: string;
-  /** The underlying failure, when the controller reported one. */
-  failure?: string;
-  onRetry: () => void;
-}
-
-/** Full-screen fallback shown while a host connection is being established or has failed. */
+/** Android full-screen fallback while a host connection is being established or has failed.
+ * The text stays RN so the failure detail remains selectable (Compose text cannot offer that);
+ * colors come from the Material palette so it matches the Compose surfaces around it. */
 export function HostConnectionState({
   status,
   url,
@@ -27,38 +17,35 @@ export function HostConnectionState({
   onRetry,
 }: HostConnectionStateProps): React.ReactNode {
   const t = useTranslations('mobile.connection');
+  const colors = useAppMaterialColors();
+
+  if (status === 'connecting') return <LoadingView />;
 
   return (
-    <Host style={{ flex: 1 }} useViewportSizeMeasurement>
-      <VStack spacing={16}>
-        {status === 'connecting' ? (
-          <>
-            <ProgressView />
-            <Text modifiers={[SECONDARY]}>{t('connecting')}</Text>
-          </>
-        ) : (
-          <>
-            <Image systemName="wifi.exclamationmark" size={44} modifiers={[SECONDARY]} />
-            <VStack spacing={6}>
-              <Text modifiers={[TITLE, CENTERED]}>{t('unavailableTitle')}</Text>
-              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>
-                {t('error', { url })}
-              </Text>
-            </VStack>
-            <Button
-              label={t('retry')}
-              systemImage="arrow.clockwise"
-              modifiers={[buttonStyle('borderedProminent')]}
-              onPress={onRetry}
-            />
-            {failure ? (
-              <Text modifiers={[FOOTNOTE, SECONDARY, CENTERED, textSelection(true)]}>
-                {failure}
-              </Text>
-            ) : null}
-          </>
-        )}
-      </VStack>
-    </Host>
+    <View className="flex-1 items-center justify-center gap-4 px-6">
+      <WifiOffIcon size={44} color={colors.onSurfaceVariant} strokeWidth={1.5} />
+      <View className="items-center gap-1.5">
+        <Text className="text-center font-semibold text-title" style={{ color: colors.onSurface }}>
+          {t('unavailableTitle')}
+        </Text>
+        <Text selectable className="text-center" style={{ color: colors.onSurfaceVariant }}>
+          {t('error', { url })}
+        </Text>
+      </View>
+      <ThemedHost matchContents>
+        <Button onClick={onRetry}>
+          <ComposeText>{t('retry')}</ComposeText>
+        </Button>
+      </ThemedHost>
+      {failure ? (
+        <Text
+          selectable
+          className="text-center text-footnote"
+          style={{ color: colors.onSurfaceVariant }}
+        >
+          {failure}
+        </Text>
+      ) : null}
+    </View>
   );
 }

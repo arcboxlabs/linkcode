@@ -39,6 +39,10 @@ apps/mobile/generated/
 apps/mobile/src/runtime/config/bundled.generated.ios.ts
 apps/mobile/src/runtime/config/bundled.generated.android.ts
 
+# gradle caches inside tracked local expo modules (the app's android/ dir is already ignored)
+apps/mobile/modules/*/android/.gradle/
+apps/mobile/modules/*/android/build/
+
 # standalone daemon distribution (pnpm --prod deploy output)
 apps/daemon/standalone/
 

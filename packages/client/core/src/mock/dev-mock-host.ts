@@ -561,7 +561,7 @@ export class DevMockHost {
             ? {
                 status: 'conflict',
                 files: [
-                  { path: 'packages/client/workbench/src/mock.ts', additions: 12, deletions: 4 },
+                  { path: 'packages/client/core/src/mock.ts', additions: 12, deletions: 4 },
                   { path: 'packages/presentation/ui/src/shell.tsx', additions: 3, deletions: 1 },
                 ],
               }
