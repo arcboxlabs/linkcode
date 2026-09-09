@@ -38,7 +38,7 @@ export function AutomationMasterButton({
     <button
       data-automation-open
       type="button"
-      className={`flex w-full items-start gap-3 rounded-xl border px-3 py-(--density-row-py) text-left transition-colors ${
+      className={`@container/automation-row flex w-full items-start gap-3 rounded-xl border px-3 py-(--density-row-py) text-left transition-colors ${
         active
           ? 'border-border bg-muted'
           : 'border-transparent hover:bg-muted/50 active:bg-muted/50'
@@ -49,10 +49,13 @@ export function AutomationMasterButton({
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-2">
           <span className="min-w-0 flex-1 truncate font-medium text-sm">{name}</span>
-          {badge}
+          {/* Narrow rows keep the badge beside the name; once the row has room to spare,
+              it moves to a trailing column centered on the row like the actions button. */}
+          <span className="@min-[380px]/automation-row:hidden">{badge}</span>
         </span>
         <span className="block truncate text-muted-foreground text-xs">{subtitle}</span>
       </span>
+      <span className="hidden self-center @min-[380px]/automation-row:block">{badge}</span>
     </button>
   );
 }
