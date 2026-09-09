@@ -11,6 +11,8 @@ const CAPTURE_ENV = {
   ELECTRON_NO_ATTACH_CONSOLE: '1',
   LINKCODE_RESOLVING_ENVIRONMENT: '1',
 };
+const FISH_SHELL_PATTERN = /(?:^|\/)fish$/;
+
 const ShellEnvironmentSchema = z
   .record(z.string(), z.string())
   .refine((value) => Boolean(value.PATH), 'PATH is required');
@@ -28,7 +30,7 @@ export async function resolveShellEnvironment(
   const marker = randomUUID().replaceAll('-', '');
   const expression = `"${marker}" + JSON.stringify(process.env) + "${marker}"`;
   const printEnv = `${quoteShellArg(process.execPath)} -p ${quoteShellArg(expression)}`;
-  const command = `if command -v direnv >/dev/null 2>&1; then exec direnv exec "$PWD" ${printEnv}; else exec ${printEnv}; fi`;
+  const command = shellProbeCommand(shell, printEnv);
   let stdout: string;
   try {
     ({ stdout } = await execFileAsync(shell, ['-i', '-l', '-c', command], {
@@ -52,6 +54,14 @@ export async function resolveShellEnvironment(
     resolved.LINKCODE_RESOLVING_ENVIRONMENT = baseEnv.LINKCODE_RESOLVING_ENVIRONMENT;
   }
   return resolved;
+}
+
+/** fish rejects POSIX if/then/else — it alone gets its own syntax; every other login shell is POSIX. */
+export function shellProbeCommand(shell: string, printEnv: string): string {
+  if (FISH_SHELL_PATTERN.test(shell)) {
+    return `if command -v direnv >/dev/null 2>&1; exec direnv exec "$PWD" ${printEnv}; else; exec ${printEnv}; end`;
+  }
+  return `if command -v direnv >/dev/null 2>&1; then exec direnv exec "$PWD" ${printEnv}; else exec ${printEnv}; fi`;
 }
 
 export function parseShellEnvironment(
