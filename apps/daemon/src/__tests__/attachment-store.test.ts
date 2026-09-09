@@ -11,6 +11,7 @@ import {
   ConversationOperationSchema,
   ConversationTurnSchema,
   PromptRecordSchema,
+  SessionIdSchema,
   SessionRecordSchema,
   SessionResourceSchema,
   UploadIdSchema,
@@ -208,5 +209,75 @@ describe('SQLite attachment store', () => {
     expect(await store.getAttachment(AttachmentIdSchema.parse('att-leased'))).toBeUndefined();
     expect(await store.getBlob(leasedOnly.blobId)).toBeUndefined();
     expect(await store.getBlob(viaResource.blobId)).toEqual(viaResource);
+  });
+
+  it('reports reachability from a session prompt or resource, not another session', async () => {
+    const { database, path, store } = await fixture();
+    await store.commitAttachment({ blob: blob('prompt'), attachment: attachment('att-prompt') });
+    await store.commitAttachment({
+      blob: blob('resource'),
+      attachment: attachment('att-resource'),
+    });
+    await createConversationStore(database.client).persistTurnIntent({
+      turn: ConversationTurnSchema.parse({
+        turnId: 't-1',
+        sessionId: 's-1',
+        parentTurnId: null,
+        siblingOrdinal: 1,
+        input: { type: 'prompt', promptId: 'p-1' },
+        runId: 'run-1',
+        state: 'preparing',
+        createdAt: 1,
+      }),
+      prompt: PromptRecordSchema.parse({
+        promptId: 'p-1',
+        blocks: [{ type: 'attachment_ref', attachmentId: 'att-prompt' }],
+        contextAttachmentIds: [],
+        createdAt: 1,
+      }),
+      operation: ConversationOperationSchema.parse({
+        operationId: 'op-reach',
+        sessionId: 's-1',
+        kind: 'turn.submit',
+        state: 'open',
+        createdAt: 1,
+      }),
+    });
+    await createResourceStore(path).save(
+      SessionResourceSchema.parse({
+        resourceId: 'resource-1',
+        sessionId: 's-1',
+        direction: 'source',
+        name: 'brief.txt',
+        kind: 'file',
+        status: 'ready',
+        locator: { type: 'managed-file', path: '/state/blobs/x' },
+        attachmentId: 'att-resource',
+        createdAt: 1,
+        updatedAt: 1,
+      }),
+    );
+
+    expect(
+      await store.isReachable(SessionIdSchema.parse('s-1'), AttachmentIdSchema.parse('att-prompt')),
+    ).toBe(true);
+    expect(
+      await store.isReachable(
+        SessionIdSchema.parse('s-1'),
+        AttachmentIdSchema.parse('att-resource'),
+      ),
+    ).toBe(true);
+    expect(
+      await store.isReachable(
+        SessionIdSchema.parse('s-other'),
+        AttachmentIdSchema.parse('att-prompt'),
+      ),
+    ).toBe(false);
+    expect(
+      await store.isReachable(
+        SessionIdSchema.parse('s-1'),
+        AttachmentIdSchema.parse('att-missing'),
+      ),
+    ).toBe(false);
   });
 });

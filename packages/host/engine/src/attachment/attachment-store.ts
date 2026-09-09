@@ -3,11 +3,13 @@ import type {
   AttachmentRecord,
   BlobId,
   BlobRecord,
+  SessionId,
   Timestamp,
   UploadId,
   UploadLease,
 } from '@linkcode/schema';
 import { blobIdFromSha256 } from '@linkcode/schema';
+import { falseFn } from 'foxts/noop';
 
 /** An attachment record joined with the blob holding its `original` bytes. */
 export interface StoredAttachment extends AttachmentRecord {
@@ -46,18 +48,28 @@ export interface AttachmentStore {
   /** Atomic: the blob row (if new), the attachment with its `original` variant, and the lease
    * pointed at the attachment. */
   commitAttachment(commit: AttachmentCommit): Promise<void>;
+  /** Whether a prompt of a turn in `sessionId`, or a session resource of that session, names the
+   * attachment. Integrity, not confidentiality — every peer of this store is one account. */
+  isReachable(sessionId: SessionId, attachmentId: AttachmentId): Promise<boolean>;
   /** Atomic reaper: expired leases first; then attachments, then blobs, that nothing roots and
    * that predate the grace window. Returns the blob ids whose bytes the caller must delete. */
   sweep(window: AttachmentSweepWindow): Promise<BlobId[]>;
 }
+
+/** Session-scoped root check for the in-memory store. */
+export type AttachmentReachability = (sessionId: SessionId, attachmentId: AttachmentId) => boolean;
 
 export class InMemoryAttachmentStore implements AttachmentStore {
   private readonly blobs = new Map<BlobId, BlobRecord>();
   private readonly attachments = new Map<AttachmentId, StoredAttachment>();
   private readonly leases = new Map<UploadId, UploadLease>();
 
-  /** `roots` lists every attachment id a prompt or session resource currently references. */
-  constructor(private readonly roots: () => Iterable<AttachmentId> = () => []) {}
+  /** `roots` lists every attachment id a prompt or session resource currently references.
+   * `reachable` is the same set sliced by session — used by `attachment.read`. */
+  constructor(
+    private readonly roots: () => Iterable<AttachmentId> = () => [],
+    private readonly reachable: AttachmentReachability = falseFn,
+  ) {}
 
   getAttachment(attachmentId: AttachmentId): Promise<StoredAttachment | undefined> {
     const attachment = this.attachments.get(attachmentId);
@@ -96,6 +108,10 @@ export class InMemoryAttachmentStore implements AttachmentStore {
   deleteLease(uploadId: UploadId): Promise<void> {
     this.leases.delete(uploadId);
     return Promise.resolve();
+  }
+
+  isReachable(sessionId: SessionId, attachmentId: AttachmentId): Promise<boolean> {
+    return Promise.resolve(this.reachable(sessionId, attachmentId));
   }
 
   commitAttachment({ attachment, blob, uploadId }: AttachmentCommit): Promise<void> {

@@ -16,6 +16,7 @@ export * from './linkcode-marketplace';
 export * from './linkcode-plugin';
 export * from './loop';
 export * from './managed-asset';
+export * from './mime-sniff';
 export * from './permission';
 export * from './plan';
 export * from './plugin';

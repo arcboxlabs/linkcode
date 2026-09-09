@@ -5,7 +5,6 @@ import { join } from 'node:path';
 import { blobIdFromSha256 } from '@linkcode/schema';
 import { afterEach, describe, expect, it } from 'vitest';
 import { BlobIntegrityError, FsBlobStore } from '../attachment/blob-store';
-import { declaredMimeTypeMatches, sniffImageMimeType } from '../attachment/mime-sniff';
 
 const temporaryDirectories: string[] = [];
 
@@ -94,30 +93,17 @@ describe('FsBlobStore', () => {
     expect(await store.list()).toEqual([]);
     await expect(store.delete(blobId)).resolves.toBeUndefined();
   });
-});
 
-describe('mime sniff', () => {
-  const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0]);
-  const webp = Buffer.concat([Buffer.from('RIFF'), Buffer.alloc(4), Buffer.from('WEBPVP8 ')]);
+  it('reads a committed blob by offset and length', async () => {
+    const { store } = await storeInTempDir();
+    const bytes = Buffer.from('abcdefghij');
+    const stage = await store.stage('readable');
+    await stage.write(0, bytes);
+    const blobId = await stage.commit({ sha256: sha256(bytes), sizeBytes: bytes.byteLength });
 
-  it('recognizes the supported image types and nothing else', () => {
-    expect(sniffImageMimeType(png)).toBe('image/png');
-    expect(sniffImageMimeType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe('image/jpeg');
-    expect(sniffImageMimeType(Buffer.from('GIF89a......'))).toBe('image/gif');
-    expect(sniffImageMimeType(webp)).toBe('image/webp');
-    expect(sniffImageMimeType(Buffer.from('RIFF....WAVE'))).toBeUndefined();
-    expect(sniffImageMimeType(Buffer.from('%PDF-1.7'))).toBeUndefined();
-    expect(sniffImageMimeType(new Uint8Array(0))).toBeUndefined();
-  });
-
-  it('holds sniffable image declarations to their bytes and trusts the rest', () => {
-    expect(declaredMimeTypeMatches('image/png', png)).toBe(true);
-    expect(declaredMimeTypeMatches('image/jpeg', png)).toBe(false);
-    expect(declaredMimeTypeMatches('image/jpeg', Buffer.from('<svg/>'))).toBe(false);
-    expect(declaredMimeTypeMatches('image/svg+xml', Buffer.from('<svg/>'))).toBe(true);
-    expect(declaredMimeTypeMatches('image/svg+xml', png)).toBe(false);
-    expect(declaredMimeTypeMatches('image/heic', Buffer.from('ftypheic'))).toBe(true);
-    expect(declaredMimeTypeMatches('application/pdf', Buffer.from('%PDF-1.7'))).toBe(true);
-    expect(declaredMimeTypeMatches('text/plain', png)).toBe(true);
+    expect(Buffer.from((await store.read(blobId, 0, 4)) ?? [])).toEqual(Buffer.from('abcd'));
+    expect(Buffer.from((await store.read(blobId, 6, 16)) ?? [])).toEqual(Buffer.from('ghij'));
+    expect(Buffer.from((await store.read(blobId, 10, 4)) ?? [])).toEqual(Buffer.from(''));
+    expect(await store.read(blobIdFromSha256('b'.repeat(64)), 0, 4)).toBeUndefined();
   });
 });

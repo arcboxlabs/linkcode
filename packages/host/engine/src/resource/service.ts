@@ -7,6 +7,7 @@ import type { SessionId, SessionResource, SessionResourceId } from '@linkcode/sc
 import {
   AttachmentIdSchema,
   blobIdFromSha256,
+  declaredMimeTypeMatches,
   MAX_ATTACHMENT_BYTES,
   SessionResourceIdSchema,
 } from '@linkcode/schema';
@@ -17,7 +18,6 @@ import { noop } from 'foxts/noop';
 import type { AttachmentStore } from '../attachment/attachment-store';
 import type { BlobStore } from '../attachment/blob-store';
 import { AttachmentIoMutex } from '../attachment/io-mutex';
-import { declaredMimeTypeMatches } from '../attachment/mime-sniff';
 import { OperationError, RequestError } from '../failure';
 import type { FileHostService } from '../preview/file-host-service';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
@@ -127,7 +127,9 @@ export class ResourceService {
               });
             } catch (error) {
               await stage.abort().catch(noop);
-              await blobs.delete(blobId);
+              // Content addressing means another attachment may already own a row for this blob;
+              // unlinking then would strand its bytes.
+              if (!(await attachments.getBlob(blobId))) await blobs.delete(blobId);
               throw error;
             }
           });

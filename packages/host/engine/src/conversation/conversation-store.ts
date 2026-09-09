@@ -70,13 +70,24 @@ export class InMemoryConversationStore implements ConversationStore {
   referencedAttachmentIds(): AttachmentId[] {
     const ids: AttachmentId[] = [];
     for (const prompt of this.prompts.values()) {
-      for (let i = 0, len = prompt.contextAttachmentIds.length; i < len; i++) {
-        ids.push(prompt.contextAttachmentIds[i]);
+      collectPromptAttachmentIds(prompt, ids);
+    }
+    return ids;
+  }
+
+  /** Attachments a turn in this session references — the in-memory `attachment.read` reachability. */
+  referencedAttachmentIdsForSession(sessionId: SessionId): AttachmentId[] {
+    const promptIds = new Set<PromptId>();
+    for (const turn of this.turns.values()) {
+      if (turn.sessionId !== sessionId) continue;
+      if (turn.input.type === 'prompt' && turn.input.promptId !== null) {
+        promptIds.add(turn.input.promptId);
       }
-      for (let i = 0, len = prompt.blocks.length; i < len; i++) {
-        const block = prompt.blocks[i];
-        if (block.type === 'attachment_ref') ids.push(block.attachmentId);
-      }
+    }
+    const ids: AttachmentId[] = [];
+    for (const promptId of promptIds) {
+      const prompt = this.prompts.get(promptId);
+      if (prompt) collectPromptAttachmentIds(prompt, ids);
     }
     return ids;
   }
@@ -193,5 +204,15 @@ export class InMemoryConversationStore implements ConversationStore {
       if (!referenced.has(promptId)) this.prompts.delete(promptId);
     }
     return Promise.resolve();
+  }
+}
+
+function collectPromptAttachmentIds(prompt: PromptRecord, ids: AttachmentId[]): void {
+  for (let i = 0, len = prompt.contextAttachmentIds.length; i < len; i++) {
+    ids.push(prompt.contextAttachmentIds[i]);
+  }
+  for (let i = 0, len = prompt.blocks.length; i < len; i++) {
+    const block = prompt.blocks[i];
+    if (block.type === 'attachment_ref') ids.push(block.attachmentId);
   }
 }
