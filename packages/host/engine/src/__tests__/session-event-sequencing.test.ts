@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type {
   AgentEvent,
   ConversationWatermark,
@@ -15,6 +17,8 @@ import { Deferred, Effect, Scope } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
 import { AgentRuntimeService } from '../agent/runtime-service';
+import { InMemoryAttachmentStore } from '../attachment/attachment-store';
+import { FsBlobStore } from '../attachment/blob-store';
 import { InMemoryConversationStore } from '../conversation/conversation-store';
 import { ConversationLiveJournals } from '../conversation/live-journal';
 import { ConversationTurnService } from '../conversation/turn-service';
@@ -269,6 +273,8 @@ describe('stale-run events at saga cutover', () => {
         registry,
         undefined,
         new FileHostService(new PreviewRouteRegistry()),
+        new FsBlobStore(join(tmpdir(), 'linkcode-sequencing-blobs')),
+        new InMemoryAttachmentStore(),
       ),
       turns,
       journals,

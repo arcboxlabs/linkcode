@@ -90,6 +90,9 @@ export const sessionResources = sqliteTable(
     }).notNull(),
     locator: text('locator').notNull(),
     normalizedLocatorKey: text('normalized_locator_key'),
+    /** Set when the bytes live in the attachment store; a GC root read by ../attachment-store.ts.
+     * No FK: the reaper deletes an attachment only once no resource names it. */
+    attachmentId: text('attachment_id'),
     mimeType: text('mime_type'),
     sizeBytes: integer('size_bytes'),
     error: text('error'),
@@ -205,6 +208,65 @@ export const conversationOperations = sqliteTable(
       .on(table.sessionId)
       .where(sql`state = 'open'`),
   ],
+);
+
+/**
+ * Attachment store metadata (`Blob*`/`Attachment*`/`UploadLease` schemas). Bytes live in the blob
+ * store on disk under `blob_id`; these rows are the GC roots and edges, written by
+ * ../attachment-store.ts on the shared connection so lease claims ride the submit transaction.
+ */
+export const blobs = sqliteTable('blobs', {
+  blobId: text('blob_id').primaryKey(),
+  sizeBytes: integer('size_bytes').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+export const attachments = sqliteTable('attachments', {
+  attachmentId: text('attachment_id').primaryKey(),
+  kind: text('kind').notNull(),
+  name: text('name').notNull(),
+  mimeType: text('mime_type').notNull(),
+  sizeBytes: integer('size_bytes').notNull(),
+  /** JSON object, size-capped by the zod schema. */
+  metadataJson: text('metadata_json').notNull(),
+  createdAt: integer('created_at').notNull(),
+});
+
+/** `original` today; a derived variant (thumbnail, extracted text) is an insert, not a migration. */
+export const attachmentBlobs = sqliteTable(
+  'attachment_blobs',
+  {
+    attachmentId: text('attachment_id')
+      .notNull()
+      .references(() => attachments.attachmentId, { onDelete: 'cascade' }),
+    variant: text('variant').notNull(),
+    blobId: text('blob_id')
+      .notNull()
+      .references(() => blobs.blobId),
+  },
+  (table) => [
+    primaryKey({ columns: [table.attachmentId, table.variant] }),
+    index('attachment_blobs_blob_idx').on(table.blobId),
+  ],
+);
+
+/** In-flight and unclaimed uploads; a GC root until claimed or expired. No FKs: the reaper itself
+ * deletes a pinned blob or attachment only once no lease names it. */
+export const uploadLeases = sqliteTable(
+  'upload_leases',
+  {
+    uploadId: text('upload_id').primaryKey(),
+    declaredSha256: text('declared_sha256').notNull(),
+    declaredSize: integer('declared_size').notNull(),
+    name: text('name').notNull(),
+    mimeType: text('mime_type'),
+    kind: text('kind').notNull(),
+    blobId: text('blob_id'),
+    attachmentId: text('attachment_id'),
+    expiresAt: integer('expires_at').notNull(),
+    createdAt: integer('created_at').notNull(),
+  },
+  (table) => [index('upload_leases_expires_at_idx').on(table.expiresAt)],
 );
 
 /**

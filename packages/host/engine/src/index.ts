@@ -7,6 +7,14 @@
 export type { ProviderConfigStore } from './agent/provider-config';
 export type { TranslatorService, TranslatorUpstream } from './agent/translator';
 export type { AssetService } from './asset/service';
+export {
+  type AttachmentCommit,
+  type AttachmentStore,
+  type AttachmentSweepWindow,
+  InMemoryAttachmentStore,
+  type StoredAttachment,
+} from './attachment/attachment-store';
+export { type BlobStage, type BlobStore, FsBlobStore } from './attachment/blob-store';
 export type { LoopStore, ScheduleStore } from './automation';
 export {
   ConversationSessionBusyError,
