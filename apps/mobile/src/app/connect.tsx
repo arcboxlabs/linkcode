@@ -1,5 +1,5 @@
 import { Form, Host } from '@expo/ui/swift-ui';
-import { ManualHostSection } from '@mobile/components/connect/manual-host-section';
+import { DiscoveredHostsSection } from '@mobile/components/connect/discovered-hosts-section';
 import { MyMachinesSection } from '@mobile/components/connect/my-machines-section';
 import { SavedHostsSection } from '@mobile/components/connect/saved-hosts-section';
 import { SignInSection } from '@mobile/components/connect/sign-in-section';
@@ -33,7 +33,7 @@ export default function ConnectScreen(): React.ReactNode {
 
           {hosts.length > 0 ? <SavedHostsSection /> : null}
 
-          <ManualHostSection />
+          <DiscoveredHostsSection />
         </Form>
       </Host>
     </>

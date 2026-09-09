@@ -26,16 +26,16 @@ import {
   TargetIcon,
 } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
-import type { EffortOption } from './agent-efforts';
-import { EFFORT_OPTIONS_BY_ID } from './agent-efforts';
-import type { ModelOption } from './agent-models';
+import type { EffortOption } from '../agent-efforts';
+import { EFFORT_OPTIONS_BY_ID } from '../agent-efforts';
+import type { ModelOption } from '../agent-models';
 import {
   groupModelsByProvider,
   modelChoiceKey,
   resolveModel,
   switchesAccount,
-} from './agent-models';
+} from '../agent-models';
+import { AGENT_LABELS, AgentIcon } from '../chat/agent-icon';
 import type { AgentRuntimeCue, AgentRuntimeCues } from './agent-onboarding-card';
 
 // Linear lookup: the policy/effort lists are a handful of entries at most.

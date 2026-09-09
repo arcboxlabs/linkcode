@@ -3,18 +3,28 @@ import type { SessionId, ToolCall } from '@linkcode/schema';
 import { SessionIdSchema } from '@linkcode/schema';
 import {
   AGENT_LABELS,
+  EFFORT_OPTIONS_BY_ID,
   EmptyState,
+  effortOptionsForModel,
+  modelChoiceKey,
   repositoryLabel,
+  resolveModel,
   selectCurrentPlan,
   selectPendingPromptItems,
 } from '@linkcode/ui/native';
 import { Composer } from '@mobile/components/conversation/composer';
 import { PromptDock } from '@mobile/components/conversation/prompt-dock/prompt-dock';
-import { SessionStatusChip } from '@mobile/components/conversation/session-status-chip';
+import { SessionTitle } from '@mobile/components/conversation/session-title';
+import {
+  SessionApprovalChip,
+  SessionSelectorChip,
+} from '@mobile/components/conversation/session-tools';
 import { TimelineItem } from '@mobile/components/conversation/timeline-item';
 import { ToolDetailSheet } from '@mobile/components/conversation/tool-detail-sheet/tool-detail-sheet';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
+import { USES_IOS_26_NAVIGATION } from '@mobile/components/shell/ios-26-navigation';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useAccountModels } from '@mobile/runtime/use-account-models';
 import { useSeededConversation } from '@mobile/runtime/use-seeded-conversation';
 import { useSessionActions } from '@mobile/runtime/use-session-actions';
 import { useSessionAutoResume } from '@mobile/runtime/use-session-auto-resume';
@@ -47,6 +57,7 @@ export default function SessionRoute(): React.ReactNode {
 function SessionScreen(): React.ReactNode {
   const t = useTranslations('mobile.conversation');
   const tChat = useTranslations('mobile.chat');
+  const tSettings = useTranslations('mobile.settings');
   const insets = useSafeAreaInsets();
   const headerHeight = useHeaderHeight();
   const muted = useThemeColor('muted');
@@ -74,10 +85,37 @@ function SessionScreen(): React.ReactNode {
   const actions = useSessionActions(sessionId, conversation.status);
   const { stop } = useSessionAutoResume(sessionId, session?.status, autoResumeSuppressed);
   const [openToolCallId, setOpenToolCallId] = useState<string | null>(null);
+  // Measured height of the floating composer block, fed back to the list as its bottom inset so
+  // resting content clears the card while scrolling still flows under the glass.
+  const [dockHeight, setDockHeight] = useState(0);
 
   const title = session
     ? (session.title ?? `${AGENT_LABELS[session.kind]} in ${repositoryLabel(session.cwd)}`)
     : '';
+
+  // Composer tools mirror the desktop live composer: account-backed models, effort options for
+  // the model the session actually runs on, and the adapter-advertised policies — all values
+  // server-reflected off the conversation, never held locally.
+  const models = useAccountModels(session?.kind ?? null);
+  const currentModelOption = resolveModel(
+    models ?? undefined,
+    conversation.currentModel,
+    session?.accountId,
+  );
+  const effortOptions = session
+    ? effortOptionsForModel(
+        session.kind,
+        resolveModel(conversation.availableModels ?? undefined, conversation.currentModel),
+      )
+    : undefined;
+  const selectorValue = [
+    currentModelOption?.label ??
+      conversation.currentModel ??
+      (session ? AGENT_LABELS[session.kind] : ''),
+    ...(conversation.currentEffort
+      ? [EFFORT_OPTIONS_BY_ID[conversation.currentEffort].shortLabel]
+      : []),
+  ].join(' · ');
 
   const prompts = selectPendingPromptItems(conversation);
   const plan = selectCurrentPlan(conversation);
@@ -87,23 +125,20 @@ function SessionScreen(): React.ReactNode {
         item.kind === 'tool' && item.toolCall.toolCallId === openToolCallId,
     )?.toolCall ?? null;
 
+  const stopThread = (): void => {
+    router.setParams({ autoResume: 'false' });
+    stop();
+  };
+  const copyThreadId = (): void => {
+    if (sessionId) void Clipboard.setStringAsync(sessionId);
+  };
+
+  // Android fallback only — native bar items are iOS-only, so the menu degrades to an alert.
   const showMenu = (): void => {
     if (!sessionId) return;
     Alert.alert(title, undefined, [
-      {
-        text: tChat('stopThread'),
-        style: 'destructive',
-        onPress() {
-          router.setParams({ autoResume: 'false' });
-          stop();
-        },
-      },
-      {
-        text: tChat('copyThreadId'),
-        onPress() {
-          void Clipboard.setStringAsync(sessionId);
-        },
-      },
+      { text: tChat('stopThread'), style: 'destructive', onPress: stopThread },
+      { text: tChat('copyThreadId'), onPress: copyThreadId },
       { text: tChat('cancel'), style: 'cancel' },
     ]);
   };
@@ -112,24 +147,54 @@ function SessionScreen(): React.ReactNode {
   const reversed = [...conversation.items].reverse();
 
   return (
-    <View className="flex-1 bg-background" style={{ paddingBottom: insets.bottom }}>
+    <View
+      className="flex-1 bg-background"
+      style={{ paddingBottom: USES_IOS_26_NAVIGATION ? 0 : insets.bottom }}
+    >
       <Stack.Screen
         options={{
           ...VISIBLE_HEADER_OPTIONS,
           title,
-          headerRight: () => (
-            <View className="flex-row items-center gap-1">
-              {conversation.status ? <SessionStatusChip status={conversation.status} /> : null}
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={tChat('stopThread')}
-                onPress={showMenu}
-                className="size-8 items-center justify-center"
-              >
-                <EllipsisIcon size={18} color={muted} />
-              </Pressable>
-            </View>
-          ),
+          headerTitle: () => <SessionTitle title={title} status={conversation.status} />,
+          ...(process.env.EXPO_OS === 'ios'
+            ? {
+                unstable_headerRightItems: () => [
+                  {
+                    type: 'menu',
+                    label: tSettings('more'),
+                    icon: { type: 'sfSymbol', name: 'ellipsis' },
+                    menu: {
+                      items: [
+                        {
+                          type: 'action',
+                          label: tChat('copyThreadId'),
+                          icon: { type: 'sfSymbol', name: 'doc.on.doc' },
+                          onPress: copyThreadId,
+                        },
+                        {
+                          type: 'action',
+                          label: tChat('stopThread'),
+                          icon: { type: 'sfSymbol', name: 'stop.circle' },
+                          destructive: true,
+                          onPress: stopThread,
+                        },
+                      ],
+                    },
+                  },
+                ],
+              }
+            : {
+                headerRight: () => (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={tSettings('more')}
+                    onPress={showMenu}
+                    className="size-8 items-center justify-center"
+                  >
+                    <EllipsisIcon size={18} color={muted} />
+                  </Pressable>
+                ),
+              }),
         }}
       />
       {conversation.items.length === 0 ? (
@@ -150,30 +215,76 @@ function SessionScreen(): React.ReactNode {
           ListFooterComponent={
             process.env.EXPO_OS === 'ios' ? <View style={{ height: headerHeight }} /> : null
           }
+          // Inverted list: the header renders at the visual bottom — the clearance that keeps
+          // resting content out from under the floating composer.
+          ListHeaderComponent={
+            USES_IOS_26_NAVIGATION && dockHeight > 0 ? (
+              <View style={{ height: dockHeight }} />
+            ) : null
+          }
           contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}
           className="flex-1"
         />
       )}
       {/* Sticky rather than an avoiding view: the inverted list already pins to the bottom, so
-          the composer only has to ride the keyboard instead of resizing the whole screen. */}
-      <KeyboardStickyView>
-        <PromptDock
-          prompts={prompts}
-          plan={plan}
-          respondingIds={actions.respondingIds}
-          onRespondPermission={actions.respondPermission}
-          onRespondQuestion={actions.respondQuestion}
-        />
-        <Composer
-          onSend={actions.send}
-          onStop={actions.stop}
-          isRunning={actions.isRunning}
-          disabled={!actions.canCompose}
-          error={
-            actions.failure ? t(actions.failure === 'send' ? 'sendError' : 'stopError') : undefined
-          }
-        />
-      </KeyboardStickyView>
+          the composer only has to ride the keyboard instead of resizing the whole screen. On
+          iOS 26 the block floats over the list so content scrolls under the glass. */}
+      <View
+        className={USES_IOS_26_NAVIGATION ? 'absolute inset-x-0 bottom-0' : undefined}
+        style={USES_IOS_26_NAVIGATION ? { paddingBottom: insets.bottom } : undefined}
+        pointerEvents="box-none"
+        onLayout={(event) => setDockHeight(event.nativeEvent.layout.height)}
+      >
+        <KeyboardStickyView>
+          <PromptDock
+            prompts={prompts}
+            plan={plan}
+            respondingIds={actions.respondingIds}
+            onRespondPermission={actions.respondPermission}
+            onRespondQuestion={actions.respondQuestion}
+          />
+          <Composer
+            text={actions.text}
+            onTextChange={actions.setText}
+            sendBlocked={actions.sending}
+            onSend={actions.send}
+            onStop={actions.stop}
+            isRunning={actions.isRunning}
+            disabled={!actions.canCompose}
+            error={
+              actions.failure
+                ? t(
+                    actions.failure === 'send'
+                      ? 'sendError'
+                      : actions.failure === 'stop'
+                        ? 'stopError'
+                        : 'controlError',
+                  )
+                : undefined
+            }
+            tools={
+              <SessionApprovalChip
+                approvalPolicy={conversation.approvalPolicy}
+                onPolicyChange={actions.setApprovalPolicy}
+              />
+            }
+            trailing={
+              session ? (
+                <SessionSelectorChip
+                  kind={session.kind}
+                  selectorValue={selectorValue}
+                  models={models}
+                  currentModelKey={currentModelOption ? modelChoiceKey(currentModelOption) : null}
+                  onModelChange={actions.setModel}
+                  effortOptions={effortOptions}
+                  currentEffort={conversation.currentEffort}
+                  onEffortChange={actions.setEffort}
+                />
+              ) : undefined
+            }
+          />
+        </KeyboardStickyView>
+      </View>
       <ToolDetailSheet toolCall={openToolCall} onDismiss={() => setOpenToolCallId(null)} />
     </View>
   );

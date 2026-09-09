@@ -7,7 +7,7 @@ import {
   Text as UIText,
 } from '@expo/ui/swift-ui';
 import { useSessions } from '@linkcode/client-core';
-import type { AgentKind, SessionId, SessionInfo } from '@linkcode/schema';
+import type { SessionInfo } from '@linkcode/schema';
 import type { ThreadGroup } from '@linkcode/ui/native';
 import {
   AGENT_LABELS,
@@ -17,7 +17,6 @@ import {
 } from '@linkcode/ui/native';
 import { SECONDARY } from '@mobile/components/form/styles';
 import { HostClientGate } from '@mobile/components/host/host-client-gate';
-import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
 import type { PrimaryAction } from '@mobile/components/shell/primary-action';
@@ -25,7 +24,6 @@ import { usePrimaryAction } from '@mobile/components/shell/primary-action';
 import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
-import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
 import { Stack, useRouter } from 'expo-router';
 import { SquarePenIcon } from 'lucide-react-native';
@@ -44,13 +42,13 @@ function threadTitle(session: SessionInfo): string {
 }
 
 /** The header outlives the connection: it carries the host switcher, which is the way out of a host
- * that cannot be reached, so it is mounted above the gate rather than inside it. New-thread is the
- * one part that needs a client, and it is dropped rather than left to fail. */
+ * that cannot be reached, so it is mounted above the gate rather than inside it. New-thread needs a
+ * client, so its entry points are dropped until the connection is ready. */
 export default function ThreadsRoute(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
+  const router = useRouter();
   const hostMenuItems = useHostMenuItems();
   const connection = useHostConnection();
-  const [sheetOpen, setSheetOpen] = useState(false);
 
   const primaryAction: PrimaryAction | null =
     connection?.status === 'ready'
@@ -58,7 +56,7 @@ export default function ThreadsRoute(): React.ReactNode {
           sf: 'square.and.pencil',
           icon: SquarePenIcon,
           label: t('newThread'),
-          onPress: () => setSheetOpen(true),
+          onPress: () => router.push('/new-thread'),
         }
       : null;
   usePrimaryAction('threads', primaryAction);
@@ -75,28 +73,21 @@ export default function ThreadsRoute(): React.ReactNode {
         }}
       />
       <HostClientGate>
-        <ThreadsScreen sheetOpen={sheetOpen} onSheetOpenChange={setSheetOpen} />
+        <ThreadsScreen />
       </HostClientGate>
     </View>
   );
 }
 
 /** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
- * native search bar stacked below the navigation bar. Empty workspace groups are hidden — the sheet
- * is where they surface. */
-function ThreadsScreen({
-  sheetOpen,
-  onSheetOpenChange,
-}: {
-  sheetOpen: boolean;
-  onSheetOpenChange: (open: boolean) => void;
-}): React.ReactNode {
+ * native search bar stacked below the navigation bar. Empty workspace groups are hidden — the
+ * new-thread page is where they surface. */
+function ThreadsScreen(): React.ReactNode {
   const t = useTranslations('mobile.sessions');
   const router = useRouter();
-  const { sessions, create, refresh, loading } = useSessions();
+  const { sessions, refresh, loading } = useSessions();
   const { workspaces, refresh: refreshWorkspaces } = useWorkspaces();
 
-  const [creating, setCreating] = useState(false);
   const [query, setQuery] = useState('');
 
   // Stable so the search bar's options object survives a keystroke without re-registering.
@@ -127,33 +118,6 @@ function ThreadsScreen({
     await Promise.all([refresh(), refreshWorkspaces()]);
   };
 
-  const onCreate = async (kind: AgentKind, cwd: string) => {
-    if (creating) return;
-    const startedAt = Date.now();
-    setCreating(true);
-    try {
-      let sessionId: SessionId;
-      try {
-        sessionId = await create({ kind, cwd });
-        captureMobileProductEvent('thread created', {
-          agent_kind: kind,
-          duration_ms: Date.now() - startedAt,
-        });
-      } catch (error) {
-        captureMobileProductEvent('thread create failed', {
-          agent_kind: kind,
-          duration_ms: Date.now() - startedAt,
-        });
-        throw error;
-      }
-      await refreshWorkspaces();
-      onSheetOpenChange(false);
-      router.push(`/session/${sessionId}`);
-    } finally {
-      setCreating(false);
-    }
-  };
-
   return (
     <>
       {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar. */}
@@ -181,7 +145,7 @@ function ThreadsScreen({
             {needle === '' ? (
               <Section footer={<UIText>{t('emptyHint')}</UIText>}>
                 <UIText modifiers={[SECONDARY]}>{t('emptyTitle')}</UIText>
-                <UIButton label={t('newThread')} onPress={() => onSheetOpenChange(true)} />
+                <UIButton label={t('newThread')} onPress={() => router.push('/new-thread')} />
               </Section>
             ) : (
               <Section>
@@ -198,13 +162,6 @@ function ThreadsScreen({
           />
         )}
       </Host>
-      <NewThreadSheet
-        isPresented={sheetOpen}
-        onIsPresentedChange={onSheetOpenChange}
-        workspaces={workspaces}
-        creating={creating}
-        onCreate={onCreate}
-      />
     </>
   );
 }
