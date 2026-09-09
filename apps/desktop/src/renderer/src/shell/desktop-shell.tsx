@@ -683,8 +683,11 @@ export function DesktopShell({
         sidebarShortcut={sidebarShortcut}
         rightPanelShortcut={rightPanelShortcut}
         bottomPanelShortcut={bottomPanelShortcut}
+        // Automations is a full-page overlay; suppress the session title/chip/menu and the
+        // right-rail panel toggles the same way settings-view.tsx does for its own overlay.
+        rightControls={automationsOpen ? null : undefined}
         titleContent={
-          hideMainTitle ? (
+          automationsOpen ? null : hideMainTitle ? (
             // An untitled conversation hides the title area, which would also hide the error
             // badge with no banner fallback; keep the badge alone. The draft page stays bare —
             // it reports errors through its own in-page banner.
