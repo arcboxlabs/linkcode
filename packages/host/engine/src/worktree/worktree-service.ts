@@ -130,6 +130,8 @@ export class WorktreeService {
     );
   }
 
+  /** A start in the session's worktree — a resume, or a fork child — needs the directory on disk;
+   * the lease alone says nothing about that. */
   verifyResume(sessionId: SessionId): Effect.Effect<void, RequestError> {
     const record = this.get(sessionId);
     if (!record || existsSync(record.worktreePath)) return Effect.void;

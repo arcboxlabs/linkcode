@@ -172,8 +172,11 @@ export class SessionForkService {
         // Captured synchronously while the source is provably present: a delete interleaving the
         // async admit below cannot make the launch skip the child's lease.
         const sourceWorktreePath = this.worktrees.get(source.sessionId)?.worktreePath;
-        const { checkpoints, sessions, turns } = this;
+        const { checkpoints, sessions, turns, worktrees } = this;
         return Effect.gen(function* () {
+          // The child starts in that directory: gone from disk (`orphaned`, or not yet marked so)
+          // it fails typed here, exactly as resuming the source does, not as a spawn error.
+          yield* worktrees.verifyResume(source.sessionId);
           if (yield* turns.hasOpenOperation(source.sessionId)) {
             return yield* Effect.fail(
               new RequestError({
