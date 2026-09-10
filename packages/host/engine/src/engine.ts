@@ -27,6 +27,10 @@ import type { EngineFailure, OperationSubsystem } from './failure';
 import { toOperationFailure } from './failure';
 import { GitService } from './git/git-service';
 import { GitRequestHandler } from './git/request-handler';
+import { LinkCodePluginConfigRequestHandler } from './plugin/config-request-handler';
+import { PluginConfigService } from './plugin/config-service';
+import { InMemoryLinkCodePluginStore } from './plugin/linkcode-store';
+import { LinkCodePluginMarketRequestHandler } from './plugin/market-request-handler';
 import { PluginRequestHandler } from './plugin/request-handler';
 import type { PluginDiscoveryResult } from './plugin/service';
 import { PluginService } from './plugin/service';
@@ -86,6 +90,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const factory = deps.factory ?? createAdapter;
   const providerStore = deps.providerStore ?? new InMemoryProviderConfigStore();
   const customMcp = new CustomMcpServerService(providerStore);
+  const linkCodePluginStore = deps.linkCodePluginStore ?? new InMemoryLinkCodePluginStore();
+  const pluginConfig = new PluginConfigService(linkCodePluginStore);
   const records = new SessionRecordRegistry(
     deps.sessionStore ?? new InMemorySessionStore(),
     (sessionId, reason) => {
@@ -109,6 +115,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     deps.simulatorMcp,
     customMcp,
     plugins,
+    linkCodePluginStore,
   );
   const history = new HistoryService(factory, {
     injectedMcpServerNames: (kind) => startOptions.injectedMcpServerNames(kind),
@@ -252,6 +259,17 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const browserRequests = new BrowserRequestHandler(transport, browserBroker);
   const pluginRequests = new PluginRequestHandler(transport, plugins, responder);
+  const linkCodePluginConfigRequests = new LinkCodePluginConfigRequestHandler(
+    transport,
+    pluginConfig,
+    responder,
+  );
+  const linkCodePluginMarketRequests = new LinkCodePluginMarketRequestHandler(
+    transport,
+    deps.linkCodeMarketplace,
+    linkCodePluginStore,
+    responder,
+  );
   const requests = new WireRequestRouter(transport, {
     session: sessionRequests,
     history: historyRequests,
@@ -260,6 +278,8 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     workspace: workspaceRequests,
     git: gitRequests,
     plugin: pluginRequests,
+    linkCodePluginConfig: linkCodePluginConfigRequests,
+    linkCodePluginMarket: linkCodePluginMarketRequests,
     file: fileRequests,
     script: scriptRequests,
     artifact: artifactRequests,

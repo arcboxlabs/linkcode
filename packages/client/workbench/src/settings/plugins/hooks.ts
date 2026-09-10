@@ -1,10 +1,16 @@
 import {
   getCustomMcpServers,
+  getLinkCodePluginConfigs,
+  getPluginMarketplaces,
   getPlugins,
+  installLinkCodePlugin,
   installPlugin,
+  refreshPluginMarketplace,
   setCustomMcpServers,
+  setLinkCodePluginConfig,
   setPluginEnabled,
   setSkillEnabled,
+  uninstallLinkCodePlugin,
   uninstallPlugin,
 } from '@linkcode/sdk';
 import { toastManager } from 'coss-ui/components/toast';
@@ -61,4 +67,39 @@ export function useCustomMcpServers() {
 
 export function useSetCustomMcpServers() {
   return useMutation(setCustomMcpServers, { onError: useMutationError() });
+}
+
+/** The configured LinkCode marketplaces; cheap config read. */
+export function usePluginMarketplaces() {
+  return useData(getPluginMarketplaces, {});
+}
+
+/** One marketplace's catalog. Refresh is a network read on the daemon (ETag-deduped), so it
+ * auto-loads on mount but never revalidates on focus/reconnect — the section's refresh button
+ * re-runs it via `mutate`. */
+export function usePluginMarketCatalog(marketplaceId: string) {
+  return useData(
+    refreshPluginMarketplace,
+    { marketplaceId },
+    { revalidateOnFocus: false, revalidateOnReconnect: false },
+  );
+}
+
+/** Masked settings read for installed LinkCode plugins; a local file read, cheap to revalidate. */
+export function useLinkCodePluginConfigs() {
+  return useData(getLinkCodePluginConfigs, {});
+}
+
+/** Install/uninstall are real network + disk operations on the daemon — explicit user actions
+ * with no optimistic UI. */
+export function useInstallLinkCodePlugin() {
+  return useMutation(installLinkCodePlugin, { onError: useMutationError() });
+}
+
+export function useUninstallLinkCodePlugin() {
+  return useMutation(uninstallLinkCodePlugin, { onError: useMutationError() });
+}
+
+export function useSetLinkCodePluginConfig() {
+  return useMutation(setLinkCodePluginConfig, { onError: useMutationError() });
 }

@@ -52,6 +52,7 @@ module.exports = require('eslint-config-sukka').sukka(
         // the root solution; listing them here too would breach typescript-eslint's 8-file cap.
         'vitest.config.ts',
         'vitest.setup.ts',
+        'scripts/*.mts',
       ],
     },
   },

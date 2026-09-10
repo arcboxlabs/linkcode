@@ -13,6 +13,8 @@ export interface PluginsShellProps {
   refreshing: boolean;
   pluginsTab: React.ReactNode;
   marketTab: React.ReactNode;
+  /** The LinkCode-owned marketplace (catalog + installed plugins), separate from the providers' own marketplaces. */
+  linkcodeTab: React.ReactNode;
   mcpTab: React.ReactNode;
   skillsTab: React.ReactNode;
 }
@@ -24,6 +26,7 @@ export function PluginsShell({
   refreshing,
   pluginsTab,
   marketTab,
+  linkcodeTab,
   mcpTab,
   skillsTab,
 }: PluginsShellProps): React.ReactNode {
@@ -37,6 +40,7 @@ export function PluginsShell({
           <TabsList>
             <TabsTab value="plugins">{t('tabPlugins')}</TabsTab>
             <TabsTab value="market">{t('tabMarket')}</TabsTab>
+            <TabsTab value="linkcode">{t('tabLinkcode')}</TabsTab>
             <TabsTab value="mcp">{t('tabMcp')}</TabsTab>
             <TabsTab value="skills">{t('tabSkills')}</TabsTab>
           </TabsList>
@@ -60,6 +64,7 @@ export function PluginsShell({
         </div>
         <TabsPanel value="plugins">{pluginsTab}</TabsPanel>
         <TabsPanel value="market">{marketTab}</TabsPanel>
+        <TabsPanel value="linkcode">{linkcodeTab}</TabsPanel>
         <TabsPanel value="mcp">{mcpTab}</TabsPanel>
         <TabsPanel value="skills">{skillsTab}</TabsPanel>
       </Tabs>

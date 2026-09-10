@@ -267,6 +267,121 @@ describe('LinkCode plugin package contracts', () => {
     ).toBe(false);
   });
 
+  const mailManifest = {
+    manifestVersion: 1,
+    id: 'linkcode/mail',
+    version: '0.1.0',
+    keywords: ['mail', 'imap', 'smtp'],
+    components: [
+      {
+        kind: 'mcp-server',
+        name: 'mail',
+        command: 'node',
+        entry: 'dist/index.js',
+        env: { MAIL_USER: 'account', MAIL_PASSWORD: 'authcode', MAIL_PRESET: 'preset' },
+      },
+    ],
+    settings: {
+      account: { type: 'string', label: 'Email account', required: true },
+      authcode: { type: 'password', label: 'Authorization code', secret: true, required: true },
+      preset: { type: 'enum', enum: ['163', 'qq', 'exmail'], default: '163' },
+    },
+    assets: [],
+  } as const;
+
+  it('accepts an mcp-server component with declared settings and env bindings', () => {
+    expect(LinkCodePluginManifestSchema.safeParse(mailManifest).success).toBe(true);
+  });
+
+  it('rejects password settings unless they are routed to the secret vault', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: {
+          ...mailManifest.settings,
+          authcode: { ...mailManifest.settings.authcode, secret: false },
+        },
+      }).success,
+    ).toBe(false);
+  });
+
+  it.each(['/tmp/index.js', '../dist/index.js', String.raw`dist\index.js`])(
+    'rejects a non-package-relative mcp entry %s',
+    (entry) => {
+      expect(
+        LinkCodePluginManifestSchema.safeParse({
+          ...mailManifest,
+          components: [{ ...mailManifest.components[0], entry }],
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it('rejects a dotted mcp-server name, which would collide as a provider config key', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        components: [{ ...mailManifest.components[0], name: 'mail.server' }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an mcp-server env binding to an undeclared setting', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        components: [{ ...mailManifest.components[0], env: { MAIL_USER: 'missingSetting' } }],
+      }).success,
+    ).toBe(false);
+  });
+
+  it('rejects an enum setting without options and a non-enum setting carrying options', () => {
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: { ...mailManifest.settings, preset: { type: 'enum' } },
+      }).success,
+    ).toBe(false);
+    expect(
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: { ...mailManifest.settings, account: { type: 'string', enum: ['a'] } },
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a default that does not match the setting's type", () => {
+    const accepts = (field: unknown) =>
+      LinkCodePluginManifestSchema.safeParse({
+        ...mailManifest,
+        settings: { ...mailManifest.settings, flag: field },
+      }).success;
+    expect(accepts({ type: 'boolean', default: 'false' })).toBe(false);
+    expect(accepts({ type: 'number', default: true })).toBe(false);
+    expect(accepts({ type: 'string', default: 42 })).toBe(false);
+    expect(accepts({ type: 'enum', enum: ['163', 'qq'], default: 'gmail' })).toBe(false);
+    expect(accepts({ type: 'boolean', default: true })).toBe(true);
+    expect(accepts({ type: 'number', default: 42 })).toBe(true);
+    expect(accepts({ type: 'enum', enum: ['163', 'qq'], default: 'qq' })).toBe(true);
+  });
+
+  it('the forward-compatible reader strips unknown mcp-server component keys', () => {
+    expect(
+      LinkCodePluginReleaseSchema.parse({
+        manifest: {
+          ...mailManifest,
+          components: [{ ...mailManifest.components[0], futureComponentMetadata: 'ignored' }],
+          futureManifestMetadata: 'ignored',
+        },
+        artifact: {
+          urls: ['releases/linkcode-mail-0.1.0.tgz'],
+          integrity: 'sha256-7bZ8YaunaCifbaRByeb1I8+v9PiypXCFI+8pxUP46I4=',
+          format: 'tgz',
+        },
+      }),
+    ).toMatchObject({ manifest: { id: 'linkcode/mail', version: '0.1.0' } });
+  });
+
   it('continues to reject agent runtimes as plugin assets', () => {
     expect(
       LinkCodePluginManifestSchema.safeParse({

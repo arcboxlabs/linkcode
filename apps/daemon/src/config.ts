@@ -16,6 +16,7 @@ import { daemonRuntimeFilePath } from '@linkcode/common/node';
 import type {
   Accounts,
   CustomMcpServer,
+  LinkCodeMarketplaceConfigList,
   ProvidersConfig,
   SimulatorConsentState,
 } from '@linkcode/schema';
@@ -24,12 +25,15 @@ import {
   AgentKindSchema,
   CustomMcpServerSchema,
   daemonBasePort,
+  LinkCodeMarketplaceConfigSchema,
+  LinkCodeMarketplaceRemoteSourceSchema,
   ProviderConfigSchema,
   SimulatorConsentStateSchema,
 } from '@linkcode/schema';
 import { workspacesDirName } from '@linkcode/schema/product';
 import type { TransportServerOptions } from '@linkcode/transport/server';
 import { extractErrorMessage, isErrorLikeObject } from 'foxts/extract-error-message';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 import { logger } from './logger';
 import { daemonChannel, daemonProfile, daemonStateDir } from './paths';
 import type { SecretStore, SecretVault } from './secrets';
@@ -58,6 +62,12 @@ export interface DaemonConfig {
   accounts?: Accounts;
   /** LinkCode-owned custom MCP servers (data plane); undefined when nothing is configured. */
   customMcpServers?: CustomMcpServer[];
+  /** LinkCode plugin non-secret setting values, keyed by plugin id then field id. Secret values
+   * live in the vault's `plugin` namespace; this holds only what the manifest declares non-secret. */
+  pluginConfigs?: Record<string, Record<string, string | number | boolean>>;
+  /** Configured plugin marketplaces; always resolved — the built-in official one fills in when
+   * config.json names none. */
+  marketplaces: LinkCodeMarketplaceConfigList;
   /** Which simulators agents may drive, plus the global agent-tools switch (CODE-420). */
   simulatorConsent: SimulatorConsentState;
 }
@@ -71,6 +81,8 @@ interface ConfigFile {
   providers?: unknown;
   accounts?: unknown;
   customMcpServers?: unknown;
+  pluginConfigs?: unknown;
+  marketplaces?: unknown;
   simulatorConsent?: unknown;
 }
 
@@ -131,6 +143,7 @@ export function chatWorkspaceRoot(): string {
 const providerSecrets = (vault: SecretVault): SecretStore => vault.namespace('provider');
 const accountSecrets = (vault: SecretVault): SecretStore => vault.namespace('account');
 const customMcpSecrets = (vault: SecretVault): SecretStore => vault.namespace('custom-mcp');
+const pluginSecrets = (vault: SecretVault): SecretStore => vault.namespace('plugin');
 
 export function loadConfig(vault: SecretVault): DaemonConfig {
   const file = readConfigFile();
@@ -164,8 +177,69 @@ export function loadConfig(vault: SecretVault): DaemonConfig {
     providers: parsedProviders.value,
     accounts: parsedAccounts.value,
     customMcpServers: parsedCustomMcp.value,
+    pluginConfigs: parsePluginConfigs(file.pluginConfigs),
+    marketplaces: parseMarketplaces(file.marketplaces),
     simulatorConsent: parseSimulatorConsent(file.simulatorConsent),
   };
+}
+
+/** The built-in official marketplace; `LINKCODE_MARKETPLACE_URL` retargets it. */
+export const OFFICIAL_MARKETPLACE_ID = 'linkcode-official';
+const DEFAULT_MARKETPLACE_URL = 'https://plugins.linkcode.ai/index.json';
+
+function defaultMarketplaces(): LinkCodeMarketplaceConfigList {
+  return [
+    {
+      id: OFFICIAL_MARKETPLACE_ID,
+      displayName: 'LinkCode Official',
+      source: { type: 'remote', url: DEFAULT_MARKETPLACE_URL },
+      enabled: true,
+    },
+  ];
+}
+
+/** Parse entry by entry: one invalid marketplace is dropped and logged, never blanking the rest. */
+function parseMarketplaces(raw: unknown): LinkCodeMarketplaceConfigList {
+  let marketplaces: LinkCodeMarketplaceConfigList;
+  if (raw === undefined) {
+    marketplaces = defaultMarketplaces();
+  } else if (Array.isArray(raw)) {
+    const seen = new Set<string>();
+    marketplaces = [];
+    for (let i = 0, len = raw.length; i < len; i++) {
+      const value = raw[i];
+      const parsed = LinkCodeMarketplaceConfigSchema.safeParse(value);
+      if (!parsed.success || seen.has(parsed.data.id)) {
+        logger.warn({ operation: 'config.load' }, 'Dropping invalid marketplace config');
+        continue;
+      }
+      seen.add(parsed.data.id);
+      marketplaces.push(parsed.data);
+    }
+  } else {
+    logger.warn({ operation: 'config.load' }, 'Invalid marketplaces config: expected an array');
+    marketplaces = defaultMarketplaces();
+  }
+  return applyMarketplaceEnvOverride(marketplaces);
+}
+
+/** The env override always wins over config.json for the official marketplace's index URL. */
+function applyMarketplaceEnvOverride(
+  marketplaces: LinkCodeMarketplaceConfigList,
+): LinkCodeMarketplaceConfigList {
+  const url = process.env.LINKCODE_MARKETPLACE_URL;
+  if (!url) return marketplaces;
+  const source = LinkCodeMarketplaceRemoteSourceSchema.safeParse({ type: 'remote', url });
+  if (!source.success) {
+    logger.warn({ operation: 'config.load' }, 'Ignoring invalid LINKCODE_MARKETPLACE_URL');
+    return marketplaces;
+  }
+  if (marketplaces.some((entry) => entry.id === OFFICIAL_MARKETPLACE_ID)) {
+    return marketplaces.map((entry) =>
+      entry.id === OFFICIAL_MARKETPLACE_ID ? { ...entry, source: source.data } : entry,
+    );
+  }
+  return [{ id: OFFICIAL_MARKETPLACE_ID, source: source.data, enabled: true }, ...marketplaces];
 }
 
 /** A parsed collection plus whether any of its entries carried an inline secret to migrate. */
@@ -192,6 +266,78 @@ function parseSimulatorConsent(raw: unknown): SimulatorConsentState {
 /** Persist simulator agent-consent to config.json, preserving its other fields; `0600`. */
 export function saveSimulatorConsent(state: SimulatorConsentState): void {
   writeConfigFields(readConfigFile(), { simulatorConsent: state });
+}
+
+/**
+ * Plugin setting values that are non-secret (the manifest's `secret` flag decides; secrets live in
+ * the vault). Parsed field-by-field so one malformed plugin's values never blank the rest.
+ */
+function parsePluginConfigs(
+  raw: unknown,
+): Record<string, Record<string, string | number | boolean>> | undefined {
+  if (raw === undefined) return undefined;
+  if (!isRecord(raw)) {
+    logger.warn({ operation: 'config.load' }, 'Invalid plugin configs: expected an object');
+    return undefined;
+  }
+  const out: Record<string, Record<string, string | number | boolean>> = {};
+  const rawEntries = Object.entries(raw);
+  for (let i = 0, len = rawEntries.length; i < len; i++) {
+    const [pluginId, fields] = rawEntries[i];
+    if (!isRecord(fields)) {
+      logger.warn({ pluginId, operation: 'config.load' }, 'Dropping invalid plugin config values');
+      continue;
+    }
+    const values: Record<string, string | number | boolean> = {};
+    const fieldEntries = Object.entries(fields);
+    for (let j = 0, fieldCount = fieldEntries.length; j < fieldCount; j++) {
+      const [fieldId, value] = fieldEntries[j];
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        values[fieldId] = value;
+      }
+    }
+    out[pluginId] = values;
+  }
+  return out;
+}
+
+/** Read one plugin's non-secret values from config.json (secrets stay in the vault). */
+export function loadPluginConfigValues(
+  pluginId: string,
+): Record<string, string | number | boolean> {
+  const file = readConfigFile();
+  const block = isRecord(file.pluginConfigs) ? file.pluginConfigs[pluginId] : undefined;
+  if (!isRecord(block)) return {};
+  const values: Record<string, string | number | boolean> = {};
+  const fieldEntries = Object.entries(block);
+  for (let i = 0, len = fieldEntries.length; i < len; i++) {
+    const [fieldId, value] = fieldEntries[i];
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      values[fieldId] = value;
+    }
+  }
+  return values;
+}
+
+/** Replace one plugin's non-secret values wholesale; an empty map deletes the plugin's block. */
+export function savePluginConfigValues(
+  pluginId: string,
+  values: Record<string, string | number | boolean>,
+): void {
+  const file = readConfigFile();
+  const configs = isRecord(file.pluginConfigs) ? { ...file.pluginConfigs } : {};
+  if (isObjectEmpty(values)) {
+    const { [pluginId]: _removed, ...rest } = configs;
+    writeConfigFields(file, { pluginConfigs: rest });
+    return;
+  }
+  configs[pluginId] = values;
+  writeConfigFields(file, { pluginConfigs: configs });
+}
+
+/** The daemon's `plugin` vault namespace, for secret setting values keyed `<pluginId>/<fieldId>`. */
+export function pluginSecretStore(vault: SecretVault): SecretStore {
+  return pluginSecrets(vault);
 }
 
 /**

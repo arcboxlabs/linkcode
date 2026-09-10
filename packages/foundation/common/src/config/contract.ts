@@ -87,4 +87,10 @@ export {
   rolloutBucket,
   rolloutMatches,
 } from './rules';
-export { isValidSemver, isValidVersionRange, matchesVersionRange } from './semver';
+export {
+  compareSemverStrings,
+  isPrereleaseSemver,
+  isValidSemver,
+  isValidVersionRange,
+  matchesVersionRange,
+} from './semver';

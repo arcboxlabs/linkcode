@@ -80,3 +80,34 @@ export interface CustomMcpServerRow {
   enabled: boolean;
   secretKeys: string[];
 }
+
+/** One entry of a LinkCode marketplace catalog (the daemon-refreshed index). */
+export interface LinkCodeCatalogCardView {
+  /** `${marketplaceId}:${pluginId}` — one card per plugin (its latest release), stable across refreshes. */
+  key: string;
+  marketplaceId: string;
+  pluginId: string;
+  version: string;
+  title: string;
+  description: string | undefined;
+  /** This exact version is installed. */
+  installed: boolean;
+  /** An older version of this plugin is installed — the install action upgrades it. */
+  updateAvailable: boolean;
+  /** A newer version than the catalog's pick is installed — usually a prerelease, since the catalog
+   * prefers the stable release. The action stays available and switches to the carded version. */
+  installedNewer: boolean;
+  /** Precomputed lowercase haystack for the client-side filter. */
+  searchText: string;
+}
+
+/** One installed LinkCode plugin (from the masked `plugin-config.listed` read). */
+export interface LinkCodeInstalledPluginRow {
+  /** The plugin id — stable across config writes. */
+  key: string;
+  pluginId: string;
+  title: string;
+  version: string;
+  /** Whether the manifest declares settings; the configure action renders only when true. */
+  hasSettings: boolean;
+}

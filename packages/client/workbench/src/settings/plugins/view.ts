@@ -1,15 +1,32 @@
-import type { PluginList } from '@linkcode/client-core';
+import type {
+  LinkCodePluginConfigView,
+  PluginList,
+  PluginMarketReleaseEntry,
+} from '@linkcode/client-core';
+// The narrow `config/semver` subpath, never the `config` barrel: the barrel re-exports crypto
+// (@noble/*, with a top-level side effect), ConfigCore, and telemetry into this renderer bundle.
+import { compareSemverStrings, isPrereleaseSemver } from '@linkcode/common/config/semver';
 import type { Plugin, PluginComponentKind, StandaloneSkill } from '@linkcode/schema';
 import type {
+  LinkCodeCatalogCardView,
+  LinkCodeInstalledPluginRow,
   PluginCardView,
   PluginMcpServerRow,
   PluginProviderGroup,
   SkillRowView,
 } from '@linkcode/ui';
+import { isObjectEmpty } from 'foxts/is-object-empty';
 
 /** Pure projections from the discovery result to presentation view-models. No React, no I/O. */
 
-export type { PluginCardView, PluginMcpServerRow, PluginProviderGroup, SkillRowView };
+export type {
+  LinkCodeCatalogCardView,
+  LinkCodeInstalledPluginRow,
+  PluginCardView,
+  PluginMcpServerRow,
+  PluginProviderGroup,
+  SkillRowView,
+};
 
 export function pluginCardView(plugin: Plugin): PluginCardView {
   const title = plugin.displayName ?? plugin.name;
@@ -165,4 +182,99 @@ export function pluginMcpServerRows(plugins: readonly Plugin[]): PluginMcpServer
     }
   }
   return rows;
+}
+
+/** The plugin id's name segment — the masked config read carries no display name. */
+function linkcodePluginTitle(pluginId: string): string {
+  return pluginId.split('/').at(-1) ?? pluginId;
+}
+
+/** A marketplace release entry to its catalog card. `installedVersion` is the version on disk for
+ * this plugin id, if any: an exact match renders installed, an older one renders as an upgrade
+ * (the daemon's install replaces the older package and keeps its settings). Never call this
+ * directly from the catalog — go through {@link linkcodeCatalogCards} so one plugin renders one
+ * card (its latest release), not one card per published version. */
+function linkcodeCatalogCard(
+  marketplaceId: string,
+  entry: PluginMarketReleaseEntry,
+  installedVersion: string | undefined,
+): LinkCodeCatalogCardView {
+  const manifest = entry.release.manifest;
+  const title = manifest.displayName ?? linkcodePluginTitle(entry.pluginId);
+  const age =
+    installedVersion === undefined
+      ? null
+      : comparePluginVersions(installedVersion, manifest.version);
+  return {
+    key: `${marketplaceId}:${entry.pluginId}`,
+    marketplaceId,
+    pluginId: entry.pluginId,
+    version: manifest.version,
+    title,
+    description: manifest.description,
+    installed: age === 0,
+    updateAvailable: age !== null && age < 0,
+    installedNewer: age !== null && age > 0,
+    searchText: [entry.pluginId, title, manifest.description ?? '', ...manifest.keywords]
+      .join('\n')
+      .toLowerCase(),
+  };
+}
+
+/** One card per plugin id, for its newest release: a marketplace that keeps old releases listed
+ * must not fill the catalog with one card per version, and an "update" badge must never point at a
+ * version older than the installed one. Stability outranks version order, so a published
+ * `2.0.0-beta.1` cannot hide the `1.9.0` everyone should actually install; a plugin whose only
+ * releases are prereleases still gets its card. */
+export function linkcodeCatalogCards(
+  marketplaceId: string,
+  releases: readonly PluginMarketReleaseEntry[],
+  installedVersions: ReadonlyMap<string, string>,
+): LinkCodeCatalogCardView[] {
+  const newestByPlugin = new Map<string, PluginMarketReleaseEntry>();
+  for (let i = 0, len = releases.length; i < len; i++) {
+    const entry = releases[i];
+    const current = newestByPlugin.get(entry.pluginId);
+    if (current === undefined || outranks(entry, current)) {
+      newestByPlugin.set(entry.pluginId, entry);
+    }
+  }
+  return Array.from(newestByPlugin.values(), (entry) =>
+    linkcodeCatalogCard(marketplaceId, entry, installedVersions.get(entry.pluginId)),
+  );
+}
+
+/** Whether `candidate` should replace `current` as the plugin's catalog card. */
+function outranks(candidate: PluginMarketReleaseEntry, current: PluginMarketReleaseEntry): boolean {
+  const candidateVersion = candidate.release.manifest.version;
+  const currentVersion = current.release.manifest.version;
+  const candidatePrerelease = isPrereleaseSemver(candidateVersion);
+  if (candidatePrerelease !== isPrereleaseSemver(currentVersion)) return !candidatePrerelease;
+  return comparePluginVersions(candidateVersion, currentVersion) > 0;
+}
+
+/** semver compare over the schema-validated plugin version shape; an unparseable value can only
+ * arrive from a corrupt index, where string order is the honest fallback. */
+function comparePluginVersions(a: string, b: string): number {
+  return compareSemverStrings(a, b) ?? (a === b ? 0 : a < b ? -1 : 1);
+}
+
+/** A masked plugin config read to its installed-list row. */
+export function linkcodeInstalledRow(view: LinkCodePluginConfigView): LinkCodeInstalledPluginRow {
+  return {
+    key: view.id,
+    pluginId: view.id,
+    title: linkcodePluginTitle(view.id),
+    version: view.version,
+    hasSettings: !isObjectEmpty(view.settings),
+  };
+}
+
+export function filterLinkCodeCatalogCards(
+  cards: readonly LinkCodeCatalogCardView[],
+  query: string,
+): LinkCodeCatalogCardView[] {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return [...cards];
+  return cards.filter((card) => card.searchText.includes(needle));
 }

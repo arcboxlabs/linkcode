@@ -8,6 +8,8 @@ import type { AutomationRequestHandler } from '../automation/request-handler';
 import type { BrowserRequestHandler } from '../browser/request-handler';
 import type { GitRequestHandler } from '../git/request-handler';
 import { observeRequest } from '../observability';
+import type { LinkCodePluginConfigRequestHandler } from '../plugin/config-request-handler';
+import type { LinkCodePluginMarketRequestHandler } from '../plugin/market-request-handler';
 import type { PluginRequestHandler } from '../plugin/request-handler';
 import type { ArtifactRequestHandler } from '../preview/request-handler';
 import type { ResourceRequestHandler } from '../resource/request-handler';
@@ -27,6 +29,8 @@ interface RequestHandlers {
   readonly workspace: WorkspaceRequestHandler;
   readonly git: GitRequestHandler;
   readonly plugin: PluginRequestHandler;
+  readonly linkCodePluginConfig: LinkCodePluginConfigRequestHandler;
+  readonly linkCodePluginMarket: LinkCodePluginMarketRequestHandler;
   readonly file: FileRequestHandler;
   readonly script: ScriptRequestHandler;
   readonly artifact: ArtifactRequestHandler;
@@ -107,6 +111,16 @@ export class WireRequestRouter {
       case 'plugin.uninstall':
       case 'skill.set-enabled': {
         return this.handlers.plugin.handle(p);
+      }
+      case 'plugin-config.list.get':
+      case 'plugin-config.set': {
+        return this.handlers.linkCodePluginConfig.handle(p);
+      }
+      case 'plugin-market.list.get':
+      case 'plugin-market.refresh':
+      case 'plugin-market.install':
+      case 'plugin-market.uninstall': {
+        return this.handlers.linkCodePluginMarket.handle(p);
       }
       case 'file.read':
       case 'file.list':

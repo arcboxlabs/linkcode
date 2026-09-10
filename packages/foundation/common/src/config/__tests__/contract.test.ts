@@ -12,9 +12,11 @@ import {
   canonicalSignedPayload,
   canonicalSignedPayloadBytes,
   compareMonotonicVersions,
+  compareSemverStrings,
   conditionMatches,
   decideAntiReplay,
   emergencyTargetMatches,
+  isPrereleaseSemver,
   matchesVersionRange,
   murmur3X86_32,
   rolloutBucket,
@@ -297,6 +299,13 @@ describe('configuration contract v1 golden fixture', () => {
     expect(matchesVersionRange('2.4.0-beta.1', '>=2.4.0')).toBe(false);
     expect(matchesVersionRange('2.4.0+build.7', '=2.4.0+other')).toBe(true);
     expect(matchesVersionRange('2.4.0', '^2.3.0')).toBe(false);
+    expect(compareSemverStrings('0.10.0', '0.9.0')).toBeGreaterThan(0);
+    expect(compareSemverStrings('2.4.0-beta.1', '2.4.0')).toBeLessThan(0);
+    expect(compareSemverStrings('2.4.0+build.7', '2.4.0+other')).toBe(0);
+    expect(compareSemverStrings('2.4.0', 'not-semver')).toBeNull();
+    expect(isPrereleaseSemver('2.4.0-beta.1')).toBe(true);
+    expect(isPrereleaseSemver('2.4.0+build-7')).toBe(false);
+    expect(isPrereleaseSemver('not-semver')).toBe(false);
     expect(
       conditionMatches({ locale: 'k' }, { appVersion: '2.4.0', locale: 'K', os: 'windows' }),
     ).toBe(false);

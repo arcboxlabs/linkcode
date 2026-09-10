@@ -6,6 +6,7 @@
   "exports": {
     "./config": "./src/config/index.ts",
     "./config-signing-poc": "./src/config-signing-poc/index.ts",
+    "./config/semver": "./src/config/semver.ts",
     "./node": "./src/node/index.ts",
     "./sentry": "./src/sentry/index.ts",
     "./telemetry-config": "./src/telemetry-config/index.ts",
