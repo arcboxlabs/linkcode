@@ -395,7 +395,8 @@ export class SessionForkService {
         ),
         Effect.andThen(
           Effect.logWarning('Abandoned a session fork; its provider child history is orphaned', {
-            sessionId: child.forkOrigin?.sourceSessionId,
+            sessionId: child.sessionId,
+            sourceSessionId: child.forkOrigin?.sourceSessionId,
             historyId: child.runs[0]?.historyId,
           }),
         ),
