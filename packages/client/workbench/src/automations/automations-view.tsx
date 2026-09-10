@@ -10,7 +10,7 @@ import { PlusIcon, SearchIcon, XIcon } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useAutomationDefaults } from './defaults';
-import { DetailHeaderSlotProvider } from './detail-header-slot';
+import { DetailHeaderSlotProvider, DetailTitleSlotProvider } from './detail-header-slot';
 import {
   AUTOMATION_DETAIL_MAX_WIDTH,
   AUTOMATION_DETAIL_MIN_WIDTH,
@@ -70,6 +70,7 @@ export function AutomationsView({
     AUTOMATION_DETAIL_MAX_WIDTH,
   );
   const [detailHeaderSlot, setDetailHeaderSlot] = useState<HTMLDivElement | null>(null);
+  const [detailTitleSlot, setDetailTitleSlot] = useState<HTMLDivElement | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const openerRef = useRef<HTMLElement | null>(null);
   useEffect(() => {
@@ -250,19 +251,26 @@ export function AutomationsView({
           className="relative min-h-0 min-w-0 overflow-hidden bg-background"
         >
           <div className="h-full min-h-0 w-full">
-            <div className="absolute top-3 right-3 z-10 flex items-center gap-1">
-              <div ref={setDetailHeaderSlot} className="flex items-center gap-1" />
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                aria-label={t('closeDetails')}
-                onClick={collapse}
-              >
-                <XIcon className="size-4" />
-              </Button>
+            <div className="absolute top-3 right-3 left-2.5 z-10 flex items-center justify-between gap-2 lg:left-4">
+              <div ref={setDetailTitleSlot} className="min-w-0 flex-1 overflow-hidden" />
+              <div className="flex shrink-0 items-center gap-1">
+                <div ref={setDetailHeaderSlot} className="flex items-center gap-1" />
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  aria-label={t('closeDetails')}
+                  onClick={collapse}
+                >
+                  <XIcon className="size-4" />
+                </Button>
+              </div>
             </div>
             <div className="h-full min-h-0 overflow-y-auto px-2.5 py-8 pr-12 lg:px-4 lg:py-10 lg:pr-12">
-              <DetailHeaderSlotProvider value={detailHeaderSlot}>{detail}</DetailHeaderSlotProvider>
+              <DetailTitleSlotProvider value={detailTitleSlot}>
+                <DetailHeaderSlotProvider value={detailHeaderSlot}>
+                  {detail}
+                </DetailHeaderSlotProvider>
+              </DetailTitleSlotProvider>
             </div>
           </div>
         </section>

@@ -15,3 +15,14 @@ export function DetailHeaderPortal({ children }: React.PropsWithChildren): React
   if (!slot) return null;
   return createPortal(children, slot);
 }
+
+const DetailTitleSlotContext = createContext<HTMLDivElement | null>(null);
+
+export const DetailTitleSlotProvider = DetailTitleSlotContext.Provider;
+
+/** Portals children into the fixed top-left slot beside `DetailHeaderPortal`, on the same row as Close. */
+export function DetailTitlePortal({ children }: React.PropsWithChildren): React.ReactNode {
+  const slot = useContext(DetailTitleSlotContext);
+  if (!slot) return null;
+  return createPortal(children, slot);
+}

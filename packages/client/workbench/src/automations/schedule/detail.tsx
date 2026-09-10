@@ -7,10 +7,11 @@ import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AutomationActions } from '../actions';
-import { DetailHeaderPortal } from '../detail-header-slot';
+import { DetailHeaderPortal, DetailTitlePortal } from '../detail-header-slot';
 import { AutomationPaneSkeleton } from '../pane-layout';
 import { ScheduleForm } from './form';
 import { useScheduleRuns, useSchedules } from './hooks';
+import { scheduleDisplayName } from './items';
 
 const STATUS_BADGE: Record<ScheduleStatus, 'success' | 'warning' | 'secondary'> = {
   active: 'success',
@@ -66,6 +67,9 @@ export function ScheduleDetail({
     (schedule.spec.target.type === 'session' ? schedule.spec.target.sessionId : undefined);
   return (
     <div className="flex w-full flex-col gap-5">
+      <DetailTitlePortal>
+        <span className="truncate font-medium text-sm">{scheduleDisplayName(schedule)}</span>
+      </DetailTitlePortal>
       <header className="flex items-center gap-2">
         <Badge variant={STATUS_BADGE[schedule.status]}>{t(`status.${schedule.status}`)}</Badge>
       </header>

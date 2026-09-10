@@ -16,7 +16,7 @@ const NAME_EXCERPT_MAX = 60;
 const STATUS_RANK: Record<ScheduleStatus, number> = { active: 0, paused: 1, completed: 2 };
 const RE_WHITESPACE = /\s+/g;
 
-function displayName(schedule: Schedule): string {
+export function scheduleDisplayName(schedule: Schedule): string {
   const name = schedule.spec.name?.trim();
   if (name) return name;
   const prompt = schedule.spec.prompt.trim().replaceAll(RE_WHITESPACE, ' ');
@@ -30,7 +30,7 @@ export function buildScheduleItems(schedules: Schedule[] | undefined): Automatio
     .map(
       (schedule): AutomationListItem => ({
         scheduleId: schedule.scheduleId,
-        name: displayName(schedule),
+        name: scheduleDisplayName(schedule),
         status: schedule.status,
         cadence: schedule.spec.cadence,
         nextRunAt: schedule.nextRunAt,

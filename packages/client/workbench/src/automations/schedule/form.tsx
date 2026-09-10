@@ -108,9 +108,9 @@ export function ScheduleForm({
     >
       <fieldset disabled={isSubmitting} className="flex min-w-0 flex-col gap-4">
         <Field name="name">
-          <FieldLabel className="sr-only">{t('nameLabel')}</FieldLabel>
+          <FieldLabel>{t('nameLabel')}</FieldLabel>
           <Input
-            className="w-full border-transparent bg-transparent px-0 font-semibold text-xl shadow-none md:text-xl"
+            className="w-full"
             autoComplete="off"
             placeholder={t('schedule.new')}
             {...register('name')}

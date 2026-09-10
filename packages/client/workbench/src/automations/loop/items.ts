@@ -21,7 +21,7 @@ const STATUS_RANK: Record<LoopStatus, number> = {
   stopped: 3,
 };
 
-function displayName(loop: LoopRecord): string {
+export function loopDisplayName(loop: LoopRecord): string {
   const name = loop.spec.name?.trim();
   if (name) return name;
   const prompt = loop.spec.prompt.trim().replaceAll(RE_WHITESPACE, ' ');
@@ -35,7 +35,7 @@ export function buildLoopItems(loops: LoopRecord[] | undefined): LoopListItem[] 
     .map(
       (loop): LoopListItem => ({
         loopId: loop.loopId,
-        name: displayName(loop),
+        name: loopDisplayName(loop),
         status: loop.status,
         iterationCount: loop.iterationCount,
         maxIterations: loop.spec.maxIterations,

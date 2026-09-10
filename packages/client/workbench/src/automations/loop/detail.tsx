@@ -5,9 +5,10 @@ import { Button } from 'coss-ui/components/button';
 import { Empty, EmptyTitle } from 'coss-ui/components/empty';
 import { useTranslations } from 'use-intl';
 import { AutomationActions } from '../actions';
-import { DetailHeaderPortal } from '../detail-header-slot';
+import { DetailHeaderPortal, DetailTitlePortal } from '../detail-header-slot';
 import { AutomationPaneSkeleton } from '../pane-layout';
 import { useLoopInspection, useLoopLog } from './hooks';
+import { loopDisplayName } from './items';
 import { LoopLogView } from './log-view';
 
 const STATUS_BADGE: Record<LoopStatus, 'success' | 'warning' | 'error' | 'secondary'> = {
@@ -76,15 +77,11 @@ export function LoopDetail({
           onOpenSession={onOpenSession}
         />
       </DetailHeaderPortal>
+      <DetailTitlePortal>
+        <span className="truncate font-medium text-sm">{loopDisplayName(loop)}</span>
+      </DetailTitlePortal>
       <header className="flex flex-col gap-2">
-        <div className="flex items-center justify-between">
-          <Badge variant={STATUS_BADGE[loop.status]}>{t(`loopStatus.${loop.status}`)}</Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          <h2 className="min-w-0 truncate font-semibold text-lg">
-            {loop.spec.name ?? loop.spec.cwd}
-          </h2>
-        </div>
+        <Badge variant={STATUS_BADGE[loop.status]}>{t(`loopStatus.${loop.status}`)}</Badge>
         <p className="whitespace-pre-wrap text-muted-foreground text-sm">{loop.spec.prompt}</p>
       </header>
 
