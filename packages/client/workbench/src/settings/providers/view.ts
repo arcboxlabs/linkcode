@@ -1,5 +1,6 @@
 import {
   accountEnabledFor,
+  accountModelReach,
   pinnedEndpoint,
   resolveBinding,
   serviceById,
@@ -114,11 +115,25 @@ function agentStatus(
   }
   // Enabled is the whole state, and the switch already shows it — only a reason to be off earns text.
   const enabled = accountEnabledFor(providers, kind, account.id);
+  const models = accountModelReach(account, kind);
+  const status = offerStatus(enabled, models);
   return {
     tier: availability.tier,
     enabled,
-    ...(!enabled && { status: { kind: 'disabled' } }),
+    ...(models.picked > 0 && { models }),
+    ...(status !== undefined && { status }),
   };
+}
+
+/** Why an available agent offers nothing, when that is not obvious from its switch. */
+function offerStatus(
+  enabled: boolean,
+  models: { picked: number; reachable: number },
+): ProviderAgentStatus | undefined {
+  if (!enabled) return { kind: 'disabled' };
+  // An enabled agent whose picker comes up empty reads as an enablement bug; the picked set is the
+  // real reason, so the row names it instead of leaving the switch to imply otherwise.
+  return models.picked > 0 && models.reachable === 0 ? { kind: 'no-reachable-model' } : undefined;
 }
 
 /** Selected account plus precomputed binding rows; UI owns only rendering and local interaction. */

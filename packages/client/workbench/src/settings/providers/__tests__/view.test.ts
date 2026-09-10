@@ -1,10 +1,11 @@
-import type { Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
+import type { AccountModel, Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { updateAccountFromDraft } from '../add-flow';
 import {
   accountConfigSnippet,
   boundAgentKinds,
   maskSecret,
+  providerAccountDetailViewModel,
   providerAccountListViewModel,
   withAccountEnabled,
   withoutAccount,
@@ -151,6 +152,39 @@ describe('view helpers', () => {
         },
       ],
     });
+  });
+
+  it('tells each agent row how much of the picked set it can actually run', () => {
+    const claudeOnly: AccountModel = {
+      id: 'anthropic/claude-sonnet-5',
+      protocols: ['openai-chat', 'anthropic'],
+    };
+    const gateway: Accounts[number] = {
+      id: 'acc_gw',
+      label: 'LinkCode Gateway',
+      createdAt: 0,
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-test' },
+      models: [
+        { id: 'openai/gpt-5.6', protocols: ['openai-chat', 'openai-responses'] },
+        claudeOnly,
+      ],
+    };
+    const codexRow = (account: Accounts[number]) =>
+      providerAccountDetailViewModel(account, undefined, undefined).agents.find(
+        ({ kind }) => kind === 'codex',
+      );
+
+    const shortfall = codexRow(gateway);
+    expect(shortfall?.models).toEqual({ picked: 2, reachable: 1 });
+    // A shortfall is not a reason the row is off, so it carries no status of its own.
+    expect(shortfall?.status).toBeUndefined();
+
+    // Pick only what codex cannot reach and the row has to say why its picker is empty.
+    const empty = codexRow({ ...gateway, models: [claudeOnly] });
+    expect(empty?.enabled).toBe(true);
+    expect(empty?.models).toEqual({ picked: 1, reachable: 0 });
+    expect(empty?.status).toEqual({ kind: 'no-reachable-model' });
   });
 
   it('updates editable account fields without replacing its identity or hidden fields', () => {

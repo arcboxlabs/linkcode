@@ -1102,6 +1102,8 @@ export const en = {
       unavailableOauth: 'Only connects to {agent}',
       unavailableProtocol: 'The endpoint protocol is incompatible with this agent',
       unavailableEndpointIncomplete: 'Endpoint details are incomplete — finish the account setup',
+      noReachableModel: 'None of the selected models speaks the protocol this agent uses',
+      modelsReachable: '{reachable} of {picked} selected models work with this agent',
       configPreview: 'config.json snippet · what this account writes',
       configPreviewEmpty: '// not connected to any agent yet',
       remove: 'Remove account',

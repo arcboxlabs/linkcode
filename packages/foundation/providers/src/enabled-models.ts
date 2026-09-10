@@ -46,6 +46,26 @@ function modelReachable(model: AccountModel, protocol: AccountProtocol | undefin
   );
 }
 
+/** How much of an account's picked set one agent can actually run: `picked` is the stored set,
+ * `reachable` the part the protocol this agent binds answers. Counting rather than filtering is
+ * what Settings needs — it names the shortfall next to the agent's own switch, and a set with no
+ * `protocols` at all counts as fully reachable, matching `enabledAccountModels` and keeping an
+ * un-probed account silent instead of alarming. */
+export function accountModelReach(
+  account: Account,
+  kind: AgentKind,
+): { picked: number; reachable: number } {
+  const models = account.models ?? [];
+  const protocol = boundProtocol(resolveBinding(account, kind));
+  return {
+    picked: models.length,
+    reachable: models.reduce(
+      (count, model) => (modelReachable(model, protocol) ? count + 1 : count),
+      0,
+    ),
+  };
+}
+
 function resolvedAccounts(
   accounts: Accounts,
   providers: ProvidersConfig | undefined,
