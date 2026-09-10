@@ -5,10 +5,12 @@ import type {
   SessionId,
   SessionInfo,
   SessionModeId,
+  TurnId,
   WorkspaceId,
 } from '@linkcode/schema';
 import {
   deleteSession,
+  forkSession,
   listSessions,
   resumeSessionWithWarnings,
   startSessionWithWarnings,
@@ -58,6 +60,16 @@ export interface WorkbenchSessions {
   }) => Promise<SessionId>;
   /** Stop the session if live and remove it from the list; re-importable from provider history. */
   close: (id: SessionId) => void;
+  /** Fork a live child off a session through one of its turns and select it; the source stays as
+   * it was. Rejections propagate to the caller (the view stays put) and reach `onError`. */
+  fork: (
+    sourceSessionId: SessionId,
+    throughTurnId: TurnId,
+    expectedGraphRevision: number,
+  ) => Promise<SessionId>;
+  /** A fork is in flight: the daemon holds the source's operation slot until it lands, so the
+   * affordance must not offer a second one meanwhile. */
+  forking: boolean;
   /** Revalidate the session list — the cue for a mutation made outside this hook (e.g. an import). */
   refresh: () => void;
 }
@@ -75,6 +87,7 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   const tMcpWarnings = useTranslations('workbench.mcpWarnings');
   const { data: remoteSessions, isLoading, mutate } = useData(listSessions, {});
   const createMutation = useMutation(startSessionWithWarnings, { onError });
+  const forkMutation = useMutation(forkSession, { onError });
   const closeMutation = useMutation(deleteSession, { onError });
   const resumeMutation = useMutation(resumeSessionWithWarnings, { onError });
   const selectedId = useSessionSelectionStore((state) => state.selectedId);
@@ -233,6 +246,25 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     return sessionId;
   }
 
+  async function fork(
+    sourceSessionId: SessionId,
+    throughTurnId: TurnId,
+    expectedGraphRevision: number,
+  ): Promise<SessionId> {
+    const from = currentLocation;
+    const { sessionId, mcpWarnings } = await forkMutation.trigger({
+      sourceSessionId,
+      throughTurnId,
+      expectedGraphRevision,
+    });
+    showMcpWarnings(mcpWarnings, tMcpWarnings);
+    // Mutate before selecting to avoid a flash of the previous session.
+    await mutate().catch(noop);
+    recordNavigation(from, { surface: 'thread', sessionId });
+    setSelectedId(sessionId);
+    return sessionId;
+  }
+
   function close(id: SessionId): void {
     // Closing the open thread drops back to the New Session landing; closing any other thread
     // leaves the current selection untouched.
@@ -265,6 +297,8 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
     goForward,
     create,
     close,
+    fork,
+    forking: forkMutation.isMutating,
     refresh,
   };
 }

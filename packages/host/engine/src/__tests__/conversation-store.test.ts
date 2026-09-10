@@ -55,6 +55,16 @@ function openOperation(operationId: string, sessionId: string): ConversationOper
   });
 }
 
+function openFork(operationId: string, sessionId: string) {
+  return {
+    operationId: OperationIdSchema.parse(operationId),
+    sessionId: SessionIdSchema.parse(sessionId),
+    kind: 'session.fork' as const,
+    state: 'open' as const,
+    createdAt: 1,
+  };
+}
+
 describe('InMemoryConversationStore', () => {
   it('persists a turn intent as one unit and resolves its operation', async () => {
     const store = new InMemoryConversationStore();
@@ -274,5 +284,122 @@ describe('InMemoryConversationStore', () => {
     expect(await store.listTurns(SessionIdSchema.parse('s-1'))).toEqual([
       { ...persisted, state: 'failed' },
     ]);
+  });
+
+  it('a turn-less operation respects the open-operation gate and a replayed id', async () => {
+    const store = new InMemoryConversationStore();
+    const fork = openFork('op-fork', 's-1');
+    await store.persistOperation(fork);
+
+    expect(await store.listOpenOperations(SessionIdSchema.parse('s-1'))).toEqual([fork]);
+    await expect(
+      store.persistTurnIntent({
+        turn: turn({ turnId: 't-1', sessionId: 's-1' }),
+        operation: openOperation('op-1', 's-1'),
+      }),
+    ).rejects.toBeInstanceOf(ConversationSessionBusyError);
+    await expect(store.persistOperation(openFork('op-fork-2', 's-1'))).rejects.toBeInstanceOf(
+      ConversationSessionBusyError,
+    );
+    await store.resolveOperation({
+      ...fork,
+      state: 'failed',
+      error: { code: 'unsupported', message: 'no checkpoint' },
+      resolvedAt: 2,
+    });
+    await expect(store.persistOperation(fork)).rejects.toThrow('already persisted');
+  });
+
+  it('commitFork writes the child turns with the operation exactly once', async () => {
+    const store = new InMemoryConversationStore();
+    const shared = prompt('p-shared');
+    await store.persistTurnIntent({
+      turn: turn({ turnId: 't-source', sessionId: 's-source', promptId: 'p-shared' }),
+      prompt: shared,
+      operation: openOperation('op-1', 's-source'),
+    });
+    await store.resolveOperation({
+      ...openOperation('op-1', 's-source'),
+      state: 'succeeded',
+      turnId: TurnIdSchema.parse('t-source'),
+      resolvedAt: 2,
+    });
+    const fork = openFork('op-fork', 's-source');
+    await store.persistOperation(fork);
+    const copied = turn({
+      turnId: 't-copied',
+      sessionId: 's-child',
+      promptId: 'p-shared',
+      state: 'completed',
+    });
+    const child = {
+      sessionId: SessionIdSchema.parse('s-child'),
+      kind: 'claude-code' as const,
+      cwd: '/repo',
+      origin: { type: 'created' as const },
+      createdAt: 3,
+      updatedAt: 3,
+      runs: [],
+      graphRevision: 0,
+      eventEpoch: 0,
+    };
+    const succeeded = {
+      ...fork,
+      state: 'succeeded' as const,
+      turnId: copied.turnId,
+      resolvedAt: 4,
+    };
+
+    expect(await store.commitFork({ child, turns: [copied], operation: succeeded })).toBe(true);
+    expect(await store.getTurn(copied.turnId)).toEqual(copied);
+    expect(await store.listTurns(child.sessionId)).toEqual([copied]);
+    expect(await store.getOperation(fork.operationId)).toEqual(succeeded);
+
+    // The operation already resolved: a second commit must not resurrect the fork's rows.
+    const late = turn({ turnId: 't-late', sessionId: 's-child-2', promptId: 'p-shared' });
+    expect(
+      await store.commitFork({
+        child: { ...child, sessionId: SessionIdSchema.parse('s-child-2') },
+        turns: [late],
+        operation: { ...succeeded, turnId: late.turnId },
+      }),
+    ).toBe(false);
+    expect(await store.getTurn(late.turnId)).toBeUndefined();
+
+    // The source's deletion leaves the child's copied prompt in place.
+    await store.deleteSession(SessionIdSchema.parse('s-source'));
+    expect(await store.getPrompt(shared.promptId)).toEqual(shared);
+  });
+
+  it('commitFork refuses a copied turn whose prompt is gone, like the SQLite foreign key', async () => {
+    const store = new InMemoryConversationStore();
+    const fork = openFork('op-fork', 's-other');
+    await store.persistOperation(fork);
+    const orphan = turn({
+      turnId: 't-orphan',
+      sessionId: 's-child',
+      promptId: 'p-gone',
+      state: 'completed',
+    });
+
+    await expect(
+      store.commitFork({
+        child: {
+          sessionId: SessionIdSchema.parse('s-child'),
+          kind: 'claude-code',
+          cwd: '/repo',
+          origin: { type: 'created' },
+          createdAt: 3,
+          updatedAt: 3,
+          runs: [],
+          graphRevision: 0,
+          eventEpoch: 0,
+        },
+        turns: [orphan],
+        operation: { ...fork, state: 'succeeded', turnId: orphan.turnId, resolvedAt: 4 },
+      }),
+    ).rejects.toThrow('no longer exists');
+    expect(await store.getOperation(fork.operationId)).toEqual(fork);
+    expect(await store.getTurn(orphan.turnId)).toBeUndefined();
   });
 });

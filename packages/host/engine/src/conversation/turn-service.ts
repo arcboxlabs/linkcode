@@ -25,16 +25,18 @@ import type { AttachmentStore } from '../attachment/attachment-store';
 import { InMemoryAttachmentStore } from '../attachment/attachment-store';
 import { OperationError, RequestError } from '../failure';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
-import type { ConversationStore } from './conversation-store';
+import type { ConversationForkCommit, ConversationStore } from './conversation-store';
 import { ConversationSessionBusyError } from './conversation-store';
 
 export function mintOperationId(): OperationId {
   return `op-${randomUUID()}` as OperationId;
 }
 
-function mintTurnId(): TurnId {
+export function mintTurnId(): TurnId {
   return `turn-${randomUUID()}` as TurnId;
 }
+
+type OpenOperation = Extract<ConversationOperation, { state: 'open' }>;
 
 function mintPromptId(): PromptId {
   return `prompt-${randomUUID()}` as PromptId;
@@ -126,6 +128,10 @@ export class ConversationTurnService {
 
   listTurns(sessionId: SessionId): Effect.Effect<ConversationTurn[], OperationError> {
     return storeOperation('conversation.turns.list', () => this.store.listTurns(sessionId));
+  }
+
+  getTurn(turnId: TurnId): Effect.Effect<ConversationTurn | undefined, OperationError> {
+    return storeOperation('conversation.turn.get', () => this.store.getTurn(turnId));
   }
 
   getPrompt(promptId: PromptId): Effect.Effect<PromptRecord | undefined, OperationError> {
@@ -268,6 +274,75 @@ export class ConversationTurnService {
       this.dispatching.set(spec.sessionId, intent);
       return intent;
     });
+  }
+
+  /** The durable commit point of a session fork's admission: the open operation alone — the fork
+   * mints no turn of its own until its provider work succeeds. Busy is the store's own gate. */
+  persistOperation(operation: OpenOperation): Effect.Effect<void, OperationError | RequestError> {
+    return storeOperation('conversation.operation.persist', () =>
+      this.store.persistOperation(operation),
+    ).pipe(
+      Effect.catch((error) =>
+        Effect.fail(
+          error.cause instanceof ConversationSessionBusyError
+            ? new RequestError({
+                code: 'busy',
+                message: 'Another operation is open on this session',
+              })
+            : error,
+        ),
+      ),
+    );
+  }
+
+  /** One transaction for the fork's child rows and its operation's success; false when the
+   * operation had already resolved, in which case the child must be torn down. */
+  commitFork(commit: ConversationForkCommit): Effect.Effect<boolean, OperationError> {
+    return storeOperation('conversation.fork.commit', () => this.store.commitFork(commit));
+  }
+
+  /** Store a turn-less operation's failure. The first terminal writer stands: a loser gets the
+   * stored failure back, so the reply never differs from what a retry replays. An operation row
+   * that vanished went with its session — the only thing that deletes one. */
+  failOperation(
+    operation: OpenOperation,
+    error: TurnFailure,
+  ): Effect.Effect<TurnFailure, OperationError> {
+    const failed = {
+      ...operation,
+      state: 'failed' as const,
+      error: { code: error.code, message: error.message },
+      resolvedAt: Date.now(),
+    };
+    return storeOperation('conversation.operation.resolve', () =>
+      this.store.resolveOperation(failed),
+    ).pipe(
+      Effect.flatMap((transitioned) => {
+        if (transitioned) return Effect.succeed(error);
+        return this.getOperation(operation.operationId).pipe(
+          Effect.flatMap((stored) => {
+            if (stored === undefined) {
+              return Effect.succeed({
+                code: 'not_found',
+                message: 'The source session was deleted',
+              });
+            }
+            if (stored.state === 'open') {
+              return Effect.fail(
+                new OperationError({
+                  subsystem: 'store',
+                  operation: 'conversation.operation.resolve',
+                  publicMessage: 'The operation resolution was lost',
+                  cause: undefined,
+                }),
+              );
+            }
+            // A single-writer saga cannot lose to its own success; the given error stands then.
+            return Effect.succeed(stored.state === 'failed' ? stored.error : error);
+          }),
+        );
+      }),
+    );
   }
 
   /** The adapter announced `running` for `runId`'s dispatching turn: track it in memory only. A
@@ -429,7 +504,10 @@ export class ConversationTurnService {
             state: 'failed',
             error: {
               code: 'operation_failed',
-              message: 'The daemon restarted before the turn was dispatched',
+              message:
+                operation.kind === 'session.fork'
+                  ? 'The daemon restarted before the fork completed'
+                  : 'The daemon restarted before the turn was dispatched',
             },
             resolvedAt,
           }),

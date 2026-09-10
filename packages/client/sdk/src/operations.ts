@@ -3,6 +3,7 @@ import type {
   HistoryReadClientOptions,
   PluginList,
   PluginMutation,
+  SessionForkResult,
   SessionStartResult,
 } from '@linkcode/client-core';
 import type {
@@ -56,6 +57,7 @@ import type {
   StandaloneSkill,
   StandaloneSkillScope,
   StartOptions,
+  TurnId,
   WorkspaceFile,
   WorkspaceId,
   WorkspaceKind,
@@ -133,6 +135,20 @@ export function resumeSessionWithWarnings(
   options: Options<{ sessionId: SessionId }>,
 ): RequestResult<SessionStartResult> {
   return resolveClient(options).resumeSessionWithWarnings(options.sessionId);
+}
+
+export function forkSession(
+  options: Options<{
+    sourceSessionId: SessionId;
+    throughTurnId: TurnId;
+    expectedGraphRevision: number;
+  }>,
+): RequestResult<SessionForkResult> {
+  return resolveClient(options).forkSession(
+    options.sourceSessionId,
+    options.throughTurnId,
+    options.expectedGraphRevision,
+  );
 }
 
 export function importSession(

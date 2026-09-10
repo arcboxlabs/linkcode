@@ -38,6 +38,9 @@ export type SessionRunIntent = Omit<SessionPinnedRun, 'accountId'>;
 
 export class SessionRecordRegistry {
   private readonly records = new Map<SessionId, SessionRecord>();
+  /** Records held in memory ahead of their durable creation (a fork child mid-saga): events bind
+   * to them, but nothing persists or announces them until the creating transaction commits. */
+  private readonly provisional = new Set<SessionId>();
   private runTask: RunTask | undefined;
 
   /** `onChanged` fires for membership and identity only — never for recency, which would turn a
@@ -97,7 +100,11 @@ export class SessionRecordRegistry {
   }
 
   list(statusOf: (sessionId: SessionId) => SessionInfo['status'] | undefined): SessionInfo[] {
-    return Array.from(this.records.values(), (record) => ({
+    const listed: SessionRecord[] = [];
+    for (const record of this.records.values()) {
+      if (!this.provisional.has(record.sessionId)) listed.push(record);
+    }
+    return listed.map((record) => ({
       sessionId: record.sessionId,
       kind: record.kind,
       cwd: record.cwd,
@@ -118,7 +125,34 @@ export class SessionRecordRegistry {
   register(record: SessionRecord): void {
     this.records.set(record.sessionId, record);
     this.persist(record);
-    this.onChanged(record.sessionId, 'created');
+    this.announce(record.sessionId, 'created');
+  }
+
+  /** Hold a record that a transaction elsewhere will create: live events bind to it (history id,
+   * run identity), `list()` hides it, and {@link persist} skips it until {@link commitProvisional}. */
+  registerProvisional(record: SessionRecord): void {
+    this.provisional.add(record.sessionId);
+    this.records.set(record.sessionId, record);
+  }
+
+  /** The creating transaction committed: announce the record and resume persisting it (the
+   * upsert also carries anything that bound to it since the transaction's snapshot). */
+  commitProvisional(sessionId: SessionId): void {
+    const record = this.records.get(sessionId);
+    if (!record || !this.provisional.delete(sessionId)) return;
+    this.persist(record);
+    this.announce(sessionId, 'created');
+  }
+
+  isProvisional(sessionId: SessionId): boolean {
+    return this.provisional.has(sessionId);
+  }
+
+  /** The creating transaction never happened: the record was never durable, so nothing announces
+   * its removal. */
+  discardProvisional(sessionId: SessionId): void {
+    if (!this.provisional.delete(sessionId)) return;
+    this.records.delete(sessionId);
   }
 
   /** Imported records have no live adapter, so a store failure remains request-fatal. */
@@ -129,7 +163,7 @@ export class SessionRecordRegistry {
       Effect.tap(() =>
         Effect.sync(() => {
           this.records.set(record.sessionId, record);
-          this.onChanged(record.sessionId, 'created');
+          this.announce(record.sessionId, 'created');
         }),
       ),
     );
@@ -143,7 +177,7 @@ export class SessionRecordRegistry {
       Effect.tap(() =>
         Effect.sync(() => {
           this.records.delete(sessionId);
-          this.onChanged(sessionId, 'removed');
+          this.announce(sessionId, 'removed');
         }),
       ),
     );
@@ -157,7 +191,7 @@ export class SessionRecordRegistry {
     if (!record || !run || run.historyId === historyId) return;
     run.historyId = historyId;
     this.persist(record);
-    this.onChanged(sessionId, 'updated');
+    this.announce(sessionId, 'updated');
   }
 
   /**
@@ -248,7 +282,7 @@ export class SessionRecordRegistry {
     // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
     // must revalidate. Nothing else announces a relaunch: it sends no `session.started`, and a
     // resumed run already carries the historyId that would otherwise notify via `bindHistoryId`.
-    this.onChanged(sessionId, 'updated');
+    this.announce(sessionId, 'updated');
     return runId;
   }
 
@@ -270,7 +304,7 @@ export class SessionRecordRegistry {
     if (title === undefined) return;
     record.title = title;
     this.persist(record);
-    this.onChanged(sessionId, 'updated');
+    this.announce(sessionId, 'updated');
   }
 
   setProviderTitle(sessionId: SessionId, title: string): void {
@@ -282,7 +316,7 @@ export class SessionRecordRegistry {
     }
     record.title = normalized;
     this.persist(record);
-    this.onChanged(sessionId, 'updated');
+    this.announce(sessionId, 'updated');
   }
 
   historyId(sessionId: SessionId): AgentHistoryId | undefined {
@@ -313,8 +347,16 @@ export class SessionRecordRegistry {
     return isObjectEmpty(pin) ? undefined : pin;
   }
 
+  /** A provisional record has no listing to invalidate: nothing about it reaches clients until it
+   * commits. */
+  private announce(sessionId: SessionId, reason: SessionChangeReason): void {
+    if (this.provisional.has(sessionId)) return;
+    this.onChanged(sessionId, reason);
+  }
+
   /** The in-memory record is authoritative while running; persistence is best-effort. */
   private persist(record: SessionRecord): void {
+    if (this.provisional.has(record.sessionId)) return;
     record.updatedAt = Date.now();
     const runTask = nullthrow(this.runTask, 'Session record registry is not started');
     runTask(

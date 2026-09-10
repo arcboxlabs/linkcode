@@ -38,6 +38,7 @@ export {
 } from './message';
 export { WIRE_PAYLOAD_KINDS, type WirePayload, WirePayloadSchema } from './payload';
 export {
+  SESSION_FORK_WIRE_VERSION,
   type SessionChangeReason,
   SessionChangeReasonSchema,
   type SessionSubscriptionMode,

@@ -68,6 +68,7 @@ import type {
   StartOptions,
   TerminalMetadata,
   TerminalReplayEvent,
+  TurnId,
   TurnSubmitInput,
   UploadId,
   WireMessage,
@@ -81,6 +82,7 @@ import {
   ATTACHMENT_STORE_WIRE_VERSION,
   CONVERSATION_GRAPH_WIRE_VERSION,
   MIN_COMPATIBLE_WIRE_VERSION,
+  SESSION_FORK_WIRE_VERSION,
   WIRE_PROTOCOL_VERSION,
 } from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
@@ -121,6 +123,7 @@ import type {
   PluginMutation,
   RandomUUID,
   RequestAck,
+  SessionForkResult,
   SessionStartResult,
   TurnSubmitResult,
 } from './client/pending-registry';
@@ -149,6 +152,7 @@ export type {
   ConversationReadPage,
   PluginList,
   PluginMutation,
+  SessionForkResult,
   SessionStartResult,
   TurnSubmitResult,
 } from './client/pending-registry';
@@ -361,6 +365,11 @@ export class LinkCodeClient {
     return this.peerWire !== null && this.peerWire.version >= ATTACHMENT_STORE_WIRE_VERSION;
   }
 
+  /** Whether the host answers `session.fork`; an older host would drop the frame unanswered. */
+  get supportsSessionFork(): boolean {
+    return this.peerWire !== null && this.peerWire.version >= SESSION_FORK_WIRE_VERSION;
+  }
+
   private async handshake(): Promise<void> {
     let settled = false;
     let cancelTimer: () => void = noop;
@@ -459,6 +468,12 @@ export class LinkCodeClient {
         break;
       case 'session.imported':
         this.pending.resolve('import', p.replyTo, p.record);
+        break;
+      case 'session.forked':
+        this.pending.resolve('fork', p.replyTo, {
+          sessionId: p.sessionId,
+          mcpWarnings: p.mcpWarnings ?? [],
+        });
         break;
       case 'history.listed':
         this.pending.resolve('historyList', p.replyTo, p.result);
@@ -820,6 +835,23 @@ export class LinkCodeClient {
 
   importSession(agentKind: AgentKind, historyId: AgentHistoryId): Promise<SessionRecord> {
     return this.control.importSession(agentKind, historyId);
+  }
+
+  /** See {@link ControlChannel.forkSession}. Refuses typed before any frame leaves when the host
+   * predates `session.fork`, which would otherwise drop the request unanswered. */
+  forkSession(
+    sourceSessionId: SessionId,
+    throughTurnId: TurnId,
+    expectedGraphRevision: number,
+  ): Promise<SessionForkResult> {
+    if (!this.supportsSessionFork) {
+      return Promise.reject(
+        Object.assign(new Error('The host does not support forking sessions'), {
+          code: 'unsupported',
+        }),
+      );
+    }
+    return this.control.forkSession(sourceSessionId, throughTurnId, expectedGraphRevision);
   }
 
   listHistory(

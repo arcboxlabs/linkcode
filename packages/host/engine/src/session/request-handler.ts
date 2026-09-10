@@ -3,6 +3,7 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { WireResponder } from '../wire/responder';
+import type { SessionForkService } from './fork-service';
 import type { SessionLifecycleService } from './lifecycle-service';
 import type { SessionOrchestrator } from './orchestrator';
 
@@ -17,6 +18,7 @@ type SessionRequest = Extract<
       | 'session.list'
       | 'session.resume'
       | 'session.import'
+      | 'session.fork'
       | 'session.attach'
       | 'session.detach';
   }
@@ -29,6 +31,7 @@ export class SessionRequestHandler {
     private readonly lifecycle: SessionLifecycleService,
     private readonly sessions: SessionOrchestrator,
     private readonly responder: WireResponder,
+    private readonly forks: SessionForkService,
   ) {}
 
   handle(payload: SessionRequest): Effect.Effect<void> {
@@ -102,6 +105,43 @@ export class SessionRequestHandler {
               ),
             ),
           ),
+        );
+      case 'session.fork':
+        return this.responder.reply(
+          payload.clientReqId,
+          this.forks
+            .forkSession({
+              sourceSessionId: payload.sourceSessionId,
+              throughTurnId: payload.throughTurnId,
+              operationId: payload.operationId,
+              expectedGraphRevision: payload.expectedGraphRevision,
+            })
+            .pipe(
+              Effect.flatMap((result) =>
+                Effect.sync(() => {
+                  // A stored failure replays verbatim: its code/message ARE the terminal result.
+                  this.transport.send(
+                    createWireMessage(
+                      result.state === 'succeeded'
+                        ? {
+                            kind: 'session.forked',
+                            replyTo: payload.clientReqId,
+                            sessionId: result.sessionId,
+                            ...(result.mcpWarnings.length > 0 && {
+                              mcpWarnings: [...result.mcpWarnings],
+                            }),
+                          }
+                        : {
+                            kind: 'request.failed',
+                            replyTo: payload.clientReqId,
+                            code: result.error.code,
+                            message: result.error.message,
+                          },
+                    ),
+                  );
+                }),
+              ),
+            ),
         );
       case 'session.attach':
         // The Hub already attached this connection. Replay state that history cannot recover;

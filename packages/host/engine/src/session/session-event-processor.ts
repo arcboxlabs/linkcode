@@ -179,7 +179,8 @@ export class SessionEventProcessor {
   private notify(sessionId: SessionId, event: AgentEvent): void {
     const reason = notificationReason(event);
     const record = this.records.get(sessionId);
-    if (!reason || !record) return;
+    // A provisional record (a fork child mid-saga) is in no client's list yet.
+    if (!reason || !record || this.records.isProvisional(sessionId)) return;
     this.transport.send(
       createWireMessage({
         kind: 'session.notification',

@@ -97,11 +97,13 @@ export const ProviderTurnBindingSchema = z.object({
 });
 export type ProviderTurnBinding = z.infer<typeof ProviderTurnBindingSchema>;
 
-export const ConversationOperationKindSchema = z.enum(['turn.submit']);
+export const ConversationOperationKindSchema = z.enum(['turn.submit', 'session.fork']);
 export type ConversationOperationKind = z.infer<typeof ConversationOperationKindSchema>;
 
 /** Durable idempotency journal for conversation mutations: consulted before any validation, so a
- * reply lost to a disconnect replays the terminal result instead of duplicating a sibling. */
+ * reply lost to a disconnect replays the terminal result instead of duplicating a sibling (or a
+ * forked session). A succeeded `session.fork` names the child's copied leaf as its `turnId` — the
+ * turn row's `sessionId` is the forked session. */
 export const ConversationOperationSchema = z.discriminatedUnion('state', [
   z.object({
     operationId: OperationIdSchema,
