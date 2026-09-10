@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { LinkCodeClient, useLinkCodeClient } from '@linkcode/client-core';
-import { listSessions } from '@linkcode/sdk';
+import { listSessions, listWorkspaces } from '@linkcode/sdk';
 import { cleanup, renderHook, waitFor } from '@testing-library/react';
 import { createFixedArray } from 'foxts/create-fixed-array';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -32,35 +32,53 @@ function useSidebarInputs() {
   return { client: useLinkCodeClient(), workspaces, sessions };
 }
 
-afterEach(cleanup);
+function useLazySidebarInputs() {
+  const { data: workspaces } = useData(listWorkspaces, () => ({}));
+  const { data: sessions } = useData(listSessions, () => ({}));
+  return { client: useLinkCodeClient(), workspaces, sessions };
+}
+
+afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+});
 
 // The mock host answers every control request after a scripted latency; each step here is one or
 // more of those round trips.
 const STEP_TIMEOUT = { timeout: 4000 };
 
-it('lists the workspace another client created by starting a session in it', async () => {
-  const { result } = renderHook(useSidebarInputs, { wrapper: Runtime });
-  await waitFor(() => expect(result.current.workspaces).toBeDefined(), STEP_TIMEOUT);
-  const cwd = '/mock/elsewhere/new-repo';
-  expect(result.current.workspaces?.map((workspace) => workspace.cwd)).not.toContain(cwd);
+it.each([
+  { keyForm: 'object', useInputs: useSidebarInputs },
+  { keyForm: 'lazy', useInputs: useLazySidebarInputs },
+])(
+  'refreshes $keyForm keys when another client starts a session',
+  async ({ useInputs }) => {
+    const { result } = renderHook(useInputs, { wrapper: Runtime });
+    await waitFor(() => expect(result.current.workspaces).toBeDefined(), STEP_TIMEOUT);
+    const cwd = '/mock/elsewhere/new-repo';
+    expect(result.current.workspaces?.map((workspace) => workspace.cwd)).not.toContain(cwd);
 
-  // Bypassing the workbench's own create path stands in for another client: this client only
-  // learns about the session from the host's pushed frames.
-  const sessionId = await result.current.client.startSession({ kind: 'claude-code', cwd });
+    // Bypassing the workbench's own create path stands in for another client: this client only
+    // learns about the session from the host's pushed frames.
+    const sessionId = await result.current.client.startSession({ kind: 'claude-code', cwd });
 
-  await waitFor(() => {
-    expect(result.current.workspaces?.map((workspace) => workspace.cwd)).toContain(cwd);
-    expect(result.current.sessions?.map((session) => session.sessionId)).toContain(sessionId);
-  }, STEP_TIMEOUT);
-}, 15000);
+    await waitFor(() => {
+      expect(result.current.workspaces?.map((workspace) => workspace.cwd)).toContain(cwd);
+      expect(result.current.sessions?.map((session) => session.sessionId)).toContain(sessionId);
+    }, STEP_TIMEOUT);
+  },
+  15000,
+);
 
 it('collapses a burst of pushes instead of one round trip per frame', async () => {
   const listSpy = vi.spyOn(LinkCodeClient.prototype, 'listSessions');
+  const workspaceSpy = vi.spyOn(LinkCodeClient.prototype, 'listWorkspaces');
   const { result } = renderHook(useSidebarInputs, { wrapper: Runtime });
   await waitFor(() => expect(result.current.workspaces).toBeDefined(), STEP_TIMEOUT);
 
   const starts = 6;
   listSpy.mockClear();
+  workspaceSpy.mockClear();
   const ids = await Promise.all(
     createFixedArray(starts).map((index) =>
       result.current.client.startSession({
@@ -72,11 +90,14 @@ it('collapses a burst of pushes instead of one round trip per frame', async () =
 
   await waitFor(() => {
     const listed = result.current.sessions?.map((session) => session.sessionId) ?? [];
-    for (let i = 0, len = ids.length; i < len; i++) expect(listed).toContain(ids[i]);
+    const workspaces = result.current.workspaces?.map((workspace) => workspace.cwd) ?? [];
+    for (let i = 0, len = ids.length; i < len; i++) {
+      expect(listed).toContain(ids[i]);
+      expect(workspaces).toContain(`/mock/elsewhere/burst-${i}`);
+    }
   }, STEP_TIMEOUT);
 
-  // Uncoalesced this is 1:1 with the frames (the engine emits several per start, and SWR's
-  // key-filter mutate deletes its own dedupe markers), so the ceiling is the guard.
-  expect(listSpy.mock.calls.length).toBeLessThan(starts);
-  listSpy.mockRestore();
+  // All starts complete within the mock's list latency: one in-flight fetch plus one trailing.
+  expect(listSpy.mock.calls.length).toBeLessThanOrEqual(2);
+  expect(workspaceSpy.mock.calls.length).toBeLessThanOrEqual(2);
 }, 15000);

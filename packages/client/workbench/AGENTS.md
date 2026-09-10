@@ -38,6 +38,10 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   per entry, and SWR's key-filter `mutate` deletes its own dedupe markers, so an uncoalesced
   subscription turns a burst into one forced round trip per frame per list. It does not own
   connection state.
+- The dev mock announces imports before touching the workspace, matching the engine's order,
+  but its synchronous touch cannot reproduce the engine's async import race. Mock tests prove
+  start-driven revalidation only. The mock has no `session.delete` handler and therefore no
+  `session.changed` `removed` emission; deletion-driven revalidation needs separate coverage.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
