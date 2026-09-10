@@ -1090,6 +1090,7 @@ export class DevMockHost {
       return;
     }
     session.status = 'idle';
+    this.touchWorkspace(session.cwd, Date.now());
     // Parity with the engine: a relaunch appends a run, which re-points the listed identity.
     this.send({ kind: 'session.changed', sessionId, reason: 'updated' });
     this.attachSession(sessionId);

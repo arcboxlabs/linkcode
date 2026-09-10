@@ -216,8 +216,17 @@ function HostRevalidator({
 
   const client = generation.client.raw;
   useEffect(
-    () => client.subscribeSessionChanged(coalesceRuns(() => mutate(isHostListKey))),
-    [client, mutate],
+    (signal) =>
+      client.subscribeSessionChanged(
+        coalesceRuns(async () => {
+          // Recovery retains disposed generations in React until a replacement is ready.
+          const snapshot = controller.getSnapshot();
+          if (snapshot.status === 'ready' && snapshot.contextGeneration?.id === generation.id) {
+            await mutate(isHostListKey);
+          }
+        }, signal),
+      ),
+    [client, controller, generation.id, mutate],
   );
 
   return children;

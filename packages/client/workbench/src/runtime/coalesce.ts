@@ -1,13 +1,10 @@
 import { noop } from 'foxts/noop';
 
 /**
- * Collapse a burst of triggers into one in-flight run plus at most one trailing run. A trigger
- * arriving mid-run must still cause another run: the one in flight may have read state older than
- * the event that triggered it. A failed run does not abort the drain — the caller's own error
- * pipeline reports it, and dropping the trailing run would leave exactly the staleness the caller
- * is revalidating away.
+ * Mid-run triggers need one trailing run; abort discards it without cancelling active work.
+ * The caller owns error reporting; a failed run still drains queued changes unless aborted.
  */
-export function coalesceRuns(run: () => Promise<unknown>): () => void {
+export function coalesceRuns(run: () => Promise<unknown>, signal: AbortSignal): () => void {
   let running = false;
   let queued = false;
 
@@ -25,13 +22,14 @@ export function coalesceRuns(run: () => Promise<unknown>): () => void {
       do {
         // eslint-disable-next-line no-await-in-loop -- serializing is the point: one run at a time
         await run().catch(noop);
-      } while (takeQueued());
+      } while (!signal.aborted && takeQueued());
     } finally {
       running = false;
     }
   };
 
   return () => {
+    if (signal.aborted) return;
     if (running) {
       queued = true;
       return;
