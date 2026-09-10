@@ -617,6 +617,39 @@ describe('engine managed worktree leases', () => {
     }
   });
 
+  it('refuses to fork a session whose managed worktree is missing on disk', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      const turnId = await checkpointedTurn(h, source, sourceId, 't1');
+      // The user removed the directory by hand; the lease is still held, so the store would grant
+      // the child a lease on a path the adapter cannot start in.
+      const [worktree] = (await worktreeStore.load()).worktrees;
+      rmSync(worktree.worktreePath, { recursive: true, force: true });
+
+      const forked = await fork(h, 'fork', sourceId, turnId, 1);
+      expect(forked).toMatchObject({
+        kind: 'request.failed',
+        code: 'worktree_missing',
+        message: `The managed worktree is missing at ${worktree.worktreePath}. Restore it or delete this session.`,
+      });
+      expect((await worktreeStore.load()).leases).toMatchObject([{ sessionId: sourceId }]);
+      const forkedChild = h.adapters.find(
+        (adapter) => adapter !== source && adapter.startedWith !== null,
+      );
+      expect(forkedChild).toBeUndefined();
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
   it('lets only one leaseholder run a turn at a time', async () => {
     const repo = makeRepo();
     const worktreeStore = new InMemoryWorktreeStore();
