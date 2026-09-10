@@ -597,7 +597,16 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** Reflect the served model the CLI reports (init message + every assistant frame) so the client
    * shows the true model even when the session started without a requested one. */
   private syncModel(model: string | undefined): void {
-    if (model) this.emitModel(model);
+    if (model) this.emitModel(this.advertisedModelId(model));
+  }
+
+  /** The served id in the client's own vocabulary: a gateway account picks provider-qualified ids
+   * while the vendor echoes its bare slug, and emitting both leaves the picker unable to match. */
+  private advertisedModelId(served: string): string {
+    const picked = this.opts?.model;
+    if (picked === undefined || served.includes('/')) return served;
+    const qualifier = picked.slice(0, Math.max(0, picked.indexOf('/')));
+    return qualifier ? `${qualifier}/${served}` : served;
   }
 
   /** Read-only `Stop` hook: learns the CLI's *resolved* effort after any per-model downgrade. The
