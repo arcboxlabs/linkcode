@@ -673,6 +673,69 @@ describe('ClaudeCodeAdapter model/effort reflection', () => {
     });
   });
 
+  it('reports the served model in the vocabulary the client picked from', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({
+      kind: 'claude-code',
+      cwd: '/tmp/repo',
+      model: 'anthropic/claude-sonnet-5',
+    });
+    await prompt(adapter);
+    // A gateway forwards the bare vendor slug upstream and never rewrites the response, so the
+    // real Anthropic echo carries the unprefixed id the picker cannot match.
+    queries[0].push({
+      type: 'system',
+      subtype: 'init',
+      permissionMode: 'default',
+      model: 'claude-sonnet-5',
+    });
+    queries[0].push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      uuid: 'uuid-1',
+      message: {
+        model: 'claude-sonnet-5',
+        content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'tool-call')).toBe(true);
+    });
+
+    expect(events.filter((event) => event.type === 'model-update')).toEqual([
+      { type: 'model-update', model: 'anthropic/claude-sonnet-5' },
+    ]);
+    await adapter.stop();
+  });
+
+  it('leaves the served model alone for an account whose ids are already unprefixed', async () => {
+    const adapter = new ClaudeCodeAdapter();
+    const events: AgentEvent[] = [];
+    adapter.onEvent((event) => events.push(event));
+    await adapter.start({ kind: 'claude-code', cwd: '/tmp/repo', model: 'claude-sonnet-5' });
+    await prompt(adapter);
+    queries[0].push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      uuid: 'uuid-1',
+      message: {
+        model: 'claude-opus-4-8',
+        content: [{ type: 'tool_use', id: 'toolu_1', name: 'Read', input: {} }],
+      },
+    });
+    await vi.waitFor(() => {
+      expect(events.some((event) => event.type === 'tool-call')).toBe(true);
+    });
+
+    expect(events.filter((event) => event.type === 'model-update')).toEqual([
+      { type: 'model-update', model: 'claude-sonnet-5' },
+      { type: 'model-update', model: 'claude-opus-4-8' },
+    ]);
+    await adapter.stop();
+  });
+
   it('reconciles the displayed effort with what the Stop hook says actually ran', async () => {
     const { adapter, events } = await makeAdapter();
     await prompt(adapter);
