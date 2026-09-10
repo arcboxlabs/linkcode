@@ -66,16 +66,22 @@ describe('copyClaudeSubagentTranscripts', () => {
     ]);
   });
 
-  it('copies nothing for an unknown child, a missing projects dir, or a path-shaped id', async () => {
+  it('refuses an unknown child, a missing projects dir, or a path-shaped id instead of skipping quietly', async () => {
     const projects = await projectsDir();
     await transcript(projects, '-Users-me-repo', 'source');
     await subagent(projects, '-Users-me-repo', 'source', 'a1');
 
-    expect(await copyClaudeSubagentTranscripts(projects, 'source', 'child')).toBe(false);
-    expect(
-      await copyClaudeSubagentTranscripts(path.join(projects, 'nope'), 'source', 'child'),
-    ).toBe(false);
-    expect(await copyClaudeSubagentTranscripts(projects, '../source', 'child')).toBe(false);
-    expect(await copyClaudeSubagentTranscripts(projects, 'source', '../../child')).toBe(false);
+    await expect(copyClaudeSubagentTranscripts(projects, 'source', 'child')).rejects.toThrow(
+      `transcript child not found under ${projects}`,
+    );
+    await expect(
+      copyClaudeSubagentTranscripts(path.join(projects, 'nope'), 'source', 'child'),
+    ).rejects.toThrow('transcript source not found');
+    await expect(copyClaudeSubagentTranscripts(projects, '../source', 'child')).rejects.toThrow(
+      'session id is not a path segment: ../source',
+    );
+    await expect(copyClaudeSubagentTranscripts(projects, 'source', '../../child')).rejects.toThrow(
+      'session id is not a path segment: ../../child',
+    );
   });
 });

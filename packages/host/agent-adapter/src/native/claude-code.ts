@@ -2022,20 +2022,26 @@ async function findClaudeProjectDir(
 /**
  * Copy a session's `subagents/` transcripts next to its fork child (SDK 0.3.215's `forkSession`
  * leaves them behind). Transcripts of agents spawned after the cut travel too: their spawning
- * tool_use is not in the child transcript, so they are never spliced in. Returns whether anything
- * was copied; both ids become path segments and are shape-checked first.
+ * tool_use is not in the child transcript, so they are never spliced in. Resolves false when the
+ * source has none to copy; throws when either transcript cannot be located, so the caller reports
+ * it instead of leaving the child's subagent cards silently empty.
  */
 export async function copyClaudeSubagentTranscripts(
   projectsDir: string,
   sourceId: string,
   childId: string,
 ): Promise<boolean> {
-  if (!SAFE_SESSION_ID.test(sourceId) || !SAFE_SESSION_ID.test(childId)) return false;
+  // Both ids become path segments.
+  const unsafe = [sourceId, childId].find((id) => !SAFE_SESSION_ID.test(id));
+  if (unsafe !== undefined) throw new Error(`session id is not a path segment: ${unsafe}`);
   const [sourceDir, childDir] = await Promise.all([
     findClaudeProjectDir(projectsDir, sourceId),
     findClaudeProjectDir(projectsDir, childId),
   ]);
-  if (sourceDir === undefined || childDir === undefined) return false;
+  if (sourceDir === undefined || childDir === undefined) {
+    const missing = sourceDir === undefined ? sourceId : childId;
+    throw new Error(`transcript ${missing} not found under ${projectsDir}`);
+  }
   const from = path.join(sourceDir, sourceId, 'subagents');
   try {
     await access(from);
