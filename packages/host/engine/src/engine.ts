@@ -202,6 +202,12 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     attachmentStore,
   );
   const conversationJournals = new ConversationLiveJournals();
+  const git = deps.git ?? (yield* GitService.make());
+  const worktrees = new WorktreeService(
+    deps.worktreeStore ?? new InMemoryWorktreeStore(),
+    deps.worktreeRoot,
+    git,
+  );
   const sessions = new SessionOrchestrator(
     transport,
     factory,
@@ -218,6 +224,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     conversationTurns,
     conversationJournals,
     ingest,
+    worktrees,
     deps.browserToolsEnabled
       ? () => new BrowserReplHost((op, args) => browserBroker.dispatch(op, args))
       : undefined,
@@ -241,12 +248,6 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const workspaces = new WorkspaceRegistry(deps.workspaceStore ?? new InMemoryWorkspaceStore());
   const workspaceRequests = new WorkspaceRequestHandler(transport, workspaces, responder);
-  const git = deps.git ?? (yield* GitService.make());
-  const worktrees = new WorktreeService(
-    deps.worktreeStore ?? new InMemoryWorktreeStore(),
-    deps.worktreeRoot,
-    git,
-  );
   const gitRequests = new GitRequestHandler(transport, git, responder);
   const fileSuggest = deps.fileSuggest ?? (yield* FileSuggestService.make());
   const fileRequests = new FileRequestHandler(

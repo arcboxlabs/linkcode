@@ -15,7 +15,7 @@ import type {
 import { userRowMessageId } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
-import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
+import { Cause, Deferred, Effect, Exit, Scope, Semaphore } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { AttachmentIngest } from '../attachment/ingest';
 import type { TurnResult } from '../automation/turn-watcher';
@@ -27,6 +27,7 @@ import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
 import type { ResourceService } from '../resource/service';
+import type { WorktreeService } from '../worktree/worktree-service';
 import { LiveSession } from './live-session';
 import { SessionEventProcessor } from './session-event-processor';
 import { SessionInputDispatcher } from './session-input-dispatcher';
@@ -34,6 +35,7 @@ import type { SessionRecordRegistry } from './session-record-registry';
 
 export class SessionOrchestrator {
   private readonly sessions = new Map<SessionId, LiveSession>();
+  private readonly worktreeGates = new Map<string, Semaphore.Semaphore>();
   /** Sessions mid-`delete`: a launch admitted during the delete's own store waits must not install
    * a live run whose record is about to vanish (and whose journal the final drop would take). */
   private readonly deleting = new Set<SessionId>();
@@ -52,6 +54,7 @@ export class SessionOrchestrator {
     private readonly turns: ConversationTurnService,
     private readonly journals: ConversationLiveJournals,
     private readonly ingest: AttachmentIngest,
+    private readonly worktrees: Pick<WorktreeService, 'get' | 'coLeaseholders'>,
     private readonly browserTools?: BrowserToolsetFactory,
     private readonly onRunEnded?: (sessionId: SessionId, runId: RunId) => void,
   ) {
@@ -64,7 +67,63 @@ export class SessionOrchestrator {
       turns,
       journals,
     );
-    this.inputs = new SessionInputDispatcher(records, this.events, resources, turns, ingest);
+    this.inputs = new SessionInputDispatcher(
+      records,
+      this.events,
+      resources,
+      turns,
+      ingest,
+      (sessionId, body) => this.admitTurn(sessionId, body),
+    );
+  }
+
+  /**
+   * Turn admission on a managed worktree: at most one leaseholder runs a turn, so `body` (the
+   * caller's admit-and-persist) runs under the worktree's permit after a typed `busy` for any
+   * co-leaseholder running or holding an admitted turn (its open operation) — two siblings
+   * admitted concurrently cannot both start one. Sessions without a worktree skip the permit but
+   * keep the deletion check: `delete` runs outside every caller's critical section, so the record
+   * a caller validated can be gone by the time this admits.
+   */
+  admitTurn<A, E>(
+    sessionId: SessionId,
+    body: Effect.Effect<A, E>,
+  ): Effect.Effect<A, E | RequestError | OperationError> {
+    const { deleting, records, turns, worktrees } = this;
+    const isBusy = this.isBusy.bind(this);
+    const worktree = worktrees.get(sessionId);
+    const admit = Effect.gen(function* () {
+      const siblings = worktree === undefined ? [] : worktrees.coLeaseholders(sessionId);
+      for (let i = 0, len = siblings.length; i < len; i++) {
+        const sibling = siblings[i];
+        if (isBusy(sibling) || (yield* turns.hasOpenOperation(sibling))) {
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'busy',
+              message: 'Another session on this worktree is running a turn',
+            }),
+          );
+        }
+      }
+      // Last check before anything durable is written under this session's id.
+      if (deleting.has(sessionId) || records.get(sessionId) === undefined) {
+        return yield* Effect.fail(
+          new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+        );
+      }
+      return yield* body;
+    });
+    return worktree === undefined
+      ? admit
+      : this.worktreeGate(worktree.worktreePath).withPermit(admit);
+  }
+
+  private worktreeGate(worktreePath: string): Semaphore.Semaphore {
+    const existing = this.worktreeGates.get(worktreePath);
+    if (existing) return existing;
+    const gate = Semaphore.makeUnsafe(1);
+    this.worktreeGates.set(worktreePath, gate);
+    return gate;
   }
 
   private get(sessionId: SessionId): LiveSession | undefined {
@@ -226,20 +285,28 @@ export class SessionOrchestrator {
       session.turnInputActive = true;
       const content: ContentBlock[] = [{ type: 'text', text }];
       const { ingest, records, turns } = this;
+      const admitTurn = this.admitTurn.bind(this);
       return session.run(
         Effect.gen({ self: this }, function* () {
-          if (yield* turns.hasOpenOperation(sessionId)) {
-            return yield* Effect.fail(
-              new RequestError({ code: 'busy', message: `Session is busy: ${sessionId}` }),
-            );
-          }
-          const intent = yield* turns.persistIntent({
+          // The worktree gate: an automation turn on a managed worktree is refused while a
+          // co-leaseholder runs, and its intent persists under the gate like every other turn.
+          const intent = yield* admitTurn(
             sessionId,
-            operationId: mintOperationId(),
-            runId: session.runId,
-            parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
-            input: { type: 'prompt', blocks: yield* ingest.promptBlocks(content) },
-          });
+            Effect.gen(function* () {
+              if (yield* turns.hasOpenOperation(sessionId)) {
+                return yield* Effect.fail(
+                  new RequestError({ code: 'busy', message: `Session is busy: ${sessionId}` }),
+                );
+              }
+              return yield* turns.persistIntent({
+                sessionId,
+                operationId: mintOperationId(),
+                runId: session.runId,
+                parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+                input: { type: 'prompt', blocks: yield* ingest.promptBlocks(content) },
+              });
+            }),
+          );
           const result = yield* Effect.sync(() => {
             this.events.broadcast(
               sessionId,
