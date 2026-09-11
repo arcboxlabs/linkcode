@@ -23,10 +23,9 @@ export interface PaneTransition {
 
 interface UsePaneTransitionOptions {
   open: boolean;
-  /** The pane's settled (open) size in px, from the layout store. */
-  size: number;
-  /** Writes the pane's shell CSS variable — the single geometry input for the workspace
-   * grid tracks and the titlebar chrome. */
+  /** The pane's settled size in px when the consumer owns a resizable shell track. */
+  size?: number;
+  /** Writes the pane's geometry input before paint. */
   onSizeChange?: (size: number) => void;
 }
 
@@ -92,7 +91,7 @@ export function usePaneTransition({
   // and the content locks. Sash drags write the same variable imperatively per frame and commit
   // to the store on release, which re-runs this effect with the same value.
   useLayoutEffect(() => {
-    onSizeChange?.(open ? Math.max(0, size) : 0);
+    if (size !== undefined) onSizeChange?.(open ? Math.max(0, size) : 0);
   }, [onSizeChange, open, size]);
 
   useEffect(() => {

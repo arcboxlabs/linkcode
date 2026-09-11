@@ -1,5 +1,6 @@
 import { trueFn } from 'foxts/noop';
 import { create } from 'zustand';
+import { useAutomationDraftState } from '../automations/draft-state';
 import { useSessionSelectionStore } from '../surface/selection-store';
 import type { NavHistoryStacks, NavLocation, WorkbenchOverlaySurface } from './history';
 import { recordTransition, travel } from './history';
@@ -62,6 +63,10 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
   setOverlay: (overlay) => set({ overlay }),
   openOverlay(surface) {
     if (get().overlay === surface) return;
+    if (useAutomationDraftState.getState().dirty) {
+      useAutomationDraftState.getState().request(() => get().openOverlay(surface));
+      return;
+    }
     // Module-scope callers can't see the hook's fallback-resolved thread, so the origin is the
     // open draft, the explicit selection, or nothing — Esc still visually returns either way.
     const { selectedId, draft } = useSessionSelectionStore.getState();
@@ -74,6 +79,10 @@ export const useNavigationHistoryStore = create<NavigationHistoryState>()((set, 
     set({ overlay: surface });
   },
   backFromOverlay() {
+    if (useAutomationDraftState.getState().dirty) {
+      useAutomationDraftState.getState().request(() => get().backFromOverlay());
+      return;
+    }
     const { overlay } = get();
     if (overlay === null) return;
     // Pops exactly one entry via `travel` (which keeps the bookkeeping). Overlay targets re-raise

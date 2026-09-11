@@ -142,6 +142,7 @@ Three compatibility seams move independently and must be kept in sync: **SDK/ada
 
 ## Traps
 
+- **Claude synthetic API failures** can precede a successful zero-token result. Normalize the assistant frame's `error` before model/text handling so automations fail instead of reporting empty success.
 - **Claude produces no text or tokens** → inspect the normalized error first: 401 success-results map to `authentication_failed`, non-success results retain the SDK's `errors`/`terminal_reason`/`subtype`, and a Query EOF before `result` is a recoverable failed turn rather than a blank success.
 - **Deny reason lost** → auto-denied tools never reach `canUseTool`; consume the `permission_denied` system message or the reason vanishes.
 - **claude diff wiped by result text** → settle content must use `appendToolContent`; a replacement `emitTool({content})` intentionally resets prior content.

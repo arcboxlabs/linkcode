@@ -1376,6 +1376,15 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       return;
     }
     const message = msg.message;
+    // Terminal API failures can arrive only as synthetic assistant text before a success result.
+    if (msg.error && message.model === '<synthetic>') {
+      this.emitError(
+        plainTextContent(message.content) || `Claude failed (${msg.error})`,
+        msg.error,
+        false,
+      );
+      return;
+    }
     // Every assistant frame carries the served model — the source of truth for a mid-session switch
     // (`init` fires only at Query creation, so it can't catch a live `setModel`).
     this.syncModel(message.model);

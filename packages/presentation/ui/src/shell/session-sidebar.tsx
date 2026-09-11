@@ -63,6 +63,8 @@ export interface SessionSidebarProps extends ThreadGroupActions, ThreadGroupStat
   onOpenSearch?: () => void;
   /** Opens the Automations surface — the Automations entry stays disabled without it. */
   onOpenAutomations?: () => void;
+  /** Marks Automations as the current main surface. */
+  automationsActive?: boolean;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   /** Registers a directory as a workspace — the Projects "+" menu's folder flow. */
@@ -105,6 +107,7 @@ export function SessionSidebar({
   onPickDirectory,
   onOpenSearch,
   onOpenAutomations,
+  automationsActive,
   searchShortcut,
   onRegisterWorkspace,
   onImportHistory,
@@ -149,6 +152,7 @@ export function SessionSidebar({
             <SidebarMenuButton
               className="hover:bg-transparent"
               disabled={!onOpenAutomations}
+              isActive={automationsActive}
               onClick={onOpenAutomations}
             >
               <SparklesIcon />

@@ -20,6 +20,7 @@ import { useEffect } from 'foxact/use-abortable-effect';
 import { useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { captureProductEvent } from '../analytics/product-analytics';
+import { useAutomationDraftState } from '../automations/draft-state';
 import type { NavLocation } from '../navigation/history';
 import { useNavigationHistoryStore } from '../navigation/store';
 import { useData, useMutation } from '../runtime/tayori';
@@ -156,11 +157,19 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   }
 
   function select(id: SessionId): void {
+    if (useAutomationDraftState.getState().dirty) {
+      useAutomationDraftState.getState().request(() => select(id));
+      return;
+    }
     recordNavigation(currentLocation, { surface: 'thread', sessionId: id });
     applySelection(id);
   }
 
   function startDraft(workspaceId?: WorkspaceId): void {
+    if (useAutomationDraftState.getState().dirty) {
+      useAutomationDraftState.getState().request(() => startDraft(workspaceId));
+      return;
+    }
     recordNavigation(currentLocation, { surface: 'new-thread', workspaceId: workspaceId ?? null });
     setOverlay(null);
     startExplicitDraft({ workspaceId: workspaceId ?? null });
@@ -169,6 +178,10 @@ export function useWorkbenchSessions(onError: (err: unknown) => void): Workbench
   // Threads must still exist in the list to be traversal targets (closed ones drop out of the
   // stacks on the way); the draft page and the overlay surfaces are always reachable.
   function traverse(dir: 'back' | 'forward'): void {
+    if (useAutomationDraftState.getState().dirty) {
+      useAutomationDraftState.getState().request(() => traverse(dir));
+      return;
+    }
     const target = travelHistory(dir, currentLocation, (location) =>
       location.surface === 'thread' ? sessionById(sessions, location.sessionId) !== null : true,
     );

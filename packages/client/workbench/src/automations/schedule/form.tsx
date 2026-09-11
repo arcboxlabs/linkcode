@@ -1,99 +1,100 @@
 import { zodResolver } from '@hookform/resolvers/zod';
-import type { ScheduleSpec } from '@linkcode/schema';
-import { AgentKindSchema } from '@linkcode/schema';
-import { createSchedule } from '@linkcode/sdk';
+import type { Schedule, ScheduleSpec } from '@linkcode/schema';
+import { SessionIdSchema } from '@linkcode/schema';
+import { createSchedule, listSessions, updateSchedule } from '@linkcode/sdk';
+import { TaskDisclosure, TaskFormError, TaskSelect } from '@linkcode/ui';
 import { Button } from 'coss-ui/components/button';
 import { Field, FieldError, FieldLabel } from 'coss-ui/components/field';
 import { Form } from 'coss-ui/components/form';
 import { Input } from 'coss-ui/components/input';
-import { RadioGroup, RadioGroupItem } from 'coss-ui/components/radio-group';
-import {
-  Select,
-  SelectItem,
-  SelectPopup,
-  SelectTrigger,
-  SelectValue,
-} from 'coss-ui/components/select';
-import { Tabs, TabsList, TabsPanel, TabsTab } from 'coss-ui/components/tabs';
 import { Textarea } from 'coss-ui/components/textarea';
+import { useEffect } from 'foxact/use-abortable-effect';
 import { extractErrorMessage } from 'foxts/extract-error-message';
 import { Controller, useForm } from 'react-hook-form';
 import { useTranslations } from 'use-intl';
-import { z } from 'zod';
 import { rhfErrorsToFormErrors } from '../../lib/form';
-import { useMutation } from '../../runtime/tayori';
+import { useData, useMutation } from '../../runtime/tayori';
 import { CwdField } from '../cwd-field';
+import { useAutomationDefaults } from '../defaults';
+import { useAutomationDraft } from '../draft-guard';
+import { useAutomationDraftState } from '../draft-state';
 import { useAutomationsViewStore } from '../store';
-
-const INTERVAL_PRESETS = [5, 15, 60, 360, 1440] as const;
-
-const scheduleFormSchema = z
-  .object({
-    name: z.string().trim().optional(),
-    prompt: z.string().trim().min(1),
-    kind: AgentKindSchema,
-    cwd: z.string().trim().min(1),
-    cadenceKind: z.enum(['interval', 'cron']),
-    intervalMinutes: z.number().int().min(1),
-    cronExpression: z.string().trim(),
-    timezone: z.string().trim().optional(),
-    misfire: z.enum(['default', 'skip', 'catch-up']),
-  })
-  .superRefine((draft, ctx) => {
-    if (draft.cadenceKind === 'cron' && draft.cronExpression.length === 0) {
-      ctx.addIssue({ code: 'custom', path: ['cronExpression'], message: 'required' });
-    }
-  });
-
-type ScheduleFormDraft = z.infer<typeof scheduleFormSchema>;
+import type { ScheduleFormDraft } from './form-model';
+import { scheduleCadence, scheduleDraft, scheduleFormSchema, schedulePatch } from './form-model';
+import { ScheduleFrequencyFields, ScheduleTimezoneField } from './frequency-fields';
+import { useSchedules } from './hooks';
 
 function toSpec(draft: ScheduleFormDraft): ScheduleSpec {
   return {
     name: draft.name || undefined,
     prompt: draft.prompt,
-    cadence:
-      draft.cadenceKind === 'interval'
-        ? { type: 'interval', everyMs: draft.intervalMinutes * 60000 }
-        : { type: 'cron', expression: draft.cronExpression, timezone: draft.timezone || undefined },
-    target: { type: 'new-session', config: { kind: draft.kind, cwd: draft.cwd } },
+    cadence: scheduleCadence(draft),
+    target: draft.targetSession
+      ? { type: 'session', sessionId: SessionIdSchema.parse(draft.targetSession) }
+      : { type: 'new-session', config: { kind: draft.kind, cwd: draft.cwd } },
+    maxRuns: draft.maxRuns ? Number(draft.maxRuns) : undefined,
+    expiresAt: draft.expiresAt ? Date.parse(draft.expiresAt) : undefined,
     misfirePolicy: draft.misfire === 'default' ? undefined : draft.misfire,
   };
 }
 
-/** Create-schedule form (new-session target). Existing-session targets are a later addition. */
-export function ScheduleForm(): React.ReactNode {
+export function ScheduleForm({
+  schedule,
+  missing = false,
+}: {
+  schedule?: Schedule;
+  missing?: boolean;
+}): React.ReactNode {
   const t = useTranslations('workbench.automations');
   const tAgent = useTranslations('workbench.agentKind');
   const select = useAutomationsViewStore((state) => state.select);
   const closeCreate = useAutomationsViewStore((state) => state.closeCreate);
   const create = useMutation(createSchedule);
+  const update = useMutation(updateSchedule);
+  const defaults = useAutomationDefaults();
+  const { mutate } = useSchedules();
+  const { data: sessions } = useData(listSessions, schedule ? null : {});
 
   const {
     control,
     register,
     handleSubmit,
     setError,
-    formState: { errors, isSubmitting },
+    reset,
+    formState: { errors, isSubmitting, isDirty, dirtyFields },
   } = useForm<ScheduleFormDraft>({
     resolver: zodResolver(scheduleFormSchema),
     defaultValues: {
-      prompt: '',
-      kind: 'claude-code',
-      cwd: '',
-      cadenceKind: 'interval',
-      intervalMinutes: 60,
-      cronExpression: '',
-      misfire: 'default',
+      ...scheduleDraft(schedule),
+      ...(!schedule && { kind: defaults.kind ?? 'claude-code', cwd: defaults.cwd }),
     },
   });
+  useAutomationDraft(isDirty);
+  useEffect(() => {
+    if (schedule && !isDirty && !isSubmitting) reset(scheduleDraft(schedule));
+  }, [schedule, isDirty, isSubmitting, reset]);
 
   const onSubmit = handleSubmit(async (draft) => {
     try {
-      const schedule = await create.trigger({ spec: toSpec(draft) });
-      select(schedule.scheduleId);
+      const saved = schedule
+        ? await update.trigger({
+            scheduleId: schedule.scheduleId,
+            patch: schedulePatch(draft, schedule, dirtyFields),
+          })
+        : await create.trigger({ spec: toSpec(draft) });
+      await mutate(
+        (current) =>
+          current
+            ? [...current.filter((entry) => entry.scheduleId !== saved.scheduleId), saved]
+            : [saved],
+        { revalidate: false },
+      );
+      reset(scheduleDraft(saved));
+      useAutomationDraftState.getState().setDirty(false);
+      if (!schedule) select(saved.scheduleId);
     } catch (error) {
       setError('root', {
-        message: extractErrorMessage(error, false) ?? 'Failed to create schedule',
+        message: extractErrorMessage(error, false) ?? t('actionFailed'),
       });
     }
   });
@@ -103,143 +104,165 @@ export function ScheduleForm(): React.ReactNode {
       className="flex flex-col gap-4"
       errors={rhfErrorsToFormErrors(errors)}
       onSubmit={onSubmit}
+      aria-busy={isSubmitting}
     >
-      <Field name="name">
-        <FieldLabel>{t('nameLabel')}</FieldLabel>
-        <Input
-          className="w-full"
-          autoComplete="off"
-          placeholder={t('namePlaceholder')}
-          {...register('name')}
-        />
-      </Field>
+      <fieldset disabled={isSubmitting} className="flex min-w-0 flex-col gap-4">
+        <Field name="name">
+          <FieldLabel className="sr-only">{t('nameLabel')}</FieldLabel>
+          <Input
+            className="w-full border-transparent bg-transparent px-0 font-semibold text-xl shadow-none md:text-xl"
+            autoComplete="off"
+            placeholder={t('schedule.new')}
+            {...register('name')}
+          />
+        </Field>
 
-      <Field name="prompt">
-        <FieldLabel>{t('promptLabel')}</FieldLabel>
-        <Textarea className="w-full" rows={3} {...register('prompt')} />
-        <FieldError />
-      </Field>
+        <Field name="prompt">
+          <FieldLabel>{t('promptLabel')}</FieldLabel>
+          <Textarea className="w-full" rows={3} {...register('prompt')} />
+          <FieldError />
+        </Field>
 
-      <Field name="kind">
-        <FieldLabel>{t('agentLabel')}</FieldLabel>
-        <Controller
-          control={control}
-          name="kind"
-          render={({ field }) => (
-            <RadioGroup
-              className="flex flex-row flex-wrap gap-2"
-              value={field.value}
-              onValueChange={field.onChange}
-            >
-              {AgentKindSchema.options.map((kind) => (
-                <label
-                  key={kind}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm"
-                >
-                  <RadioGroupItem value={kind} />
-                  {tAgent(kind)}
-                </label>
-              ))}
-            </RadioGroup>
-          )}
-        />
-      </Field>
+        {schedule ? (
+          <p className="text-muted-foreground text-sm">
+            {schedule.spec.target.type === 'new-session'
+              ? `${tAgent(schedule.spec.target.config.kind)} · ${schedule.spec.target.config.cwd}`
+              : t('schedule.targetSession')}
+          </p>
+        ) : (
+          <Controller
+            control={control}
+            name="targetSession"
+            render={({ field }) => (
+              <>
+                <Field name="targetSession">
+                  <FieldLabel>{t('schedule.target')}</FieldLabel>
+                  <TaskSelect
+                    value={field.value}
+                    onChange={field.onChange}
+                    items={[
+                      { value: '', label: t('schedule.targetNewSession') },
+                      ...(sessions ?? []).flatMap((session) =>
+                        session.automation
+                          ? []
+                          : [
+                              {
+                                value: session.sessionId,
+                                label: session.title ?? session.sessionId,
+                                group: session.cwd,
+                              },
+                            ],
+                      ),
+                    ]}
+                  />
+                </Field>
+                {field.value ? null : (
+                  <>
+                    <Field name="kind">
+                      <FieldLabel>{t('agentLabel')}</FieldLabel>
+                      <Controller
+                        control={control}
+                        name="kind"
+                        render={({ field }) => (
+                          <TaskSelect
+                            value={field.value}
+                            onChange={field.onChange}
+                            items={defaults.kinds.map((kind) => ({
+                              value: kind,
+                              label: tAgent(kind),
+                            }))}
+                          />
+                        )}
+                      />
+                    </Field>
 
-      <CwdField inputProps={register('cwd')} />
+                    <Controller
+                      control={control}
+                      name="cwd"
+                      render={({ field }) => (
+                        <CwdField value={field.value} onChange={field.onChange} />
+                      )}
+                    />
+                  </>
+                )}
+              </>
+            )}
+          />
+        )}
 
-      <Field name="cadenceKind">
-        <FieldLabel>{t('schedule.cadenceLabel')}</FieldLabel>
-        <Controller
-          control={control}
-          name="cadenceKind"
-          render={({ field }) => (
-            <Tabs value={field.value} onValueChange={field.onChange}>
-              <TabsList>
-                <TabsTab value="interval">{t('schedule.interval')}</TabsTab>
-                <TabsTab value="cron">{t('schedule.cron')}</TabsTab>
-              </TabsList>
-              <TabsPanel value="interval" className="pt-3">
-                <Controller
-                  control={control}
-                  name="intervalMinutes"
-                  render={({ field: intervalField }) => (
-                    <Select
-                      items={INTERVAL_PRESETS.map((minutes) => ({
-                        value: minutes,
-                        label: t('schedule.everyMinutes', { minutes }),
-                      }))}
-                      value={intervalField.value}
-                      onValueChange={(minutes) => {
-                        if (minutes !== null) intervalField.onChange(minutes);
-                      }}
-                    >
-                      <SelectTrigger className="w-full">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectPopup>
-                        {INTERVAL_PRESETS.map((minutes) => (
-                          <SelectItem key={minutes} value={minutes}>
-                            {t('schedule.everyMinutes', { minutes })}
-                          </SelectItem>
-                        ))}
-                      </SelectPopup>
-                    </Select>
-                  )}
+        <ScheduleFrequencyFields control={control} register={register} />
+        <TaskDisclosure title={t('advanced')} invalid={Boolean(errors.maxRuns || errors.expiresAt)}>
+          <ScheduleTimezoneField control={control} register={register} />
+          <Field name="maxRuns">
+            <FieldLabel>{t('schedule.maxRuns')}</FieldLabel>
+            <Input
+              type="number"
+              min={1}
+              placeholder={t('schedule.never')}
+              {...register('maxRuns')}
+            />
+            <FieldError />
+          </Field>
+          <Field name="expiresAt">
+            <FieldLabel>{t('schedule.expiresAt')}</FieldLabel>
+            <Input type="datetime-local" {...register('expiresAt')} />
+            <FieldError />
+          </Field>
+          <Field name="misfire">
+            <FieldLabel>{t('schedule.misfireLabel')}</FieldLabel>
+            <Controller
+              control={control}
+              name="misfire"
+              render={({ field }) => (
+                <TaskSelect
+                  value={field.value}
+                  onChange={field.onChange}
+                  items={(['default', 'catch-up', 'skip'] as const).map((policy) => ({
+                    value: policy,
+                    label: t(`schedule.misfire.${policy}`),
+                  }))}
                 />
-              </TabsPanel>
-              <TabsPanel value="cron" className="flex flex-col gap-3 pt-3">
-                <Input
-                  className="w-full font-mono"
-                  autoComplete="off"
-                  placeholder="0 9 * * 1-5"
-                  {...register('cronExpression')}
-                />
-                <Input
-                  className="w-full"
-                  autoComplete="off"
-                  placeholder={t('schedule.timezonePlaceholder')}
-                  {...register('timezone')}
-                />
-              </TabsPanel>
-            </Tabs>
-          )}
-        />
-        <FieldError />
-      </Field>
-
-      <Field name="misfire">
-        <FieldLabel>{t('schedule.misfireLabel')}</FieldLabel>
-        <Controller
-          control={control}
-          name="misfire"
-          render={({ field }) => (
-            <RadioGroup
-              className="flex flex-row flex-wrap gap-2"
-              value={field.value}
-              onValueChange={field.onChange}
-            >
-              {(['default', 'catch-up', 'skip'] as const).map((policy) => (
-                <label
-                  key={policy}
-                  className="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-sm"
-                >
-                  <RadioGroupItem value={policy} />
-                  {t(`schedule.misfire.${policy}`)}
-                </label>
-              ))}
-            </RadioGroup>
-          )}
-        />
-      </Field>
-
-      <div className="flex justify-end gap-2 pt-1">
-        <Button type="button" variant="ghost" onClick={closeCreate}>
-          {t('cancel')}
-        </Button>
-        <Button type="submit" disabled={isSubmitting}>
-          {t('schedule.createSubmit')}
-        </Button>
-      </div>
+              )}
+            />
+          </Field>
+        </TaskDisclosure>
+        <TaskFormError message={errors.root?.message} />
+        {missing ? (
+          <p role="alert" className="text-destructive text-sm">
+            {t('removedDraft')}
+          </p>
+        ) : null}
+        {!schedule && defaults.ready && defaults.kinds.length === 0 ? (
+          <p role="alert" className="text-destructive text-sm">
+            {t('noHarness')}
+          </p>
+        ) : null}
+        <div className="sticky bottom-0 flex justify-end gap-2 bg-background py-3">
+          <Button
+            type="button"
+            variant="ghost"
+            disabled={isSubmitting}
+            onClick={() => {
+              reset();
+              useAutomationDraftState.getState().setDirty(false);
+              if (schedule) useAutomationsViewStore.getState().collapse();
+              else closeCreate();
+            }}
+          >
+            {t('cancel')}
+          </Button>
+          <Button
+            type="submit"
+            disabled={
+              isSubmitting ||
+              missing ||
+              (schedule ? !isDirty : !defaults.ready || defaults.kinds.length === 0)
+            }
+          >
+            {t('save')}
+          </Button>
+        </div>
+      </fieldset>
     </Form>
   );
 }

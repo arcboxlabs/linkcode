@@ -115,6 +115,10 @@ export interface ShellFrameProps
   onOpenSearch?: () => void;
   /** Opens the Automations surface — the sidebar Automations entry stays disabled without it. */
   onOpenAutomations?: () => void;
+  /** Replaces the thread/new-thread main surface while preserving the shell sidebar. */
+  mainContent?: React.ReactNode;
+  /** Marks the sidebar's Automations entry as active. */
+  automationsActive?: boolean;
   /** Platform-formatted hint next to the Search entry, e.g. `⌘K`. */
   searchShortcut?: string;
   TerminalBlockComponent?: React.ComponentType<{ terminalId: string }>;
@@ -173,6 +177,8 @@ export function ShellFrame({
   onHostArtifact,
   onOpenSearch,
   onOpenAutomations,
+  mainContent,
+  automationsActive,
   searchShortcut,
   TerminalBlockComponent,
   BranchStatusComponent,
@@ -180,6 +186,7 @@ export function ShellFrame({
 }: ShellFrameProps): React.ReactNode {
   const active = activeSession;
   const isRunning = conversation.status === 'running' || conversation.status === 'starting';
+  const hasMainContent = mainContent !== undefined;
 
   return (
     <div className="flex h-full min-h-0 bg-background text-foreground">
@@ -206,13 +213,16 @@ export function ShellFrame({
           onTogglePreviewExpanded={onTogglePreviewExpanded}
           onOpenSearch={onOpenSearch}
           onOpenAutomations={onOpenAutomations}
+          automationsActive={automationsActive}
           searchShortcut={searchShortcut}
           BranchStatusComponent={BranchStatusComponent}
         />
       </div>
       <main className="flex min-w-0 flex-1 flex-col">
         {header}
-        {draft ? (
+        {hasMainContent ? (
+          <div className="min-h-0 flex-1">{mainContent}</div>
+        ) : draft ? (
           // Keyed per entry point so opening from another group resets the page's picks.
           <NewSessionSurface
             key={draft.initialWorkspaceId ?? 'default'}

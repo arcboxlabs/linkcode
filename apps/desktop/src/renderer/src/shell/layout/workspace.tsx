@@ -1,3 +1,4 @@
+import type { PaneTransition } from '@linkcode/ui';
 import { cn } from '@linkcode/ui';
 import type { LayoutState, PanelSide } from '@renderer/shell/store/model';
 import {
@@ -11,7 +12,6 @@ import {
   SIDEBAR_MIN_SIZE,
 } from '@renderer/shell/store/model';
 import { useTranslations } from 'use-intl';
-import type { PaneTransition } from './pane-transition';
 import { Sash } from './sash';
 
 /** One dockable side of the workspace: its transition plus the docked and maximized-overlay nodes. */
@@ -44,6 +44,7 @@ const PANE_ID = {
 export function DesktopWorkspace({
   sidebar,
   main,
+  workspaceOverlay,
   right,
   bottom,
   expandedPanel,
@@ -55,6 +56,8 @@ export function DesktopWorkspace({
 }: {
   sidebar: WorkspaceSidebar;
   main: React.ReactNode;
+  /** Covers every workspace pane except the persistent app sidebar. */
+  workspaceOverlay?: React.ReactNode;
   right: WorkspaceSide;
   bottom: WorkspaceSide;
   expandedPanel: PanelSide | null;
@@ -66,11 +69,12 @@ export function DesktopWorkspace({
   onBottomResize: (size: number) => void;
 }): React.ReactNode {
   const tPanel = useTranslations('workbench.panel');
+  const workspaceOverlayOpen = workspaceOverlay !== undefined;
   const rowOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'editor-row');
   const workbenchOverlayPanel = getExpandedPanelForTarget(expandedPanel, 'workbench');
   // Expanded panels render as direct overlays. Docked panels stay mounted so
   // they keep owning chrome portals and panel state.
-  const dockedInert = workbenchOverlayPanel !== null;
+  const dockedInert = workbenchOverlayPanel !== null || workspaceOverlayOpen;
   const editorInert = rowOverlayPanel !== null || dockedInert;
 
   const anyAnimating =
@@ -290,6 +294,11 @@ export function DesktopWorkspace({
           {workbenchOverlayPanel === 'right' ? right.expandedNode : bottom.expandedNode}
         </ExpandedPanelOverlay>
       )}
+      {workspaceOverlayOpen ? (
+        <div className="z-40 col-end-4 col-start-2 row-span-2 row-start-1 min-h-0 min-w-0 overflow-hidden bg-background">
+          {workspaceOverlay}
+        </div>
+      ) : null}
     </div>
   );
 }

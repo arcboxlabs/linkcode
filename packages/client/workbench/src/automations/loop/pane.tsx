@@ -1,4 +1,5 @@
-import type { LoopStatus, SessionId } from '@linkcode/schema';
+import type { LoopStatus } from '@linkcode/schema';
+import { TaskLoadError } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -10,14 +11,9 @@ import {
 } from 'coss-ui/components/empty';
 import { PlusIcon, RepeatIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import {
-  AutomationCreatePane,
-  AutomationMasterButton,
-  AutomationPaneSkeleton,
-} from '../pane-layout';
+import { AutomationActions } from '../actions';
+import { AutomationMasterButton, AutomationPaneSkeleton } from '../pane-layout';
 import { useAutomationsViewStore } from '../store';
-import { LoopDetail } from './detail';
-import { LoopForm } from './form';
 import { useLoops } from './hooks';
 import type { LoopListItem } from './items';
 import { buildLoopItems } from './items';
@@ -29,30 +25,42 @@ const STATUS_BADGE: Record<LoopStatus, 'success' | 'warning' | 'error' | 'second
   stopped: 'secondary',
 };
 
-export function LoopPane({
-  onOpenSession,
-}: {
-  onOpenSession: (sessionId: SessionId) => void;
-}): React.ReactNode {
+export function LoopPane({ query }: { query: string }): React.ReactNode {
   const t = useTranslations('workbench.automations');
-  const { data: loops, isLoading } = useLoops();
-  const view = useAutomationsViewStore((state) => state.view);
+  const { data: loops, isLoading, error, mutate } = useLoops();
+  const filter = useAutomationsViewStore((state) => state.loopFilter);
   const selectedLoopId = useAutomationsViewStore((state) => state.selectedLoopId);
   const selectLoop = useAutomationsViewStore((state) => state.selectLoop);
   const startCreateLoop = useAutomationsViewStore((state) => state.startCreateLoop);
-
-  if (view.kind === 'create-loop') {
+  const normalizedQuery = query.trim().toLowerCase();
+  const tasksById = new Map(loops?.map((task) => [task.loopId, task]));
+  const items = buildLoopItems(
+    loops?.filter(
+      (loop) =>
+        (filter === 'all' ||
+          (filter === 'running' ? loop.status === 'running' : loop.status !== 'running')) &&
+        `${loop.spec.name ?? ''} ${loop.spec.prompt}`.toLowerCase().includes(normalizedQuery),
+    ),
+  );
+  if (error && !loops) {
     return (
-      <AutomationCreatePane title={t('loop.new')} description={t('loop.createDescription')}>
-        <LoopForm />
-      </AutomationCreatePane>
+      <TaskLoadError
+        message={t('loadFailed')}
+        retryLabel={t('retry')}
+        onRetry={() => {
+          void mutate();
+        }}
+      />
     );
   }
 
-  const items = buildLoopItems(loops);
-
   if (items.length === 0) {
     if (isLoading) return <AutomationPaneSkeleton />;
+    if (normalizedQuery || filter !== 'all') {
+      return (
+        <p className="px-3 py-8 text-center text-muted-foreground text-sm">{t('noMatches')}</p>
+      );
+    }
     return (
       <Empty className="flex-1">
         <EmptyHeader>
@@ -70,32 +78,35 @@ export function LoopPane({
     );
   }
 
-  const activeId = selectedLoopId ?? items[0].loopId;
   return (
-    <div className="flex min-h-0 flex-1 gap-6 py-4">
-      <ul className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
-        {items.map((item) => (
-          <li key={item.loopId}>
-            <LoopRow
-              item={item}
-              active={item.loopId === activeId}
-              onSelect={() => selectLoop(item.loopId)}
-            />
+    <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-2">
+      {items.map((item) => {
+        const task = tasksById.get(item.loopId);
+        return (
+          <li key={item.loopId} className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <LoopRow
+                result={task?.error ?? task?.summary}
+                item={item}
+                active={item.loopId === selectedLoopId}
+                onSelect={() => selectLoop(item.loopId)}
+              />
+            </div>
+            {task ? <AutomationActions task={task} /> : null}
           </li>
-        ))}
-      </ul>
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto pb-2">
-        <LoopDetail loopId={activeId} onOpenSession={onOpenSession} />
-      </div>
-    </div>
+        );
+      })}
+    </ul>
   );
 }
 
 function LoopRow({
+  result,
   item,
   active,
   onSelect,
 }: {
+  result?: string;
   item: LoopListItem;
   active: boolean;
   onSelect: () => void;
@@ -107,10 +118,14 @@ function LoopRow({
       onClick={onSelect}
       icon={<RepeatIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" />}
       name={item.name}
-      subtitle={t('loop.iterationProgress', {
-        count: item.iterationCount,
-        max: item.maxIterations,
-      })}
+      subtitle={
+        result && item.status !== 'running'
+          ? result
+          : t('loop.iterationProgress', {
+              count: item.iterationCount,
+              max: item.maxIterations,
+            })
+      }
       badge={<Badge variant={STATUS_BADGE[item.status]}>{t(`loopStatus.${item.status}`)}</Badge>}
     />
   );

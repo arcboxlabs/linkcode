@@ -7,6 +7,7 @@ export * from './app/connection-state';
 export * from './app/workbench-providers';
 export * from './assets/hooks';
 export * from './automations/automations-view';
+export { useAutomationDraftState } from './automations/draft-state';
 export * from './automations/loop/hooks';
 export * from './automations/loop/items';
 export * from './automations/schedule/hooks';

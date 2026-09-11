@@ -249,6 +249,21 @@ pnpm -F @linkcode/mobile smoke:export
 
 ## Debugging and triage
 
+### Automations
+
+Use the real daemon for Schedule and Loop development. The current `dev:mock` host does not implement automation requests.
+Run a separate profile for manual experiments so test tasks do not enter your usual development state:
+
+```bash
+LINKCODE_PROFILE=automations devenv shell -- daemon
+devenv shell -- pnpm -F @linkcode/desktop dev --profile=automations
+```
+
+Schedule pause prevents future runs; it does not interrupt the current run. Deletion is rejected while a run is active.
+Schedule editing preserves the execution target. Clearing optional limits requires a host with wire version 80 or newer.
+Loop starts immediately, supports description-based or command-based verification, and stops on daemon restart.
+Check the persisted result and verifier verdict, not only the task's terminal status. Provider failures must not appear as empty successful runs.
+
 ### Daemon will not start
 
 1. `curl http://127.0.0.1:19523/linkcode` — a JSON identity means it **is** up (possibly on a hunted port; the actual bound endpoint is in `~/.linkcode/runtime.json`). A development daemon answers on **19533** instead, and advertises in `~/.linkcode.development/runtime.json`.

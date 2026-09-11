@@ -73,8 +73,13 @@ export const ScheduleSpecSchema = z.object({
 });
 export type ScheduleSpec = z.infer<typeof ScheduleSpecSchema>;
 
-/** Mutable fields on update; `target` is immutable (delete + recreate to retarget). */
-export const ScheduleUpdateSchema = ScheduleSpecSchema.omit({ target: true }).partial();
+/** Mutable fields on update; null clears optional values and omission preserves them. Target is immutable. */
+export const ScheduleUpdateSchema = ScheduleSpecSchema.omit({ target: true }).partial().extend({
+  name: ScheduleSpecSchema.shape.name.unwrap().nullable().optional(),
+  maxRuns: ScheduleSpecSchema.shape.maxRuns.unwrap().nullable().optional(),
+  expiresAt: ScheduleSpecSchema.shape.expiresAt.unwrap().nullable().optional(),
+  misfirePolicy: ScheduleMisfirePolicySchema.nullable().optional(),
+});
 export type ScheduleUpdate = z.infer<typeof ScheduleUpdateSchema>;
 
 export const ScheduleStatusSchema = z.enum(['active', 'paused', 'completed']);

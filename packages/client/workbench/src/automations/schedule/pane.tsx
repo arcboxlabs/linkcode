@@ -1,5 +1,5 @@
-import type { ScheduleStatus, SessionId } from '@linkcode/schema';
-import { useRelativeTimeLabel } from '@linkcode/ui';
+import type { ScheduleStatus } from '@linkcode/schema';
+import { TaskLoadError, useRelativeTimeLabel } from '@linkcode/ui';
 import { Badge } from 'coss-ui/components/badge';
 import { Button } from 'coss-ui/components/button';
 import {
@@ -11,14 +11,9 @@ import {
 } from 'coss-ui/components/empty';
 import { ClockIcon, PlusIcon } from 'lucide-react';
 import { useTranslations } from 'use-intl';
-import {
-  AutomationCreatePane,
-  AutomationMasterButton,
-  AutomationPaneSkeleton,
-} from '../pane-layout';
+import { AutomationActions } from '../actions';
+import { AutomationMasterButton, AutomationPaneSkeleton } from '../pane-layout';
 import { useAutomationsViewStore } from '../store';
-import { ScheduleDetail } from './detail';
-import { ScheduleForm } from './form';
 import { useSchedules } from './hooks';
 import type { AutomationListItem } from './items';
 import { buildScheduleItems } from './items';
@@ -30,30 +25,44 @@ const STATUS_BADGE: Record<ScheduleStatus, 'success' | 'warning' | 'secondary'> 
   completed: 'secondary',
 };
 
-export function SchedulePane({
-  onOpenSession,
-}: {
-  onOpenSession: (sessionId: SessionId) => void;
-}): React.ReactNode {
+export function SchedulePane({ query }: { query: string }): React.ReactNode {
   const t = useTranslations('workbench.automations');
-  const { data: schedules, isLoading } = useSchedules();
-  const view = useAutomationsViewStore((state) => state.view);
+  const { data: schedules, isLoading, error, mutate } = useSchedules();
+  const filter = useAutomationsViewStore((state) => state.scheduleFilter);
   const selectedScheduleId = useAutomationsViewStore((state) => state.selectedScheduleId);
   const select = useAutomationsViewStore((state) => state.select);
   const startCreate = useAutomationsViewStore((state) => state.startCreate);
+  const normalizedQuery = query.trim().toLowerCase();
+  const tasksById = new Map(schedules?.map((task) => [task.scheduleId, task]));
+  const items = buildScheduleItems(
+    schedules?.filter(
+      (schedule) =>
+        (filter === 'all' || schedule.status === filter) &&
+        `${schedule.spec.name ?? ''} ${schedule.spec.prompt}`
+          .toLowerCase()
+          .includes(normalizedQuery),
+    ),
+  );
 
-  if (view.kind === 'create-schedule') {
+  if (error && !schedules) {
     return (
-      <AutomationCreatePane title={t('schedule.new')} description={t('schedule.createDescription')}>
-        <ScheduleForm />
-      </AutomationCreatePane>
+      <TaskLoadError
+        message={t('loadFailed')}
+        retryLabel={t('retry')}
+        onRetry={() => {
+          void mutate();
+        }}
+      />
     );
   }
 
-  const items = buildScheduleItems(schedules);
-
   if (items.length === 0) {
     if (isLoading) return <AutomationPaneSkeleton />;
+    if (normalizedQuery || filter !== 'all') {
+      return (
+        <p className="px-3 py-8 text-center text-muted-foreground text-sm">{t('noMatches')}</p>
+      );
+    }
     return (
       <Empty className="flex-1">
         <EmptyHeader>
@@ -71,24 +80,24 @@ export function SchedulePane({
     );
   }
 
-  const activeId = selectedScheduleId ?? items[0].scheduleId;
   return (
-    <div className="flex min-h-0 flex-1 gap-6 py-4">
-      <ul className="flex w-64 shrink-0 flex-col gap-1 overflow-y-auto">
-        {items.map((item) => (
-          <li key={item.scheduleId}>
-            <ScheduleRow
-              item={item}
-              active={item.scheduleId === activeId}
-              onSelect={() => select(item.scheduleId)}
-            />
+    <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto py-2">
+      {items.map((item) => {
+        const task = tasksById.get(item.scheduleId);
+        return (
+          <li key={item.scheduleId} className="flex items-center gap-1">
+            <div className="min-w-0 flex-1">
+              <ScheduleRow
+                item={item}
+                active={item.scheduleId === selectedScheduleId}
+                onSelect={() => select(item.scheduleId)}
+              />
+            </div>
+            {task ? <AutomationActions task={task} /> : null}
           </li>
-        ))}
-      </ul>
-      <div className="flex min-w-0 flex-1 flex-col overflow-y-auto pb-2">
-        <ScheduleDetail scheduleId={activeId} onOpenSession={onOpenSession} />
-      </div>
-    </div>
+        );
+      })}
+    </ul>
   );
 }
 
