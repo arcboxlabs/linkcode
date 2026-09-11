@@ -28,6 +28,8 @@ export interface BlobStore {
   /** Absolute path for same-host consumers (materialization, hosted files); existence not implied. */
   pathOf(blobId: BlobId): string;
   stat(blobId: BlobId): Promise<{ sizeBytes: number } | undefined>;
+  /** Positional read of an immutable blob. Missing file → `undefined`; a short read at EOF is ok. */
+  read(blobId: BlobId, offset: number, length: number): Promise<Uint8Array | undefined>;
   /** Open staging for one upload; readers cannot observe the bytes until `commit`. */
   stage(uploadId: string): Promise<BlobStage>;
   delete(blobId: BlobId): Promise<void>;
@@ -105,6 +107,27 @@ export class FsBlobStore implements BlobStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
       throw error;
+    }
+  }
+
+  async read(blobId: BlobId, offset: number, length: number): Promise<Uint8Array | undefined> {
+    if (offset < 0 || length < 0) throw new Error('Blob read offset and length must be >= 0');
+    let handle: FileHandle;
+    try {
+      handle = await open(this.pathOf(blobId), 'r');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+      throw error;
+    }
+    try {
+      const sizeBytes = (await handle.stat()).size;
+      if (length === 0 || offset >= sizeBytes) return new Uint8Array(0);
+      const toRead = Math.min(length, sizeBytes - offset);
+      const buffer = Buffer.alloc(toRead);
+      const { bytesRead } = await handle.read(buffer, 0, toRead, offset);
+      return bytesRead === toRead ? buffer : buffer.subarray(0, bytesRead);
+    } finally {
+      await handle.close();
     }
   }
 

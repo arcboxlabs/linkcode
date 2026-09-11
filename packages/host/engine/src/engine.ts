@@ -16,10 +16,13 @@ import { InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import { ManagedAssetService } from './asset/service';
+import type { AttachmentReachability } from './attachment/attachment-store';
 import { InMemoryAttachmentStore } from './attachment/attachment-store';
 import { FsBlobStore } from './attachment/blob-store';
 import { AttachmentGc } from './attachment/gc';
 import { AttachmentIoMutex } from './attachment/io-mutex';
+import { AttachmentRequestHandler } from './attachment/request-handler';
+import { AttachmentUploadService } from './attachment/upload-service';
 import {
   InMemoryLoopStore,
   InMemoryScheduleStore,
@@ -121,14 +124,17 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const blobStore = deps.blobStore ?? new FsBlobStore(join(stateDir, 'blobs'));
   const attachmentStore =
     deps.attachmentStore ??
-    new InMemoryAttachmentStore(() => [
-      ...(conversationStore instanceof InMemoryConversationStore
-        ? conversationStore.referencedAttachmentIds()
-        : []),
-      ...(resourceStore instanceof InMemoryResourceStore
-        ? resourceStore.referencedAttachmentIds()
-        : []),
-    ]);
+    new InMemoryAttachmentStore(
+      () => [
+        ...(conversationStore instanceof InMemoryConversationStore
+          ? conversationStore.referencedAttachmentIds()
+          : []),
+        ...(resourceStore instanceof InMemoryResourceStore
+          ? resourceStore.referencedAttachmentIds()
+          : []),
+      ],
+      inMemoryAttachmentReachability(conversationStore, resourceStore),
+    );
   const attachmentIo = new AttachmentIoMutex();
   const attachmentGc = new AttachmentGc(attachmentStore, blobStore, Date.now, attachmentIo);
   const resources = new ResourceService(
@@ -141,6 +147,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     attachmentStore,
     attachmentIo,
   );
+  const uploads = new AttachmentUploadService(blobStore, attachmentStore, attachmentIo);
   const plugins = new PluginService(deps.pluginFactory ?? createPluginProviderAdapter);
   const translator = deps.translator;
   const startOptions = new SessionStartOptionsResolver(
@@ -246,6 +253,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   const artifacts = new ArtifactHostService(routes);
   const artifactRequests = new ArtifactRequestHandler(transport, artifacts, responder);
   const resourceRequests = new ResourceRequestHandler(transport, resources, responder);
+  const attachmentRequests = new AttachmentRequestHandler(transport, uploads, responder);
   const conversationCheckpoints = new ConversationCheckpointService(
     conversationTurns,
     records,
@@ -336,6 +344,7 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     script: scriptRequests,
     artifact: artifactRequests,
     resource: resourceRequests,
+    attachment: attachmentRequests,
     automation: automationRequests,
     terminal: terminalRequests,
     simulator: simulatorRequests,
@@ -478,6 +487,27 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     }).pipe(Effect.withSpan('Engine.stop')),
   };
 });
+
+function inMemoryAttachmentReachability(
+  conversations: InMemoryConversationStore | object,
+  resources: InMemoryResourceStore | object,
+): AttachmentReachability {
+  return (sessionId, attachmentId) => {
+    if (conversations instanceof InMemoryConversationStore) {
+      const ids = conversations.referencedAttachmentIdsForSession(sessionId);
+      for (let i = 0, len = ids.length; i < len; i++) {
+        if (ids[i] === attachmentId) return true;
+      }
+    }
+    if (resources instanceof InMemoryResourceStore) {
+      const ids = resources.referencedAttachmentIdsForSession(sessionId);
+      for (let i = 0, len = ids.length; i < len; i++) {
+        if (ids[i] === attachmentId) return true;
+      }
+    }
+    return false;
+  };
+}
 
 function tryOperation<A>(
   subsystem: OperationSubsystem,
