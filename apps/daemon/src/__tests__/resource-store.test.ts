@@ -46,6 +46,9 @@ describe('SQLite resource store', () => {
       kind: 'document',
       status: 'ready',
       locator: { type: 'workspace-file', path: locatorKey },
+      attachmentId: 'att-report',
+      mimeType: 'application/pdf',
+      sizeBytes: 6,
       createdAt: 2,
       updatedAt: 2,
     });

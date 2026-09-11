@@ -1,14 +1,23 @@
-import { randomUUID } from 'node:crypto';
-import { mkdir, rm, stat, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, extname, join, resolve, sep, win32 } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { SessionId, SessionResource, SessionResourceId } from '@linkcode/schema';
-import { MAX_ATTACHMENT_BYTES, SessionResourceIdSchema } from '@linkcode/schema';
+import {
+  AttachmentIdSchema,
+  blobIdFromSha256,
+  MAX_ATTACHMENT_BYTES,
+  SessionResourceIdSchema,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import { noop } from 'foxts/noop';
+import type { AttachmentStore } from '../attachment/attachment-store';
+import type { BlobStore } from '../attachment/blob-store';
+import { AttachmentIoMutex } from '../attachment/io-mutex';
+import { declaredMimeTypeMatches } from '../attachment/mime-sniff';
 import { OperationError, RequestError } from '../failure';
 import type { FileHostService } from '../preview/file-host-service';
 import type { SessionRecordRegistry } from '../session/session-record-registry';
@@ -57,6 +66,9 @@ export class ResourceService {
     private readonly records: SessionRecordRegistry,
     private readonly stateDir: string | undefined,
     private readonly fileHost: FileHostService,
+    private readonly blobs: BlobStore,
+    private readonly attachments: AttachmentStore,
+    private readonly io: AttachmentIoMutex = new AttachmentIoMutex(),
   ) {}
 
   list(sessionId: SessionId): Effect.Effect<SessionResource[], OperationError> {
@@ -69,7 +81,7 @@ export class ResourceService {
     mimeType: string | undefined,
     data: string,
   ): Effect.Effect<SessionResource, OperationError | RequestError> {
-    const { records, stateDir, transport } = this;
+    const { attachments, blobs, io, records, transport } = this;
     return Effect.gen({ self: this }, function* () {
       if (!records.has(sessionId)) {
         return yield* new RequestError({ code: 'not_found', message: 'Session not found' });
@@ -81,50 +93,80 @@ export class ResourceService {
           message: 'Resource exceeds the 8 MiB limit',
         });
       }
-      const resourceId = SessionResourceIdSchema.parse(`resource-${randomUUID()}`);
-      const directory = sessionResourceDirectory(stateDir, sessionId);
-      if (!directory) {
+      if (mimeType !== undefined && !declaredMimeTypeMatches(mimeType, bytes.subarray(0, 16))) {
         return yield* new RequestError({
           code: 'invalid_request',
-          message: 'Session resource path is invalid',
+          message: `File contents are not ${mimeType}`,
         });
       }
-      const path = resolve(directory, resourceId);
+      const resourceId = SessionResourceIdSchema.parse(`resource-${randomUUID()}`);
+      const attachmentId = AttachmentIdSchema.parse(`att-${randomUUID()}`);
+      const sha256 = createHash('sha256').update(bytes).digest('hex');
+      const blobId = blobIdFromSha256(sha256);
       const now = Date.now();
-      let resource: SessionResource = {
-        resourceId,
-        sessionId,
-        direction: 'source',
-        name,
-        kind: classify(name, mimeType),
-        status: 'processing',
-        locator: { type: 'managed-file', path },
-        mimeType,
-        sizeBytes: bytes.byteLength,
-        createdAt: now,
-        updatedAt: now,
-      };
-      yield* this.run('save', () => this.store.save(resource));
-      transport.send(createWireMessage({ kind: 'resource.changed', resource }));
+      const kind = classify(name, mimeType);
+      const locator = { type: 'managed-file' as const, path: blobs.pathOf(blobId) };
       const written = yield* Effect.tryPromise({
         async try() {
-          await mkdir(resolve(path, '..'), { recursive: true });
-          await writeFile(path, bytes);
+          await io.run(async () => {
+            const stage = await blobs.stage(resourceId);
+            try {
+              await stage.write(0, bytes);
+              await stage.commit({ sha256, sizeBytes: bytes.byteLength });
+              await attachments.commitAttachment({
+                blob: { blobId, sizeBytes: bytes.byteLength, createdAt: now },
+                attachment: {
+                  attachmentId,
+                  kind,
+                  name,
+                  mimeType: mimeType ?? 'application/octet-stream',
+                  sizeBytes: bytes.byteLength,
+                  metadata: {},
+                  createdAt: now,
+                },
+              });
+            } catch (error) {
+              await stage.abort().catch(noop);
+              await blobs.delete(blobId);
+              throw error;
+            }
+          });
         },
         catch: (cause) => cause,
       }).pipe(
         Effect.as(true),
         Effect.catch(() => Effect.succeed(false)),
       );
-      resource = written
-        ? { ...resource, status: 'ready', updatedAt: Date.now() }
-        : {
-            ...resource,
-            status: 'failed',
-            error: 'Failed to persist uploaded resource',
-            updatedAt: Date.now(),
-          };
-      if (!written) yield* Effect.promise(() => rm(path, { force: true }).catch(noop));
+      if (!written) {
+        return {
+          resourceId,
+          sessionId,
+          direction: 'source',
+          name,
+          kind,
+          status: 'failed',
+          locator,
+          error: 'Failed to persist uploaded resource',
+          mimeType,
+          sizeBytes: bytes.byteLength,
+          createdAt: now,
+          updatedAt: Date.now(),
+        };
+      }
+      const resource: SessionResource = {
+        resourceId,
+        sessionId,
+        direction: 'source',
+        name,
+        kind,
+        status: 'ready',
+        locator,
+        attachmentId,
+        mimeType,
+        sizeBytes: bytes.byteLength,
+        createdAt: now,
+        updatedAt: Date.now(),
+      };
       yield* this.run('save', () => this.store.save(resource));
       transport.send(createWireMessage({ kind: 'resource.changed', resource }));
       return resource;
@@ -136,7 +178,13 @@ export class ResourceService {
       Effect.flatMap((resource) =>
         Effect.promise(async () => {
           if (!resource) return;
-          if (resource.direction === 'source' && resource.locator.type === 'managed-file') {
+          // Store-backed bytes are shared and reaped by the attachment GC; only a pre-store
+          // resource owns its file.
+          if (
+            resource.direction === 'source' &&
+            resource.locator.type === 'managed-file' &&
+            resource.attachmentId === undefined
+          ) {
             await rm(resource.locator.path, { force: true });
           }
           this.transport.send(

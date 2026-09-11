@@ -29,6 +29,7 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { filterAgentRuntimes, restrictedAssetService } from './agent-restrictions';
 import { createAiGatewaySidecar } from './ai-gateway';
 import { installAsarSpawnFix } from './asar-spawn';
+import { createAttachmentStore } from './attachment-store';
 import { adoptLegacyDeviceKeyFile } from './cloud/device-key';
 import { runLoginCommand, runLogoutCommand } from './cloud/login';
 import { startCloudUplink } from './cloud/uplink';
@@ -290,6 +291,7 @@ async function main(): Promise<void> {
         simulatorConsent,
         sessionStore: createSessionStore(database.client),
         conversationStore: createConversationStore(database.client),
+        attachmentStore: createAttachmentStore(database.client),
         resourceStore: createResourceStore(databasePath()),
         stateDir: daemonStateDir(),
         scheduleStore: createScheduleStore(databasePath()),

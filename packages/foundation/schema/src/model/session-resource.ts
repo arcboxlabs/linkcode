@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { SessionIdSchema, TimestampSchema } from './primitives';
+import { AttachmentIdSchema, SessionIdSchema, TimestampSchema } from './primitives';
 
 export const SessionResourceIdSchema = z.string().min(1).brand<'SessionResourceId'>();
 export type SessionResourceId = z.infer<typeof SessionResourceIdSchema>;
@@ -19,6 +19,8 @@ export const SessionResourceSchema = z.object({
   kind: z.enum(['file', 'image', 'document', 'site', 'link']),
   status: z.enum(['processing', 'generating', 'ready', 'failed', 'unavailable']),
   locator: SessionResourceLocatorSchema,
+  /** Set when the bytes live in the attachment store; the resource row is then a GC root. */
+  attachmentId: AttachmentIdSchema.optional(),
   mimeType: z.string().min(1).optional(),
   sizeBytes: z.number().int().nonnegative().optional(),
   error: z.string().min(1).optional(),
