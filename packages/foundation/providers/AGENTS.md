@@ -39,14 +39,23 @@ Pure data plus pure functions: no hooks, no browser APIs, no I/O. Its only depen
     resolver about the same account — showing a pinned endpoint for one that resolves per agent.
     Display, edit-form prefill, and resolution have to answer the question identically.
 - **`models` is service-level and spelled out, never derived.** One secret reaches one model list,
-  and the ids are identical whichever protocol shape an agent resolves to — so the list belongs to
-  the service, not the variant, and one fetch serves every agent bound to the account. The URL is
-  written out because deriving it from a variant's `baseUrl` + protocol is wrong wherever variants
+  and for every service but one the ids are identical whichever protocol shape an agent resolves to
+  — so the list belongs to the service, not the variant, and one fetch serves every agent bound to
+  the account. The URL is written out because deriving it from a variant's `baseUrl` + protocol is
+  wrong wherever variants
   sit on different paths: DeepSeek's `/anthropic` variant would give `/anthropic/v1/models` and
   Vercel's bare-origin one a root `/models`, neither of which exists. `wire` picks the auth header
   and response shape only. Absent means the service serves no list, and the account is freeform-only
   — true for both Cloudflare entries, whose `/compat` route has no model-list path (docs + verified
   live). Anthropic's list defaults to `limit=20`, so the full list must be asked for.
+  - **`ServiceVariant.models` overrides it for a service whose ids differ by wire.** LinkCode
+    Gateway is the one: it serves every model on Chat Completions but only a subset on Responses and
+    on Messages, and answers `GET /v1/models?protocol=…` with exactly that subset. The daemon's
+    probe fetches each distinct list once and tags every model with the protocols whose list named
+    it (`AccountModel.protocols`, `packages/host/engine` `model-probe.ts`), which is what lets
+    `enabledAccountModels` keep a model out of an agent's picker instead of letting the agent's
+    first request 404. A model with no tags predates the probe and stays offered everywhere — only
+    an explicit set narrows anything, so re-detecting an old account is what tags it.
 - **A missing variant is a claim about the vendor, so verify it.** Omitting `openai-responses`
   refuses codex outright, and an unverified assumption that "that endpoint doesn't serve it anyway"
   once shipped exactly that gap for xAI, OpenRouter and Vercel — all three do serve

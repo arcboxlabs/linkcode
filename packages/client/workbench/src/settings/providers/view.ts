@@ -1,5 +1,7 @@
+import type { AccountModelReach } from '@linkcode/providers';
 import {
   accountEnabledFor,
+  accountModelReach,
   pinnedEndpoint,
   resolveBinding,
   serviceById,
@@ -114,11 +116,27 @@ function agentStatus(
   }
   // Enabled is the whole state, and the switch already shows it — only a reason to be off earns text.
   const enabled = accountEnabledFor(providers, kind, account.id);
+  const status = offerStatus(enabled, accountModelReach(account, kind));
   return {
     tier: availability.tier,
     enabled,
-    ...(!enabled && { status: { kind: 'disabled' } }),
+    ...(status !== undefined && { status }),
   };
+}
+
+/**
+ * What this row has to say for itself, most operative first: an off switch outranks anything about
+ * the models behind it, and an empty picker is a sentence rather than a "0 of 3" ratio. Returning
+ * one of them — rather than setting a field per fact — is what keeps the row from rendering two
+ * answers to the same question.
+ */
+function offerStatus(enabled: boolean, models: AccountModelReach): ProviderAgentStatus | undefined {
+  if (!enabled) return { kind: 'disabled' };
+  if (models.picked === 0 || models.reachable === models.picked) return undefined;
+  // An enabled agent whose picker comes up empty reads as an enablement bug; the picked set is the
+  // real reason, so the row names it instead of leaving the switch to imply otherwise.
+  if (models.reachable === 0) return { kind: 'no-reachable-model' };
+  return { kind: 'model-shortfall', ...models };
 }
 
 /** Selected account plus precomputed binding rows; UI owns only rendering and local interaction. */

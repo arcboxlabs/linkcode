@@ -1074,6 +1074,8 @@ export const zhCN = {
       unavailableOauth: '仅可接入 {agent}',
       unavailableProtocol: '端点协议与此智能体不兼容',
       unavailableEndpointIncomplete: '端点信息不完整，请补全账号设置',
+      noReachableModel: '选中的模型都不支持此智能体使用的协议',
+      modelsReachable: '选中的 {picked} 个模型中有 {reachable} 个可用于此智能体',
       configPreview: 'config.json 片段 · 此账号写入的内容',
       configPreviewEmpty: '// 尚未接入任何智能体',
       remove: '移除账号',

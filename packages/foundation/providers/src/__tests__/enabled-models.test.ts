@@ -1,6 +1,6 @@
 import type { Account, Accounts } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
-import { accountEnabledFor, enabledAccountModels } from '../enabled-models';
+import { accountEnabledFor, accountModelReach, enabledAccountModels } from '../enabled-models';
 
 function account(id: string, overrides: Partial<Account> = {}): Account {
   return {
@@ -89,6 +89,29 @@ describe('enabledAccountModels', () => {
       'anthropic/claude-sonnet-5',
       'openai/gpt-4.1',
     ]);
+  });
+
+  it('counts the reachable share of a picked set per agent, untagged models included', () => {
+    const gateway = account('acc_gw', {
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-test' },
+      models: [
+        { id: 'openai/gpt-5.6', protocols: ['openai-chat', 'openai-responses'] },
+        { id: 'openai/gpt-4.1', protocols: ['openai-chat', 'openai-responses'] },
+        { id: 'anthropic/claude-sonnet-5', protocols: ['openai-chat', 'anthropic'] },
+      ],
+    });
+    // The same picked set is a different share per agent: codex binds responses, claude-code the
+    // gateway's Anthropic wire.
+    expect(accountModelReach(gateway, 'codex')).toEqual({ picked: 3, reachable: 2 });
+    expect(accountModelReach(gateway, 'claude-code')).toEqual({ picked: 3, reachable: 1 });
+    // An untagged set predates the protocol probe, so it counts as fully reachable rather than
+    // reading as a shortfall the user cannot act on.
+    expect(accountModelReach(account('acc_old', { models: [{ id: 'x-1' }] }), 'codex')).toEqual({
+      picked: 1,
+      reachable: 1,
+    });
+    expect(accountModelReach(account('acc_empty'), 'codex')).toEqual({ picked: 0, reachable: 0 });
   });
 
   it('reports an account with no picked model as offering nothing, not as unavailable', () => {

@@ -1,10 +1,11 @@
-import type { Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
+import type { AccountModel, Accounts, AgentRuntimes, ProvidersConfig } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import { updateAccountFromDraft } from '../add-flow';
 import {
   accountConfigSnippet,
   boundAgentKinds,
   maskSecret,
+  providerAccountDetailViewModel,
   providerAccountListViewModel,
   withAccountEnabled,
   withoutAccount,
@@ -151,6 +152,40 @@ describe('view helpers', () => {
         },
       ],
     });
+  });
+
+  it('tells each agent row how much of the picked set it can actually run', () => {
+    const claudeOnly: AccountModel = {
+      id: 'anthropic/claude-sonnet-5',
+      protocols: ['openai-chat', 'anthropic'],
+    };
+    const responsesToo: AccountModel = {
+      id: 'openai/gpt-5.6',
+      protocols: ['openai-chat', 'openai-responses'],
+    };
+    const gateway: Accounts[number] = {
+      id: 'acc_gw',
+      label: 'LinkCode Gateway',
+      createdAt: 0,
+      service: 'linkcode-gateway',
+      credential: { type: 'auth-token', token: 'lc-test' },
+      models: [responsesToo, claudeOnly],
+    };
+    const codexRow = (account: Accounts[number]) =>
+      providerAccountDetailViewModel(account, undefined, undefined).agents.find(
+        ({ kind }) => kind === 'codex',
+      );
+
+    expect(codexRow(gateway)?.status).toEqual({ kind: 'model-shortfall', picked: 2, reachable: 1 });
+
+    // Pick only what codex cannot reach and the row has to say why its picker is empty — as a
+    // sentence, not as a "0 of 1" ratio saying the same thing twice.
+    const empty = codexRow({ ...gateway, models: [claudeOnly] });
+    expect(empty?.enabled).toBe(true);
+    expect(empty?.status).toEqual({ kind: 'no-reachable-model' });
+
+    // Nothing to report when the agent can run everything that was picked.
+    expect(codexRow({ ...gateway, models: [responsesToo] })?.status).toBeUndefined();
   });
 
   it('updates editable account fields without replacing its identity or hidden fields', () => {
