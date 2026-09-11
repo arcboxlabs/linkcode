@@ -1,3 +1,4 @@
+import type { AgentKind } from '@linkcode/schema';
 import { z } from 'zod';
 
 /**
@@ -48,6 +49,16 @@ export interface SystemContext {
     /** Show an OS notification; a click focuses the window and pushes `clickToken` back. */
     notify(notification: SystemNotification): void;
   };
+  identity: {
+    /** Build-time agent/service allowlist (CODE-618); `null` fields mean unrestricted. */
+    restrictions(): AgentRestrictionsSnapshot;
+  };
+}
+
+/** `null` means unrestricted — every agent/service is allowed. A brand only ever narrows this. */
+export interface AgentRestrictionsSnapshot {
+  readonly allowedAgents: readonly AgentKind[] | null;
+  readonly allowedServices: readonly string[] | null;
 }
 
 export const FileFilterSchema = z.object({

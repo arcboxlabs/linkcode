@@ -9,11 +9,16 @@ import {
   definitionsFromDefaults,
   parseConfigBuildBundle,
 } from '@linkcode/common/config';
+import type { AgentKind } from '@linkcode/schema';
 // Metro resolves bundled.generated.<platform>.ts when scripts/render-config-bundle.mts has run;
 // the committed base module must stay the { bundle: null } development sentinel.
 import generatedModule from './bundled.generated';
 
 export interface BundledConfigBootstrap {
+  /** Build-time agent allowlist (CODE-618); `null` means unrestricted. */
+  readonly allowedAgents: readonly AgentKind[] | null;
+  /** Build-time service allowlist (CODE-618); `null` means unrestricted. */
+  readonly allowedServices: readonly string[] | null;
   readonly brandId: string;
   readonly channel: ConfigChannel;
   readonly emergencyKeyring: Readonly<Record<string, string>>;
@@ -34,6 +39,8 @@ export interface BundledConfig {
 
 const DEV_FALLBACK: BundledConfig = {
   bootstrap: {
+    allowedAgents: null,
+    allowedServices: null,
     brandId: 'linkcode',
     channel: 'stable',
     emergencyKeyring: {},
@@ -63,6 +70,8 @@ export function bundledConfigFromModule(module: unknown): BundledConfig {
   const defaults = configBuildBundleDefaults(bundle);
   return {
     bootstrap: {
+      allowedAgents: bundle.agents ?? null,
+      allowedServices: bundle.services ?? null,
       brandId: bundle.brandId,
       channel: bundle.channel,
       emergencyKeyring: bundle.keyrings.emergency,

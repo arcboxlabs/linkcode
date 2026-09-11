@@ -68,6 +68,10 @@ export const systemBridge: SystemBridge = {
     onClick: (callback) =>
       traceRendererIpc('notifications.on-click', () => source.notifications.onClick(callback)),
   },
+  identity: {
+    restrictions: () =>
+      traceRendererIpc('identity.restrictions', () => source.identity.restrictions()),
+  },
   browser: {
     onOpenTab: (callback) =>
       traceRendererIpc('browser.on-open-tab', () => source.browser.onOpenTab(callback)),

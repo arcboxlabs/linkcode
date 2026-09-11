@@ -4,7 +4,7 @@ import { DAEMON_EXIT_ALREADY_RUNNING } from '@linkcode/schema';
 import type { UtilityProcess } from 'electron';
 import { app, utilityProcess } from 'electron';
 import log from 'electron-log';
-import { CHANNEL, PROFILE } from './constants';
+import { AGENT_RESTRICTIONS, CHANNEL, PROFILE } from './constants';
 import { watchDaemonRuntime } from './daemon-discovery';
 import { getSettings } from './settings';
 
@@ -90,6 +90,10 @@ function spawnDaemon(): void {
   // The channel cannot be inferred by the child: the devshell pack bundles a daemon stamped
   // `release` at build time, and only this shell knows it is a development build (CODE-460).
   env.LINKCODE_CHANNEL = CHANNEL;
+  // Restricted-brand agent gate (CODE-618): unset on unrestricted builds, an exact no-op for the
+  // daemon (see apps/daemon/src/config.ts#daemonAllowedAgents).
+  if (AGENT_RESTRICTIONS.allowedAgents === null) delete env.LINKCODE_ALLOWED_AGENTS;
+  else env.LINKCODE_ALLOWED_AGENTS = AGENT_RESTRICTIONS.allowedAgents.join(',');
   const sidecar = sidecarPath();
   if (existsSync(sidecar)) env.LINKCODE_PTY_SIDECAR_PATH = sidecar;
   else log.warn(`[linkcode/desktop] pty sidecar missing at ${sidecar}; terminals unavailable`);

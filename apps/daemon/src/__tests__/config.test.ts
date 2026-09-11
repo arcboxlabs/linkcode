@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   cloudCredentialsPath,
+  daemonAllowedAgents,
   daemonProfile,
   databasePath,
   loadConfig,
@@ -39,6 +40,7 @@ afterEach(() => {
   process.env.HOME = savedHome;
   delete process.env.LINKCODE_PROFILE;
   delete process.env.LINKCODE_CHANNEL;
+  delete process.env.LINKCODE_ALLOWED_AGENTS;
   vi.restoreAllMocks();
 });
 
@@ -632,5 +634,29 @@ describe('credential storage', () => {
     expect(stored[0].credential).toEqual({ type: 'oauth', agent: 'claude-code' });
     expect([...vault.refs.keys()]).toEqual([]);
     expect(loadConfig(vault).accounts).toEqual([oauth]);
+  });
+});
+
+describe('daemonAllowedAgents', () => {
+  it('is unrestricted when the env var is unset or empty', () => {
+    delete process.env.LINKCODE_ALLOWED_AGENTS;
+    expect(daemonAllowedAgents()).toBeNull();
+    process.env.LINKCODE_ALLOWED_AGENTS = '';
+    expect(daemonAllowedAgents()).toBeNull();
+  });
+
+  it('parses a single allowed agent', () => {
+    process.env.LINKCODE_ALLOWED_AGENTS = 'pi';
+    expect(daemonAllowedAgents()).toEqual(['pi']);
+  });
+
+  it('parses and trims a comma-separated list', () => {
+    process.env.LINKCODE_ALLOWED_AGENTS = 'pi, claude-code';
+    expect(daemonAllowedAgents()).toEqual(['pi', 'claude-code']);
+  });
+
+  it('fails closed on an unknown agent kind', () => {
+    process.env.LINKCODE_ALLOWED_AGENTS = 'not-a-kind';
+    expect(() => daemonAllowedAgents()).toThrow();
   });
 });

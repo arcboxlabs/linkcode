@@ -134,6 +134,29 @@ describe('loadGeneratedConfigBundle', () => {
     ).toThrow(RE_IMMUTABLE);
   });
 
+  it('rejects an ambient MAIN_VITE_AGENT_RESTRICTIONS when a bundle exists', async () => {
+    const dir = await makeDesktopDir(desktopFixture);
+    expect(() =>
+      loadGeneratedConfigBundle(dir, { MAIN_VITE_AGENT_RESTRICTIONS: '{"agents":["pi"]}' }),
+    ).toThrow(RE_IMMUTABLE);
+  });
+
+  it('omits agentRestrictionsJson when the bundle declares neither agents nor services', async () => {
+    const dir = await makeDesktopDir(validDesktopFixture);
+    const generated = loadGeneratedConfigBundle(dir, {});
+    expect(generated?.agentRestrictionsJson).toBeUndefined();
+  });
+
+  it('derives agentRestrictionsJson from the bundle agents/services fields', async () => {
+    const dir = await makeDesktopDir(
+      desktopBundle({ agents: ['pi'], services: ['linkcode-gateway'] }),
+    );
+    const generated = loadGeneratedConfigBundle(dir, {});
+    expect(generated?.agentRestrictionsJson).toBe(
+      JSON.stringify({ agents: ['pi'], services: ['linkcode-gateway'] }),
+    );
+  });
+
   it('fails closed on malformed JSON', async () => {
     const dir = await makeDesktopDir('{not json');
     expect(() => loadGeneratedConfigBundle(dir, {})).toThrow();

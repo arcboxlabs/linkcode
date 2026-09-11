@@ -14,6 +14,9 @@ export const WINDOW_MAXIMIZED_CHANGED_CHANNEL = 'linkcode.system.window.maximize
 export const SETTINGS_SNAPSHOT_CHANNEL = 'linkcode.system.settings.snapshot';
 /** Synchronous effective daemon endpoint (read via `ipcRenderer.sendSync`, needed before first paint). */
 export const DAEMON_URL_SNAPSHOT_CHANNEL = 'linkcode.system.daemon.urlSnapshot';
+/** Synchronous boot snapshot of the agent/service allowlist (read via `ipcRenderer.sendSync`). */
+export const IDENTITY_RESTRICTIONS_SNAPSHOT_CHANNEL =
+  'linkcode.system.identity.restrictionsSnapshot';
 /** Main → renderer push: the menubar/Cmd+, asked to open Settings. */
 export const SETTINGS_OPEN_CHANNEL = 'linkcode.system.settings.open';
 /** Main → renderer push: auto-update lifecycle state. */

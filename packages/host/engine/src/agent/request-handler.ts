@@ -1,6 +1,6 @@
 import type { AdapterFactory } from '@linkcode/agent-adapter';
 import { endpointServiceById } from '@linkcode/providers';
-import type { AccountSecret, WirePayload } from '@linkcode/schema';
+import type { AccountSecret, AgentKind, WirePayload } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
@@ -41,11 +41,24 @@ export class AgentRequestHandler {
     private readonly responder: WireResponder,
     private readonly factory: AdapterFactory,
     private readonly probeModels: ModelProbe = probeServiceModels,
+    // `agent.catalog` can spawn real agent processes; null leaves the build unrestricted.
+    private readonly allowedAgents: readonly AgentKind[] | null = null,
   ) {}
 
   handle(payload: AgentRequest): Effect.Effect<void> {
     switch (payload.kind) {
       case 'agent.catalog':
+        if (this.allowedAgents !== null && !this.allowedAgents.includes(payload.agentKind)) {
+          return this.responder.reply(
+            payload.clientReqId,
+            Effect.fail(
+              new RequestError({
+                code: 'forbidden',
+                message: `${payload.agentKind}: not available in this build`,
+              }),
+            ),
+          );
+        }
         return this.responder.reply(
           payload.clientReqId,
           Effect.tryPromise({

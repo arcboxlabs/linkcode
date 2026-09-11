@@ -4,6 +4,7 @@ import type {
   AgentEvent,
   AgentHistoryCapabilities,
   AgentInput,
+  AgentKind,
   ContentBlock,
   McpWarning,
   MessageId,
@@ -41,6 +42,12 @@ export class SessionOrchestrator {
     private readonly onStopped: (sessionId: SessionId) => void,
     private readonly resources: ResourceService,
     private readonly browserTools?: BrowserToolsetFactory,
+    /** Restricted-brand allowlist (CODE-618); `null` (the default) is unrestricted. Enforced only
+     * here, at the one place every start/resume/relaunch path constructs a live adapter — never at
+     * the bare `factory` used for history reads (`list`/`read`/`resolveLiveBranchCursor`) or
+     * `list()`'s per-record `historyCapabilities`, so a persisted session of an excluded kind stays
+     * fully readable; only starting a new live run of it is refused. */
+    private readonly allowedAgents: readonly AgentKind[] | null = null,
   ) {
     this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure, resources);
     this.inputs = new SessionInputDispatcher(records, this.events, resources);
@@ -205,13 +212,21 @@ export class SessionOrchestrator {
       sessions,
       transport,
     } = this;
-    const { browserTools } = this;
+    const { browserTools, allowedAgents } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
     const { initialInput, registerRecord = true, rewindMessageId } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
+        if (allowedAgents !== null && !allowedAgents.includes(record.kind)) {
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'forbidden',
+              message: `${record.kind}: not available in this build`,
+            }),
+          );
+        }
         const adapter = factory(record.kind);
         if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);

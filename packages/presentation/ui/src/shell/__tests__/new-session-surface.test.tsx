@@ -326,6 +326,25 @@ describe('NewSessionSurface', () => {
     );
   });
 
+  it('hides the harness picker entirely when only one harness is selectable (CODE-618)', async () => {
+    const user = userEvent.setup();
+    render(
+      <NewSessionSurface
+        chatWorkspace={CHAT_WORKSPACE}
+        draft={{ initialHarness: 'claude-code', initialWorkspaceId: CHAT_WORKSPACE.workspaceId }}
+        mentionItems={[]}
+        onMentionQueryChange={vi.fn()}
+        onRegisterWorkspace={vi.fn().mockResolvedValue(CHAT_WORKSPACE)}
+        onSubmit={vi.fn().mockResolvedValue(undefined)}
+        selectableHarnesses={['claude-code']}
+        workspaces={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole('button', { name: RE_HARNESS_CLAUDE_CODE_BUTTON }));
+    expect(screen.queryByRole('menuitem', { name: RE_HARNESS_CLAUDE_CODE_MENU })).toBeNull();
+  });
+
   it('blocks submission when every harness is disabled', async () => {
     const onSubmit = vi.fn().mockResolvedValue(undefined);
     render(

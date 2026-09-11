@@ -141,4 +141,18 @@ describe('selectableHarnessKinds', () => {
       'grok-build',
     ]);
   });
+
+  it('is unaffected by allowedAgents when null or absent (standard build, CODE-618)', () => {
+    const withoutRestriction = selectableHarnessKinds({ opencode: { enabled: false } });
+    expect(selectableHarnessKinds({ opencode: { enabled: false } }, null)).toEqual(
+      withoutRestriction,
+    );
+    expect(selectableHarnessKinds({ opencode: { enabled: false } })).toEqual(withoutRestriction);
+  });
+
+  it('intersects the enabled set with a restricted-brand allowlist', () => {
+    expect(selectableHarnessKinds({}, ['pi'])).toEqual(['pi']);
+    expect(selectableHarnessKinds({ pi: { enabled: false } }, ['pi'])).toEqual([]);
+    expect(selectableHarnessKinds({}, ['pi', 'codex'])).toEqual(['codex', 'pi']);
+  });
 });

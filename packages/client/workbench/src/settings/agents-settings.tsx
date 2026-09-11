@@ -20,9 +20,14 @@ import { SimulatorAgentAccessCard } from './simulator-access';
  */
 export function AgentsSettingsPanel({
   onOpenProviders,
+  allowedAgents = null,
 }: {
   /** Navigate to the Providers page, selecting the agent's bound account when there is one. */
   onOpenProviders: (accountId: string | undefined) => void;
+  /** Restricted-brand agent allowlist (CODE-618); `null` (the default) means unrestricted. Hides
+   * the row outright — a disallowed agent isn't bundled, so a switch for it would have nothing to
+   * enable. Account-binding resolution (`view.ts`'s `AGENT_KINDS` usage) is untouched. */
+  allowedAgents?: readonly AgentKind[] | null;
 }): React.ReactNode {
   const t = useTranslations('settings.agents');
   const tAgent = useTranslations('workbench.agentKind');
@@ -37,12 +42,17 @@ export function AgentsSettingsPanel({
     void mutateProviders();
   };
 
+  const visibleKinds =
+    allowedAgents === null
+      ? AGENT_KINDS
+      : AGENT_KINDS.filter((kind) => allowedAgents.includes(kind));
+
   return (
     <div className="flex flex-col gap-5">
       {/* The page title is rendered by the settings shell; this is the lead subtitle. */}
       <p className="text-muted-foreground text-sm">{t('hint')}</p>
       <SettingsCard>
-        {AGENT_KINDS.map((kind) => {
+        {visibleKinds.map((kind) => {
           const runtime = runtimes?.[kind];
           // The first enabled account is what a start that names none resolves to, so it is the one
           // worth naming here; the rest are alternatives its model menu offers.

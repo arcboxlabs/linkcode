@@ -295,6 +295,44 @@ describe('non-subscription account creation', () => {
     expect(onPick).toHaveBeenCalledWith('linkcode-gateway');
   });
 
+  it('is unaffected by allowedAgents/allowedServices when both are null (standard build)', () => {
+    const onPick = vi.fn();
+    render(<ServiceCatalogView onPick={onPick} linkCodeGatewayAvailable />);
+    expect(screen.getByText('serviceName.custom')).toBeTruthy();
+    expect(screen.getByText('serviceName.claude-sub')).toBeTruthy();
+    expect(screen.getByText('serviceName.linkcode-gateway')).toBeTruthy();
+  });
+
+  it('excludes custom (and every other endpoint service) by default under a service allowlist (CODE-618)', () => {
+    const onPick = vi.fn();
+    render(
+      <ServiceCatalogView
+        onPick={onPick}
+        linkCodeGatewayAvailable
+        allowedServices={['linkcode-gateway']}
+      />,
+    );
+    expect(screen.queryByText('serviceName.custom')).toBeNull();
+    expect(screen.queryByText('serviceName.anthropic-api')).toBeNull();
+    expect(screen.getByText('serviceName.linkcode-gateway')).toBeTruthy();
+  });
+
+  it('includes custom once a brand explicitly declares it as an allowed service', () => {
+    const onPick = vi.fn();
+    render(<ServiceCatalogView onPick={onPick} allowedServices={['custom']} />);
+    expect(screen.getByText('serviceName.custom')).toBeTruthy();
+    expect(screen.queryByText('serviceName.anthropic-api')).toBeNull();
+  });
+
+  it('filters oauth subscription entries by allowedAgents, independent of allowedServices', () => {
+    const onPick = vi.fn();
+    render(<ServiceCatalogView onPick={onPick} allowedAgents={['pi']} />);
+    expect(screen.queryByText('serviceName.claude-sub')).toBeNull();
+    expect(screen.queryByText('serviceName.chatgpt-sub')).toBeNull();
+    // pi has no oauth catalog entry, but every endpoint/custom service stays (allowedServices null).
+    expect(screen.getByText('serviceName.custom')).toBeTruthy();
+  });
+
   it('stores template values instead of a resolved endpoint', async () => {
     const onSubmit = vi.fn();
     const { container } = render(

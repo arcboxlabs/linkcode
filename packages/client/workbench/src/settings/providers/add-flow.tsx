@@ -14,6 +14,7 @@ import type {
   AccountModel,
   AccountProtocol,
   AccountSecret,
+  AgentKind,
   AgentRuntimes,
 } from '@linkcode/schema';
 import { AccountModelSchema } from '@linkcode/schema';
@@ -48,6 +49,25 @@ const SERVICES_BY_GROUP = new Map<ServiceGroup, ServiceDescriptor[]>(
 for (let i = 0, len = SERVICE_CATALOG.length; i < len; i++) {
   const service = SERVICE_CATALOG[i];
   SERVICES_BY_GROUP.get(service.group)?.push(service);
+}
+
+/**
+ * Two-axis restricted-brand filter (CODE-618) for the add-account catalog only: oauth entries by
+ * their bound agent, everything else (endpoint services and `custom`) by service id. `custom`
+ * gets no special case — it is a plain catalog id like any other, so the id-set intersection
+ * excludes it on its own whenever a brand declares `services` without naming it. `serviceById`,
+ * the account list/detail, and account resolution stay unfiltered everywhere else: an account
+ * created under a service this build no longer offers must keep resolving and rendering.
+ */
+export function isServiceSelectable(
+  service: ServiceDescriptor,
+  allowedAgents: readonly AgentKind[] | null,
+  allowedServices: readonly string[] | null,
+): boolean {
+  if (service.kind === 'oauth') {
+    return allowedAgents === null || allowedAgents.includes(service.agent);
+  }
+  return allowedServices === null || allowedServices.includes(service.id);
 }
 
 /** Account constructors live at module scope: `Date.now` may not run in a component body. */
@@ -143,9 +163,14 @@ function accountFromCustomDraft(draft: CustomDraft, account?: Account): Account 
 export function ServiceCatalogView({
   onPick,
   linkCodeGatewayAvailable = false,
+  allowedAgents = null,
+  allowedServices = null,
 }: {
   onPick: (service: string) => void;
   linkCodeGatewayAvailable?: boolean;
+  /** Restricted-brand allowlists (CODE-618); `null` (the default) means unrestricted. */
+  allowedAgents?: readonly AgentKind[] | null;
+  allowedServices?: readonly string[] | null;
 }): React.ReactNode {
   const t = useTranslations('settings.providers');
   const locale = useLocale();
@@ -163,7 +188,8 @@ export function ServiceCatalogView({
           </span>
           <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
             {(SERVICES_BY_GROUP.get(group) ?? []).map((service) =>
-              !linkCodeGatewayAvailable && service.id === LINKCODE_GATEWAY_SERVICE_ID ? null : (
+              (!linkCodeGatewayAvailable && service.id === LINKCODE_GATEWAY_SERVICE_ID) ||
+              !isServiceSelectable(service, allowedAgents, allowedServices) ? null : (
                 <button
                   key={service.id}
                   type="button"

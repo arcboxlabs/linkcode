@@ -176,3 +176,12 @@ describe('provider account ordering', () => {
     expect(screen.getByTestId('account-order').textContent).toBe('Account A,Account B');
   });
 });
+
+describe('restricted-brand allowlists (CODE-618)', () => {
+  it('still lists a stored account whose service the current build excludes from the catalog', () => {
+    // Neither account's service ('anthropic-api', 'deepseek') is in this allowlist — the account
+    // list/detail must stay unfiltered regardless; only the add-account catalog narrows.
+    render(<ProvidersSettingsPanel allowedServices={['linkcode-gateway']} />);
+    expect(screen.getByTestId('account-order').textContent).toBe('Account A,Account B');
+  });
+});
