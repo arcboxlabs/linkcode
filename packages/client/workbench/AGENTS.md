@@ -36,11 +36,11 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   explicit `workspace.register` / rename / archive has no push at all, so both wait for the next
   revalidation). Coalescing is not optional: one start emits several frames, a bulk import emits one
   per entry, and SWR's key-filter `mutate` deletes its own dedupe markers, so an uncoalesced
-  subscription turns a burst into one forced round trip per frame per list. The effect's abort
-  signal prevents queued runs after generation teardown; a fresh controller snapshot gates
-  revalidation while a disposed generation remains mounted during recovery. This coalescer stays workbench-local:
-  SWR owns fetch errors here; client-core's direct refresh loop has different failure semantics.
-  It does not own connection state.
+  subscription turns a burst into one forced round trip per frame per list. SWR does not own
+  connection state. The effect's abort signal prevents queued runs after generation teardown;
+  a fresh controller snapshot gates revalidation while a disposed generation remains mounted
+  during recovery. This coalescer stays workbench-local: SWR owns fetch errors here;
+  client-core's direct refresh loop has different failure semantics.
 - `mock/` — the dev mock announces imports before touching the workspace, matching the engine's order,
   but its synchronous touch cannot reproduce the engine's async import race. Mock tests prove
   start/resume-driven revalidation only. The mock has no `session.delete` handler and therefore no
