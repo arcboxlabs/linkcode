@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.31.0](https://github.com/arcboxlabs/linkcode/compare/v0.30.0...v0.31.0) (2026-09-11)
+
+
+### Features
+
+* **automations:** align layout with Codex ([#501](https://github.com/arcboxlabs/linkcode/issues/501)) ([22c337f](https://github.com/arcboxlabs/linkcode/commit/22c337f197665e1c53cc717b88859a45cfd8a43d))
+* **client:** consume brand identity agents/services allowlists ([#479](https://github.com/arcboxlabs/linkcode/issues/479)) ([972a40c](https://github.com/arcboxlabs/linkcode/commit/972a40c37c69c0fb954ddda878f9594aab8d4f3f))
+
+
+### Bug Fixes
+
+* **workbench:** skip the catalog of an uninstalled harness ([#527](https://github.com/arcboxlabs/linkcode/issues/527)) ([41087da](https://github.com/arcboxlabs/linkcode/commit/41087dadbb7fd370b86f512976f5b32c7b31dcca))
+
 ## [0.30.0](https://github.com/arcboxlabs/linkcode/compare/v0.29.0...v0.30.0) (2026-09-03)
 
 
