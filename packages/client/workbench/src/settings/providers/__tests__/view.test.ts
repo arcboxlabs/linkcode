@@ -176,20 +176,16 @@ describe('view helpers', () => {
         ({ kind }) => kind === 'codex',
       );
 
-    const shortfall = codexRow(gateway);
-    expect(shortfall?.modelShortfall).toEqual({ picked: 2, reachable: 1 });
-    // A shortfall is not a reason the row is off, so it carries no status of its own.
-    expect(shortfall?.status).toBeUndefined();
+    expect(codexRow(gateway)?.status).toEqual({ kind: 'model-shortfall', picked: 2, reachable: 1 });
 
     // Pick only what codex cannot reach and the row has to say why its picker is empty — as a
     // sentence, not as a "0 of 1" ratio saying the same thing twice.
     const empty = codexRow({ ...gateway, models: [claudeOnly] });
     expect(empty?.enabled).toBe(true);
     expect(empty?.status).toEqual({ kind: 'no-reachable-model' });
-    expect(empty?.modelShortfall).toBeUndefined();
 
     // Nothing to report when the agent can run everything that was picked.
-    expect(codexRow({ ...gateway, models: [responsesToo] })?.modelShortfall).toBeUndefined();
+    expect(codexRow({ ...gateway, models: [responsesToo] })?.status).toBeUndefined();
   });
 
   it('updates editable account fields without replacing its identity or hidden fields', () => {

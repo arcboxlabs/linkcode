@@ -56,14 +56,14 @@ describe('AccountDetail agent rows', () => {
       kind: 'codex',
       tier: 'native',
       enabled: true,
-      modelShortfall: { picked: 3, reachable: 2 },
+      status: { kind: 'model-shortfall', picked: 3, reachable: 2 },
     });
     expect(screen.getByText('modelsReachable:picked=3,reachable=2')).toBeTruthy();
   });
 
-  // Whether a share is worth naming is the view model's call (see the workbench view tests); the
-  // row's own rule is only that an absent one says nothing at all.
-  it('says nothing when it was handed no share', () => {
+  // Which one of these a row gets is the view model's call (see the workbench view tests); the
+  // row's own rule is only that an absent status says nothing at all.
+  it('says nothing when it was handed no status', () => {
     renderDetail({ kind: 'codex', tier: 'native', enabled: true });
     expect(screen.queryByText(REACHABLE_PATTERN)).toBeNull();
   });

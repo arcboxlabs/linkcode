@@ -35,6 +35,7 @@ export type ProviderAgentStatus =
   | { kind: 'unavailable-endpoint-incomplete' }
   | { kind: 'unavailable-protocol' }
   | { kind: 'no-reachable-model' }
+  | { kind: 'model-shortfall'; picked: number; reachable: number }
   | { kind: 'disabled' };
 
 /** One agent row in an account's dialog: whether this account's models are offered to that agent.
@@ -42,12 +43,11 @@ export type ProviderAgentStatus =
 export interface ProviderAgentViewModel {
   kind: AgentKind;
   tier: 'native' | 'translate' | 'unavailable';
-  /** Only a reason the row cannot be, or is not, on. Absent means enabled and available. */
+  /** The one thing worth saying about this row — a reason it cannot be, or is not, on, or a picked
+   * set it can run only part of. Absent means nothing to say. One field rather than several,
+   * because these never stack: the view model picks which one applies, so the row cannot render
+   * "off" and "2 of 3 models" as if both were the news. */
   status?: ProviderAgentStatus;
-  /** A picked set this agent can run only part of, already judged worth naming — absent means
-   * nothing to say, never "no models". Zero reachable arrives as a `status` instead, since that one
-   * needs a sentence rather than a ratio. */
-  modelShortfall?: { picked: number; reachable: number };
   enabled: boolean;
 }
 
@@ -321,6 +321,8 @@ function agentStatusLabel(
       return t('unavailableProtocol');
     case 'no-reachable-model':
       return t('noReachableModel');
+    case 'model-shortfall':
+      return t('modelsReachable', { picked: status.picked, reachable: status.reachable });
     case 'disabled':
       return t('accountDisabled');
     default:
@@ -343,10 +345,8 @@ function AgentRow({
 
   const unavailable = agent.tier === 'unavailable';
   const status = agent.status && agentStatusLabel(t, tAgent, agent.status);
-  const shortfall = agent.modelShortfall && t('modelsReachable', agent.modelShortfall);
-  const note = [agent.tier === 'translate' ? t('translateNote') : undefined, status, shortfall]
-    .filter(Boolean)
-    .join(' · ');
+  const note =
+    agent.tier === 'translate' ? [t('translateNote'), status].filter(Boolean).join(' · ') : status;
 
   return (
     <div
