@@ -1,3 +1,9 @@
+export {
+  type ConversationEvent,
+  ConversationEventSchema,
+  type TurnSubmitInput,
+  TurnSubmitInputSchema,
+} from './conversation';
 export { deliveryOf, WIRE_DELIVERY, type WireDelivery } from './delivery';
 export {
   type AgentHistoryListWireOptions,

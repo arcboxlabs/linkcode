@@ -31,7 +31,10 @@ describe('daemon sqlite session store', () => {
   it('round-trips created and imported records', async () => {
     const store = createSessionStore(':memory:');
     const created = makeRecord({
-      runs: [{ startedAt: 1 }, { historyId: 'native-1', startedAt: 5, endedAt: 9 }],
+      runs: [
+        { runId: 'run-a', startedAt: 1 },
+        { runId: 'run-b', historyId: 'native-1', startedAt: 5, endedAt: 9 },
+      ],
     });
     const imported = makeRecord({
       sessionId: 'sess-2',
@@ -49,13 +52,13 @@ describe('daemon sqlite session store', () => {
 
   it('saves as a whole-record upsert, rewriting runs', async () => {
     const store = createSessionStore(':memory:');
-    await store.save(makeRecord({ runs: [{ startedAt: 1 }] }));
+    await store.save(makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] }));
     const next = makeRecord({
       title: 'Renamed',
       updatedAt: 20,
       runs: [
-        { historyId: 'native-1', startedAt: 1, endedAt: 10 },
-        { historyId: 'native-2', startedAt: 15 },
+        { runId: 'run-a', historyId: 'native-1', startedAt: 1, endedAt: 10 },
+        { runId: 'run-b', historyId: 'native-2', startedAt: 15 },
       ],
     });
     await store.save(next);
@@ -70,7 +73,7 @@ describe('daemon sqlite session store', () => {
     const dbPath = join(dir, 'daemon.db');
 
     const first = createSessionStore(dbPath);
-    const record = makeRecord({ runs: [{ startedAt: 1 }] });
+    const record = makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] });
     await first.save(record);
 
     // Simulate a dev DB migrated under an older journal: the newest migration's created_at predates
@@ -90,7 +93,7 @@ describe('daemon sqlite session store', () => {
 
   it('deletes a record together with its runs', async () => {
     const store = createSessionStore(':memory:');
-    const record = makeRecord({ runs: [{ startedAt: 1 }] });
+    const record = makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] });
     await store.save(record);
     await store.delete(record.sessionId);
     expect(await store.load()).toEqual([]);

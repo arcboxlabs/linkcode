@@ -18,6 +18,7 @@ import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
+import type { ConversationStore } from '../conversation/conversation-store';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
@@ -41,6 +42,7 @@ export class SessionOrchestrator {
     reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
     private readonly resources: ResourceService,
+    private readonly conversations: ConversationStore,
     private readonly browserTools?: BrowserToolsetFactory,
     /** Restricted-brand allowlist (CODE-618); `null` (the default) is unrestricted. Enforced only
      * here, at the one place every start/resume/relaunch path constructs a live adapter — never at
@@ -114,13 +116,22 @@ export class SessionOrchestrator {
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { resources } = this;
+    const { conversations, resources } = this;
     return Effect.gen({ self: this }, function* () {
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
       }
       yield* resources.deleteSession(sessionId);
+      yield* Effect.tryPromise({
+        try: () => conversations.deleteSession(sessionId),
+        catch: (cause) =>
+          toOperationFailure(cause, {
+            subsystem: 'store',
+            operation: 'conversation.delete-session',
+            publicMessage: 'Failed to delete conversation graph',
+          }),
+      });
       yield* this.records.delete(sessionId);
     });
   }

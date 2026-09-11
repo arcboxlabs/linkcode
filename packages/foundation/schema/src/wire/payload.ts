@@ -6,6 +6,7 @@ import { agentRuntimeWireVariants } from './agent-runtime';
 import { artifactWireVariants } from './artifact';
 import { browserWireVariants } from './browser';
 import { configWireVariants } from './config';
+import { conversationWireVariants } from './conversation';
 import { fileWireVariants } from './file';
 import { gitWireVariants } from './git';
 import { historyWireVariants } from './history';
@@ -24,6 +25,7 @@ import { workspaceWireVariants } from './workspace';
 
 const wirePayloadVariants = [
   ...sessionWireVariants,
+  ...conversationWireVariants,
   ...historyWireVariants,
   ...requestWireVariants,
   ...resourceWireVariants,
@@ -51,14 +53,26 @@ const wirePayloadVariants = [
 export const WirePayloadSchema = z
   .discriminatedUnion('kind', wirePayloadVariants)
   .superRefine((payload, ctx) => {
-    if (payload.kind !== 'config.set') return;
-    const updates = [payload.providers, payload.accounts, payload.customMcpServers].filter(
-      (value) => value !== undefined,
-    ).length;
-    if (updates > 1) {
+    if (payload.kind === 'config.set') {
+      const updates = [payload.providers, payload.accounts, payload.customMcpServers].filter(
+        (value) => value !== undefined,
+      ).length;
+      if (updates > 1) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'config.set may update only one configuration resource',
+        });
+      }
+    }
+    // The revision guard exists exactly for explicit-parent submits; a plain send must stay
+    // conflict-free, so the two fields travel together or not at all.
+    if (
+      payload.kind === 'turn.submit' &&
+      (payload.parentTurnId !== undefined) !== (payload.expectedGraphRevision !== undefined)
+    ) {
       ctx.addIssue({
         code: 'custom',
-        message: 'config.set may update only one configuration resource',
+        message: 'turn.submit requires expectedGraphRevision exactly when parentTurnId is present',
       });
     }
   });

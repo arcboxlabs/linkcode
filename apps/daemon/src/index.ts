@@ -43,6 +43,7 @@ import {
   saveSimulatorConsent,
   worktreeRoot,
 } from './config';
+import { createConversationStore } from './conversation-store';
 import { DaemonLoggerLive, logger } from './logger';
 import { createLoopStore } from './loop-store';
 import type { ManagedAgentKind } from './managed-agent-refresh';
@@ -283,6 +284,8 @@ async function main(): Promise<void> {
         simulatorMcp,
         simulatorConsent,
         sessionStore: createSessionStore(databasePath()),
+        // After sessionStore, whose constructor applies the migrations these tables come from.
+        conversationStore: createConversationStore(databasePath()),
         resourceStore: createResourceStore(databasePath()),
         stateDir: daemonStateDir(),
         // After sessionStore so its migration-ledger reconcile runs before this store migrates.
