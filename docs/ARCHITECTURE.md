@@ -332,10 +332,12 @@ host reads the older pong and reports that the host must update. The tunnel need
 wire-version surface of its own (it versions only its subprotocol and peer frames) — the relay
 carries `WireMessage` frames opaquely and the pong returns on the same peer connection. Moving
 `MIN_COMPATIBLE_WIRE_VERSION` waits until the clients it will refuse can render that advisory:
-at least two shipped mobile releases carrying the update-required screen. The handshake exchange
-itself has been in clients since wire v64 (2026-07-31, first released in v0.13.0), but those
-builds only surface the technical message after their retry budget — the procedure is in
-`docs/RELEASE.md`.
+at least two shipped mobile releases carrying the update-required screen, and a desktop release
+carrying it too — desktop's bundled daemon is lockstep with its renderer, but that renderer also
+dials a daemon it did not ship (a `runtime.json` advertisement, or the Developer-tab override).
+The handshake exchange itself has been in clients since wire v64 (2026-07-31, first released in
+v0.13.0), but those builds only surface the technical message after their retry budget — the
+procedure is in `docs/RELEASE.md`.
 
 Who receives a host frame is declared in `wire/delivery.ts`, not decided in the transport: a
 correlated reply follows its `replyTo` to the connection that asked, and everything else fans out
