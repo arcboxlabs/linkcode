@@ -36,6 +36,7 @@ export const sessions = sqliteTable(
      * tables would otherwise cycle. */
     activeLeafTurnId: text('active_leaf_turn_id'),
     graphRevision: integer('graph_revision').notNull().default(0),
+    eventEpoch: integer('event_epoch').notNull().default(0),
     createdAt: integer('created_at').notNull(),
     updatedAt: integer('updated_at').notNull(),
   },

@@ -53,6 +53,7 @@ describe('SQLite session store', () => {
       updatedAt: 2,
       activeLeafTurnId: 'turn-leaf',
       graphRevision: 7,
+      eventEpoch: 3,
       runs: [
         { runId: 'run-1', startedAt: 1, endedAt: 2, historyId: 'native-1', accountId: 'acc_first' },
         {

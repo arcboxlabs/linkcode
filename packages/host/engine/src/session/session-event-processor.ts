@@ -1,9 +1,16 @@
 import { AUTH_FAILED_ERROR_CODE } from '@linkcode/agent-adapter';
-import type { AgentEvent, SessionId, SessionNotificationReason, ToolKind } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  SessionId,
+  SessionNotificationReason,
+  ToolKind,
+  TurnId,
+} from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { ConversationLiveJournals } from '../conversation/live-journal';
 import type { ConversationTurnService } from '../conversation/turn-service';
 import type { ResourceService } from '../resource/service';
 import type { LiveSession } from './live-session';
@@ -33,12 +40,28 @@ export class SessionEventProcessor {
     private readonly reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly resources: ResourceService,
     private readonly turns: ConversationTurnService,
+    private readonly journals: ConversationLiveJournals,
   ) {}
 
-  broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
-    for (const event of events) {
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
-    }
+  broadcast(sessionId: SessionId, session: LiveSession, events: Iterable<AgentEvent>): void {
+    const turnId = this.turns.runningTurnId(sessionId, session.runId);
+    for (const event of events) this.send(sessionId, session, event, turnId);
+  }
+
+  /** The one stamped exit: every `agent.event` frame mints its `(epoch, seq)` position here and
+   * lands in the session's live journal, so the wire stream and the journal never diverge. */
+  private send(
+    sessionId: SessionId,
+    session: LiveSession,
+    event: AgentEvent,
+    turnId: TurnId | undefined,
+  ): void {
+    const { epoch, runId } = session;
+    const seq = session.nextSeq();
+    this.journals.open(sessionId).append({ epoch, seq, runId, turnId, ts: Date.now(), event });
+    this.transport.send(
+      createWireMessage({ kind: 'agent.event', sessionId, runId, turnId, epoch, seq, event }),
+    );
   }
 
   private registerResources(sessionId: SessionId, event: AgentEvent): void {
@@ -96,14 +119,10 @@ export class SessionEventProcessor {
     );
   }
 
-  rejectInput(sessionId: SessionId, message: string): void {
-    this.transport.send(
-      createWireMessage({
-        kind: 'agent.event',
-        sessionId,
-        event: { type: 'error', message, code: 'input_rejected', recoverable: true },
-      }),
-    );
+  rejectInput(sessionId: SessionId, session: LiveSession, message: string): void {
+    this.broadcast(sessionId, session, [
+      { type: 'error', message, code: 'input_rejected', recoverable: true },
+    ]);
   }
 
   handle(sessionId: SessionId, session: LiveSession, event: AgentEvent): void {
@@ -116,7 +135,12 @@ export class SessionEventProcessor {
       ) {
         return;
       }
-      this.broadcast(sessionId, session.apply(event));
+      // Captured before the settle below so a turn-ending event still carries its turn.
+      const turnId = this.turns.runningTurnId(sessionId, session.runId);
+      const derived = session.apply(event);
+      for (let i = 0, len = derived.length; i < len; i++) {
+        this.send(sessionId, session, derived[i], turnId);
+      }
       this.registerResources(sessionId, event);
       switch (event.type) {
         case 'status':
@@ -141,7 +165,7 @@ export class SessionEventProcessor {
         default:
           break;
       }
-      this.transport.send(createWireMessage({ kind: 'agent.event', sessionId, event }));
+      this.send(sessionId, session, event, turnId);
       this.notify(sessionId, event);
     } catch (error) {
       this.reportFailure(Effect.logError('Failed to process agent event', { sessionId }, error));

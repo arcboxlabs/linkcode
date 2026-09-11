@@ -1,0 +1,1 @@
+ALTER TABLE `sessions` ADD `event_epoch` integer DEFAULT 0 NOT NULL;

@@ -967,6 +967,7 @@ export class DevMockHost {
         updatedAt: now,
         runs: [],
         graphRevision: 0,
+        eventEpoch: 0,
       },
     });
   }
