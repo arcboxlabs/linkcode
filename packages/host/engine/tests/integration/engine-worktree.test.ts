@@ -13,6 +13,7 @@ import type {
 } from '@linkcode/schema';
 import { OperationIdSchema } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
+import { noop } from 'foxts/noop';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createSessionHarness,
@@ -20,6 +21,7 @@ import {
   settleEngineTasks,
   startedSessionId,
 } from '../../src/__tests__/fixtures/session-harness';
+import { InMemoryConversationStore } from '../../src/conversation/conversation-store';
 import type { SessionStore } from '../../src/session/session-store';
 import { InMemorySessionStore } from '../../src/session/session-store';
 import { InMemoryWorkspaceStore } from '../../src/workspace/workspace-store';
@@ -94,6 +96,7 @@ function worktreeHarness(
     workspaceStore?: InMemoryWorkspaceStore;
     worktreeStore: InMemoryWorktreeStore;
     worktreeRoot: string;
+    conversationStore?: InMemoryConversationStore;
   },
 ): Harness {
   return createSessionHarness(
@@ -103,8 +106,42 @@ function worktreeHarness(
     undefined,
     stores.workspaceStore,
     undefined,
-    { worktreeStore: stores.worktreeStore, worktreeRoot: stores.worktreeRoot },
+    {
+      worktreeStore: stores.worktreeStore,
+      worktreeRoot: stores.worktreeRoot,
+      ...(stores.conversationStore && { conversationStore: stores.conversationStore }),
+    },
   );
+}
+
+/** Parks the co-leaseholder scan inside the worktree permit, so a delete can land between a
+ * caller's record check and its durable admit. */
+class GatedConversationStore extends InMemoryConversationStore {
+  private scan: { sessionId: SessionId; entered: () => void; blocked: Promise<void> } | undefined;
+
+  /** Park the next scan of `sessionId`; resolves once it is parked, returns its release. */
+  hold(sessionId: SessionId): { entered: Promise<void>; release: () => void } {
+    let release = noop;
+    const blocked = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let entered = noop;
+    const parked = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    this.scan = { sessionId, entered, blocked };
+    return { entered: parked, release };
+  }
+
+  override async listOpenOperations(sessionId?: SessionId) {
+    const scan = this.scan;
+    if (scan !== undefined && sessionId === scan.sessionId) {
+      this.scan = undefined;
+      scan.entered();
+      await scan.blocked;
+    }
+    return super.listOpenOperations(sessionId);
+  }
 }
 
 async function startOnWorktree(h: Harness, clientReqId: string, repo: string): Promise<SessionId> {
@@ -692,6 +729,46 @@ describe('engine managed worktree leases', () => {
       forkedAdapter(h, source).emit({ type: 'status', status: 'running' });
       await submitPrompt(h, 'source-turn-2', sourceId, 'again');
       expect(await requestFailed(h.sent, 'source-turn-2')).toMatchObject({ code: 'busy' });
+    } finally {
+      await h.engine.stop();
+    }
+  });
+
+  it('persists no turn for a session deleted while its turn waits on the worktree gate', async () => {
+    const repo = makeRepo();
+    const worktreeStore = new InMemoryWorktreeStore();
+    const conversationStore = new GatedConversationStore();
+    const h = worktreeHarness(() => new ForkingAdapter(), {
+      worktreeStore,
+      worktreeRoot: makeTempDir(),
+      conversationStore,
+    });
+    await h.engine.start();
+    try {
+      const sourceId = await startOnWorktree(h, 'start', repo);
+      const source = nullthrow(h.adapters[0]);
+      const turnId = await checkpointedTurn(h, source, sourceId, 't1');
+      const forked = await fork(h, 'fork', sourceId, turnId, 1);
+      if (forked.kind !== 'session.forked') throw new Error(`fork failed: ${forked.message}`);
+      const childId = forked.sessionId;
+
+      // The child's admission validated its record, then parked on the co-leaseholder scan.
+      const gate = conversationStore.hold(sourceId);
+      const submitted = submitPrompt(h, 'child-turn', childId, 'me too');
+      await gate.entered;
+      await h.inject({ kind: 'session.delete', clientReqId: 'delete', sessionId: childId });
+      await vi.waitFor(() =>
+        expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'delete' }),
+      );
+      gate.release();
+      await submitted;
+
+      expect(await requestFailed(h.sent, 'child-turn')).toMatchObject({
+        code: 'not_found',
+        message: `Unknown session: ${childId}`,
+      });
+      expect(await conversationStore.listTurns(childId)).toEqual([]);
+      expect(await conversationStore.listOpenOperations(childId)).toEqual([]);
     } finally {
       await h.engine.stop();
     }

@@ -81,33 +81,41 @@ export class SessionOrchestrator {
    * Turn admission on a managed worktree: at most one leaseholder runs a turn, so `body` (the
    * caller's admit-and-persist) runs under the worktree's permit after a typed `busy` for any
    * co-leaseholder running or holding an admitted turn (its open operation) — two siblings
-   * admitted concurrently cannot both start one. Sessions without a worktree run `body` directly.
+   * admitted concurrently cannot both start one. Sessions without a worktree skip the permit but
+   * keep the deletion check: `delete` runs outside every caller's critical section, so the record
+   * a caller validated can be gone by the time this admits.
    */
   admitTurn<A, E>(
     sessionId: SessionId,
     body: Effect.Effect<A, E>,
   ): Effect.Effect<A, E | RequestError | OperationError> {
-    const worktree = this.worktrees.get(sessionId);
-    if (worktree === undefined) return body;
-    const { turns, worktrees } = this;
+    const { deleting, records, turns, worktrees } = this;
     const isBusy = this.isBusy.bind(this);
-    return this.worktreeGate(worktree.worktreePath).withPermit(
-      Effect.gen(function* () {
-        const siblings = worktrees.coLeaseholders(sessionId);
-        for (let i = 0, len = siblings.length; i < len; i++) {
-          const sibling = siblings[i];
-          if (isBusy(sibling) || (yield* turns.hasOpenOperation(sibling))) {
-            return yield* Effect.fail(
-              new RequestError({
-                code: 'busy',
-                message: 'Another session on this worktree is running a turn',
-              }),
-            );
-          }
+    const worktree = worktrees.get(sessionId);
+    const admit = Effect.gen(function* () {
+      const siblings = worktree === undefined ? [] : worktrees.coLeaseholders(sessionId);
+      for (let i = 0, len = siblings.length; i < len; i++) {
+        const sibling = siblings[i];
+        if (isBusy(sibling) || (yield* turns.hasOpenOperation(sibling))) {
+          return yield* Effect.fail(
+            new RequestError({
+              code: 'busy',
+              message: 'Another session on this worktree is running a turn',
+            }),
+          );
         }
-        return yield* body;
-      }),
-    );
+      }
+      // Last check before anything durable is written under this session's id.
+      if (deleting.has(sessionId) || records.get(sessionId) === undefined) {
+        return yield* Effect.fail(
+          new RequestError({ code: 'not_found', message: `Unknown session: ${sessionId}` }),
+        );
+      }
+      return yield* body;
+    });
+    return worktree === undefined
+      ? admit
+      : this.worktreeGate(worktree.worktreePath).withPermit(admit);
   }
 
   private worktreeGate(worktreePath: string): Semaphore.Semaphore {
