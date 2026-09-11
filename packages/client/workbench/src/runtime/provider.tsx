@@ -1,5 +1,6 @@
 import { LinkCodeProvider } from '@linkcode/client-core';
 import type { LinkCodeSdkClient } from '@linkcode/sdk';
+import { listSessions, listWorkspaces } from '@linkcode/sdk';
 import { ComposeContextProvider } from 'foxact/compose-context-provider';
 import { nullthrow } from 'foxact/nullthrow';
 import { useEffect } from 'foxact/use-abortable-effect';
@@ -10,6 +11,7 @@ import { wait } from 'foxts/wait';
 import { createContext, useContext, useRef, useSyncExternalStore } from 'react';
 import type { Cache, Middleware as SWRMiddleware } from 'swr';
 import { SWRConfig, useSWRConfig } from 'swr';
+import { coalesceRuns } from './coalesce';
 import type {
   WorkbenchConnectionGeneration,
   WorkbenchConnectionSource,
@@ -168,14 +170,29 @@ function WorkbenchRuntimeGeneration({
         <LinkCodeProvider key="linkcode" client={contextGeneration.client.raw} />,
       ]}
     >
-      <ReadyRevalidator controller={controller} generation={contextGeneration}>
+      <HostRevalidator controller={controller} generation={contextGeneration}>
         {children}
-      </ReadyRevalidator>
+      </HostRevalidator>
     </ComposeContextProvider>
   );
 }
 
-function ReadyRevalidator({
+/** A `listSessions` / `listWorkspaces` cache entry, whichever surface owns it. Both tayori key
+ * forms land in the cache as the resolved `[sdkMethod, arg, cacheTags]` tuple, so this matches the
+ * tuple rather than tayori's brand — the lazy form brands its outer function, not the array. */
+function isHostListKey(key: unknown): boolean {
+  return Array.isArray(key) && (key[0] === listSessions || key[0] === listWorkspaces);
+}
+
+/**
+ * Keeps SWR in step with the host: everything once a generation is protocol-ready, and the two
+ * list caches on each `session.changed` push. The daemon registers/freshens a session's workspace
+ * before it announces the record on start and resume, so one frame stands for both lists there;
+ * import announces first and touches after, so a brand-new imported cwd can need the next
+ * revalidation. Pushes are coalesced: a single start emits several frames, and a bulk import emits
+ * one per entry, while SWR's key-filter `mutate` deletes its own dedupe markers.
+ */
+function HostRevalidator({
   children,
   controller,
   generation,
@@ -196,6 +213,21 @@ function ReadyRevalidator({
     revalidatedRef.current = true;
     void mutate(trueFn);
   }, [generation.id, mutate, status]);
+
+  const client = generation.client.raw;
+  useEffect(
+    (signal) =>
+      client.subscribeSessionChanged(
+        coalesceRuns(async () => {
+          // Recovery retains disposed generations in React until a replacement is ready.
+          const snapshot = controller.getSnapshot();
+          if (snapshot.status === 'ready' && snapshot.contextGeneration?.id === generation.id) {
+            await mutate(isHostListKey);
+          }
+        }, signal),
+      ),
+    [client, controller, generation.id, mutate],
+  );
 
   return children;
 }

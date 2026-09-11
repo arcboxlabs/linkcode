@@ -28,8 +28,23 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   the workbench **binding** — it pins the generic to `LinkCodeSdkClient`, promotes each
   generation into the ambient default tayori reads (`setDefaultClient`), and reports outcomes to
   product analytics. Behavior changes belong in client-core; only SDK/analytics wiring belongs here. SWR retains cached data across generations of the same
-  endpoint, starts a fresh cache after endpoint migration, and revalidates once after a generation
-  becomes protocol-ready; it does not own connection state.
+  endpoint, starts a fresh cache after endpoint migration, revalidates once after a generation
+  becomes protocol-ready, and revalidates the session and workspace list caches on every
+  `session.changed` push, coalesced through `coalesceRuns` (the daemon registers/freshens a
+  session's workspace *before* announcing the record on start and resume, so one frame covers both
+  lists there; an import of a brand-new cwd announces before the touch, and another client's
+  explicit `workspace.register` / rename / archive has no push at all, so both wait for the next
+  revalidation). Coalescing is not optional: one start emits several frames, a bulk import emits one
+  per entry, and SWR's key-filter `mutate` deletes its own dedupe markers, so an uncoalesced
+  subscription turns a burst into one forced round trip per frame per list. SWR does not own
+  connection state. The effect's abort signal prevents queued runs after generation teardown;
+  a fresh controller snapshot gates revalidation while a disposed generation remains mounted
+  during recovery. This coalescer stays workbench-local: SWR owns fetch errors here;
+  client-core's direct refresh loop has different failure semantics.
+- `mock/` — the dev mock announces imports before touching the workspace, matching the engine's order,
+  but its synchronous touch cannot reproduce the engine's async import race. Mock tests prove
+  start/resume-driven revalidation only. The mock has no `session.delete` handler and therefore no
+  `session.changed` `removed` emission; deletion-driven revalidation needs separate coverage.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
   contract plus the default shell, and session orchestration hooks.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
