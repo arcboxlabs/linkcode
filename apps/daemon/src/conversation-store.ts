@@ -1,5 +1,3 @@
-import { mkdirSync } from 'node:fs';
-import { dirname } from 'node:path';
 import type { ConversationStore, ConversationTurnIntent } from '@linkcode/engine';
 import { ConversationSessionBusyError } from '@linkcode/engine';
 import type {
@@ -18,9 +16,8 @@ import {
   PromptRecordSchema,
   ProviderTurnBindingSchema,
 } from '@linkcode/schema';
-import Sqlite from 'better-sqlite3';
 import { and, asc, count, eq, inArray, isNotNull, isNull, notInArray } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/better-sqlite3';
+import type { DaemonDatabaseClient } from './db/database';
 import {
   conversationOperations,
   conversationTurns,
@@ -33,22 +30,14 @@ type TurnRow = typeof conversationTurns.$inferSelect;
 type PromptRow = typeof prompts.$inferSelect;
 type OperationRow = typeof conversationOperations.$inferSelect;
 
-type Db = ReturnType<typeof drizzle>;
+type Db = DaemonDatabaseClient;
 type DbOrTx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 /**
- * SQLite-backed `ConversationStore` on ONE dedicated connection — the multi-table methods run in
- * `db.transaction`, which the submit saga's atomicity guarantees hang on. Rows are validated back
- * through the zod schemas on load. Migrations are owned by the session store, which must be
- * constructed first.
+ * SQLite-backed `ConversationStore` on the daemon's shared graph/session connection. Multi-table
+ * methods run in `db.transaction`; rows are validated back through the zod schemas on load.
  */
-export function createConversationStore(dbPath: string): ConversationStore {
-  if (dbPath !== ':memory:') mkdirSync(dirname(dbPath), { recursive: true });
-  const sqlite = new Sqlite(dbPath);
-  sqlite.pragma('journal_mode = WAL');
-  sqlite.pragma('foreign_keys = ON');
-  const db = drizzle(sqlite);
-
+export function createConversationStore(db: DaemonDatabaseClient): ConversationStore {
   function upsertTurn(tx: DbOrTx, turn: ConversationTurn): void {
     const row = toTurnRow(turn);
     tx.insert(conversationTurns)
