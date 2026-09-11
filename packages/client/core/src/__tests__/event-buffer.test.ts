@@ -25,6 +25,19 @@ describe('EventBuffer', () => {
     expect(listener).toHaveBeenCalledOnce();
   });
 
+  it('retains a stamped repeat so the daemon sequence stays contiguous', () => {
+    const buffer = new EventBuffer();
+
+    buffer.ingest(SESSION_ID, RESOLUTION, { epoch: 1, seq: 1 });
+    buffer.ingest(SESSION_ID, RESOLUTION, { epoch: 1, seq: 2 });
+
+    // Each stamped frame is a distinct daemon position; dropping one would read as a gap.
+    expect(buffer.snapshot(SESSION_ID).map(({ position }) => position)).toEqual([
+      { epoch: 1, seq: 1 },
+      { epoch: 1, seq: 2 },
+    ]);
+  });
+
   it('drops the buffered suffix at a conversation rewind without dropping subscribers', () => {
     const buffer = new EventBuffer();
     const listener = vi.fn();

@@ -23,7 +23,7 @@ async function connectedClient(): Promise<LinkCodeClient> {
 
 function collectEvents(client: LinkCodeClient, sessionId: SessionId): AgentEvent[] {
   const events: AgentEvent[] = [];
-  client.subscribe(sessionId, (event) => events.push(event));
+  client.subscribe(sessionId, ({ event }) => events.push(event));
   return events;
 }
 
