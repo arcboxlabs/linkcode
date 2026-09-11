@@ -16,7 +16,7 @@ export {
 export { CURATED_AGENT_MODELS } from './curated-models';
 export type { DetectedLogin } from './detected-logins';
 export { detectedLogins } from './detected-logins';
-export type { EnabledAccountModel } from './enabled-models';
+export type { AccountModelReach, EnabledAccountModel } from './enabled-models';
 export {
   accountEnabledFor,
   accountModelReach,

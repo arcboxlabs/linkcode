@@ -159,16 +159,17 @@ describe('view helpers', () => {
       id: 'anthropic/claude-sonnet-5',
       protocols: ['openai-chat', 'anthropic'],
     };
+    const responsesToo: AccountModel = {
+      id: 'openai/gpt-5.6',
+      protocols: ['openai-chat', 'openai-responses'],
+    };
     const gateway: Accounts[number] = {
       id: 'acc_gw',
       label: 'LinkCode Gateway',
       createdAt: 0,
       service: 'linkcode-gateway',
       credential: { type: 'auth-token', token: 'lc-test' },
-      models: [
-        { id: 'openai/gpt-5.6', protocols: ['openai-chat', 'openai-responses'] },
-        claudeOnly,
-      ],
+      models: [responsesToo, claudeOnly],
     };
     const codexRow = (account: Accounts[number]) =>
       providerAccountDetailViewModel(account, undefined, undefined).agents.find(
@@ -176,15 +177,19 @@ describe('view helpers', () => {
       );
 
     const shortfall = codexRow(gateway);
-    expect(shortfall?.models).toEqual({ picked: 2, reachable: 1 });
+    expect(shortfall?.modelShortfall).toEqual({ picked: 2, reachable: 1 });
     // A shortfall is not a reason the row is off, so it carries no status of its own.
     expect(shortfall?.status).toBeUndefined();
 
-    // Pick only what codex cannot reach and the row has to say why its picker is empty.
+    // Pick only what codex cannot reach and the row has to say why its picker is empty — as a
+    // sentence, not as a "0 of 1" ratio saying the same thing twice.
     const empty = codexRow({ ...gateway, models: [claudeOnly] });
     expect(empty?.enabled).toBe(true);
-    expect(empty?.models).toEqual({ picked: 1, reachable: 0 });
     expect(empty?.status).toEqual({ kind: 'no-reachable-model' });
+    expect(empty?.modelShortfall).toBeUndefined();
+
+    // Nothing to report when the agent can run everything that was picked.
+    expect(codexRow({ ...gateway, models: [responsesToo] })?.modelShortfall).toBeUndefined();
   });
 
   it('updates editable account fields without replacing its identity or hidden fields', () => {

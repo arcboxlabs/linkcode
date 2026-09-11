@@ -44,11 +44,10 @@ export interface ProviderAgentViewModel {
   tier: 'native' | 'translate' | 'unavailable';
   /** Only a reason the row cannot be, or is not, on. Absent means enabled and available. */
   status?: ProviderAgentStatus;
-  /** How much of the account's picked set this agent can run — absent when it picked none. Only a
-   * shortfall is worth showing: the protocols one agent speaks are not every protocol the account's
-   * models answer, and a model this agent cannot reach is missing from its picker for that reason
-   * alone. */
-  models?: { picked: number; reachable: number };
+  /** A picked set this agent can run only part of, already judged worth naming — absent means
+   * nothing to say, never "no models". Zero reachable arrives as a `status` instead, since that one
+   * needs a sentence rather than a ratio. */
+  modelShortfall?: { picked: number; reachable: number };
   enabled: boolean;
 }
 
@@ -344,13 +343,8 @@ function AgentRow({
 
   const unavailable = agent.tier === 'unavailable';
   const status = agent.status && agentStatusLabel(t, tAgent, agent.status);
-  const reach =
-    agent.models !== undefined &&
-    agent.models.reachable > 0 &&
-    agent.models.reachable < agent.models.picked
-      ? t('modelsReachable', { reachable: agent.models.reachable, picked: agent.models.picked })
-      : undefined;
-  const note = [agent.tier === 'translate' ? t('translateNote') : undefined, status, reach]
+  const shortfall = agent.modelShortfall && t('modelsReachable', agent.modelShortfall);
+  const note = [agent.tier === 'translate' ? t('translateNote') : undefined, status, shortfall]
     .filter(Boolean)
     .join(' · ');
 

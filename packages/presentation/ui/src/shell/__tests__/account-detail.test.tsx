@@ -9,9 +9,11 @@ import type {
 } from '../providers/account-detail';
 import { AccountDetail } from '../providers/account-detail';
 
+/** Names each value, so an assertion says which number it expected where. */
 function passthrough(key: string, values?: Record<string, unknown>): string {
-  const interpolation = values ? Object.values(values).join(',') : '';
-  return interpolation ? `${key}:${interpolation}` : key;
+  if (!values) return key;
+  const named = Object.entries(values).map(([name, value]) => `${name}=${String(value)}`);
+  return `${key}:${named.join(',')}`;
 }
 
 vi.mock('use-intl', () => ({ useTranslations: () => passthrough }));
@@ -49,23 +51,20 @@ function renderDetail(agent: ProviderAgentViewModel): void {
 }
 
 describe('AccountDetail agent rows', () => {
-  it('names the reachable share only when the agent cannot run the whole picked set', () => {
+  it('names the share it was handed, each number under its own placeholder', () => {
     renderDetail({
       kind: 'codex',
       tier: 'native',
       enabled: true,
-      models: { picked: 3, reachable: 2 },
+      modelShortfall: { picked: 3, reachable: 2 },
     });
-    expect(screen.getByText('modelsReachable:2,3')).toBeTruthy();
+    expect(screen.getByText('modelsReachable:picked=3,reachable=2')).toBeTruthy();
   });
 
-  it('stays silent when every picked model runs on this agent', () => {
-    renderDetail({
-      kind: 'codex',
-      tier: 'native',
-      enabled: true,
-      models: { picked: 3, reachable: 3 },
-    });
+  // Whether a share is worth naming is the view model's call (see the workbench view tests); the
+  // row's own rule is only that an absent one says nothing at all.
+  it('says nothing when it was handed no share', () => {
+    renderDetail({ kind: 'codex', tier: 'native', enabled: true });
     expect(screen.queryByText(REACHABLE_PATTERN)).toBeNull();
   });
 
@@ -74,11 +73,10 @@ describe('AccountDetail agent rows', () => {
       kind: 'codex',
       tier: 'native',
       enabled: true,
-      models: { picked: 3, reachable: 0 },
       status: { kind: 'no-reachable-model' },
     });
     expect(screen.getByText('noReachableModel')).toBeTruthy();
-    // Zero reachable is the status' story; a "0 of 3" count next to it would say it twice.
+    // Zero reachable is the status' story; a "0 of 3" ratio beside it would say it twice.
     expect(screen.queryByText(REACHABLE_PATTERN)).toBeNull();
   });
 });

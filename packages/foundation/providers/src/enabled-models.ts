@@ -46,15 +46,24 @@ function modelReachable(model: AccountModel, protocol: AccountProtocol | undefin
   );
 }
 
-/** How much of an account's picked set one agent can actually run: `picked` is the stored set,
- * `reachable` the part the protocol this agent binds answers. Counting rather than filtering is
- * what Settings needs — it names the shortfall next to the agent's own switch, and a set with no
- * `protocols` at all counts as fully reachable, matching `enabledAccountModels` and keeping an
- * un-probed account silent instead of alarming. */
-export function accountModelReach(
-  account: Account,
-  kind: AgentKind,
-): { picked: number; reachable: number } {
+/** How much of an account's picked set one agent can run: `picked` is the stored set, `reachable`
+ * the part the protocol this agent binds answers. */
+export interface AccountModelReach {
+  picked: number;
+  reachable: number;
+}
+
+/**
+ * The counted form of `enabledAccountModels`' own narrowing, for the Settings row that names a
+ * shortfall next to the agent's switch. A set with no `protocols` at all counts as fully reachable,
+ * matching that filter, so an account probed before tagging existed stays silent instead of
+ * alarming.
+ *
+ * **Only meaningful for a binding that resolves.** An unavailable agent has no protocol to count
+ * against and reads as fully reachable — ask `resolveBinding` first, as `agentStatus` does, and
+ * report the unavailability itself rather than this count.
+ */
+export function accountModelReach(account: Account, kind: AgentKind): AccountModelReach {
   const models = account.models ?? [];
   const protocol = boundProtocol(resolveBinding(account, kind));
   return {

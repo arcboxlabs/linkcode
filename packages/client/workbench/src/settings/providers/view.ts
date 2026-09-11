@@ -1,3 +1,4 @@
+import type { AccountModelReach } from '@linkcode/providers';
 import {
   accountEnabledFor,
   accountModelReach,
@@ -120,16 +121,15 @@ function agentStatus(
   return {
     tier: availability.tier,
     enabled,
-    ...(models.picked > 0 && { models }),
+    // Absent unless there is a shortfall to name: whether a count is worth showing is one decision,
+    // and it belongs beside the status it shares a rule with, not in the component that renders it.
+    ...(models.reachable > 0 && models.reachable < models.picked && { modelShortfall: models }),
     ...(status !== undefined && { status }),
   };
 }
 
 /** Why an available agent offers nothing, when that is not obvious from its switch. */
-function offerStatus(
-  enabled: boolean,
-  models: { picked: number; reachable: number },
-): ProviderAgentStatus | undefined {
+function offerStatus(enabled: boolean, models: AccountModelReach): ProviderAgentStatus | undefined {
   if (!enabled) return { kind: 'disabled' };
   // An enabled agent whose picker comes up empty reads as an enablement bug; the picked set is the
   // real reason, so the row names it instead of leaving the switch to imply otherwise.
