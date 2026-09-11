@@ -2,14 +2,18 @@ import type { AgentEvent, MessageId, RunId, SessionId } from '@linkcode/schema';
 import { compareConversationWatermarks } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { JournaledEvent } from '../conversation/live-journal';
-import { ConversationLiveJournal, ConversationLiveJournals } from '../conversation/live-journal';
+import {
+  ConversationLiveJournal,
+  ConversationLiveJournals,
+  inflightChunkKey,
+} from '../conversation/live-journal';
 
 const runId = 'run-journal' as RunId;
 
-function chunk(text: string): AgentEvent {
+function chunk(text: string, messageId = 'msg-1'): AgentEvent {
   return {
     type: 'agent-message-chunk',
-    messageId: 'msg-1' as MessageId,
+    messageId: messageId as MessageId,
     content: { type: 'text', text },
   };
 }
@@ -132,6 +136,45 @@ describe('ConversationLiveJournal tailAfter', () => {
     expect(journal.watermark).toEqual({ epoch: 2, seq: 2 });
     // The straggler sits at or below every current-epoch watermark — provably discarded on read.
     expect(journal.tailAfter({ epoch: 2, seq: 2 }).events).toEqual([]);
+  });
+});
+
+describe('ConversationLiveJournal evicted in-flight streams', () => {
+  function stampedChunk(seq: number, messageId: string): JournaledEvent {
+    return { epoch: 1, seq, runId, ts: 1, event: chunk(`c-${seq}`, messageId) };
+  }
+
+  it('marks a stream cleared once eviction removes any of its deltas', () => {
+    const journal = new ConversationLiveJournal(Number.MAX_SAFE_INTEGER, 3);
+    journal.append(stampedChunk(1, 'msg-a'));
+    journal.append(stampedChunk(2, 'msg-a'));
+    journal.append(stampedChunk(3, 'msg-b'));
+    expect(journal.isChunkCleared('msg-a')).toBe(false);
+
+    // Evicts seq 1 (msg-a's head): its retained tail must never render headless.
+    journal.append(stampedChunk(4, 'msg-b'));
+    expect(journal.isChunkCleared('msg-a')).toBe(true);
+    expect(journal.isChunkCleared('msg-b')).toBe(false);
+  });
+
+  it('keys tool-call content chunks by toolCallId and full-state events not at all', () => {
+    expect(
+      inflightChunkKey({
+        type: 'tool-call-content-chunk',
+        toolCallId: 'tool-9',
+        content: { type: 'content', content: { type: 'text', text: 'x' } },
+      }),
+    ).toBe('tool-9');
+    expect(inflightChunkKey({ type: 'status', status: 'running' })).toBeUndefined();
+  });
+
+  it('treats every stream as cleared once the key cap overflows', () => {
+    const journal = new ConversationLiveJournal(Number.MAX_SAFE_INTEGER, 1);
+    for (let seq = 1; seq <= 1030; seq++) {
+      journal.append(stampedChunk(seq, `msg-${seq}`));
+    }
+    // 1029 distinct keys evicted > the 1024 cap: even a never-evicted stream reads as cleared.
+    expect(journal.isChunkCleared('msg-never-appended')).toBe(true);
   });
 });
 

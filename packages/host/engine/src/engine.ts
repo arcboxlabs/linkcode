@@ -24,6 +24,7 @@ import { BrowserReplHost } from './browser/repl-host';
 import { BrowserRequestHandler } from './browser/request-handler';
 import { InMemoryConversationStore } from './conversation/conversation-store';
 import { ConversationLiveJournals } from './conversation/live-journal';
+import { ConversationProjectionService } from './conversation/projection-service';
 import { ConversationRequestHandler } from './conversation/request-handler';
 import { ConversationTurnService } from './conversation/turn-service';
 import type { EngineDeps } from './deps';
@@ -232,9 +233,17 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     sessionLifecycle,
     responder,
   );
+  const conversationProjection = new ConversationProjectionService(
+    conversationTurns,
+    records,
+    history,
+    conversationJournals,
+    (sessionId) => sessions.openInteractiveRequests(sessionId),
+  );
   const conversationRequests = new ConversationRequestHandler(
     transport,
     sessionLifecycle,
+    conversationProjection,
     responder,
   );
   const scheduler = new ScheduleService(

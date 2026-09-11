@@ -117,6 +117,16 @@ export class SessionOrchestrator {
     if (session) this.events.broadcast(sessionId, session, session.replay());
   }
 
+  /** Authoritative open/responding interactive requests — the CODE-35 backstop: a conversation
+   * read must carry them even when the journal evicted or cut their original events. */
+  openInteractiveRequests(sessionId: SessionId): AgentEvent[] {
+    const session = this.sessions.get(sessionId);
+    if (!session) return [];
+    return session.interactions
+      .replay()
+      .filter((event) => event.type === 'permission-request' || event.type === 'question-request');
+  }
+
   sendInput(
     sessionId: SessionId,
     input: AgentInput,

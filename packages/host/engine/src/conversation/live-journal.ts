@@ -19,9 +19,26 @@ interface JournalEntry {
 
 const DEFAULT_JOURNAL_BYTE_CAP = 10 * 1024 * 1024;
 const DEFAULT_JOURNAL_EVENT_CAP = 10_000;
+/** Distinct evicted in-flight streams remembered per journal; past it every retained chunk is
+ * treated as headless (an extreme-storm degradation, never unbounded growth). */
+const EVICTED_CHUNK_KEY_CAP = 1024;
 
 function stampOf(event: JournaledEvent): ConversationWatermark {
   return { epoch: event.epoch, seq: event.seq };
+}
+
+/** The stream identity of a delta-carrying event: rendering its tail without its head splices
+ * garbage, unlike full-snapshot events which replace by id. */
+export function inflightChunkKey(event: AgentEvent): string | undefined {
+  switch (event.type) {
+    case 'agent-message-chunk':
+    case 'agent-thought-chunk':
+      return event.messageId;
+    case 'tool-call-content-chunk':
+      return event.toolCallId;
+    default:
+      return undefined;
+  }
 }
 
 /**
@@ -38,6 +55,9 @@ export class ConversationLiveJournal {
   /** Highest position evicted by the caps; a watermark below it lost events it never saw. */
   private evictedThrough: ConversationWatermark | undefined;
   private last: ConversationWatermark | undefined;
+  /** In-flight streams that lost their head to eviction ({@link inflightChunkKey}). */
+  private readonly evictedChunkKeys = new Set<string>();
+  private evictedChunkKeysOverflowed = false;
 
   constructor(
     private readonly maxBytes = DEFAULT_JOURNAL_BYTE_CAP,
@@ -81,6 +101,14 @@ export class ConversationLiveJournal {
       const removed = this.entries.shift();
       if (!removed) break;
       this.byteCount -= removed.bytes;
+      const chunkKey = inflightChunkKey(removed.event.event);
+      if (chunkKey !== undefined) {
+        if (this.evictedChunkKeys.size >= EVICTED_CHUNK_KEY_CAP) {
+          this.evictedChunkKeysOverflowed = true;
+        } else {
+          this.evictedChunkKeys.add(chunkKey);
+        }
+      }
       const evicted = stampOf(removed.event);
       if (
         this.evictedThrough === undefined ||
@@ -89,6 +117,12 @@ export class ConversationLiveJournal {
         this.evictedThrough = evicted;
       }
     }
+  }
+
+  /** Whether a retained chunk of this in-flight stream lost earlier deltas to eviction — a reader
+   * must clear and restart that message, never splice a headless tail (CODE-35 class). */
+  isChunkCleared(key: string): boolean {
+    return this.evictedChunkKeysOverflowed || this.evictedChunkKeys.has(key);
   }
 
   /**
