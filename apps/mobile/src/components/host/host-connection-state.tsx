@@ -61,13 +61,20 @@ export function HostConnectionState({
               <Text modifiers={[TITLE, CENTERED]}>{title}</Text>
               <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>{body}</Text>
             </VStack>
-            <Button
-              label={t('retry')}
-              systemImage="arrow.clockwise"
-              modifiers={[buttonStyle('borderedProminent')]}
-              onPress={onRetry}
-            />
-            {failure ? (
+            {/* An app below the host's floor has nothing to retry: redialing only flashes
+                "connecting" and lands back here. Updating the host is a real action, so that
+                skew keeps the button. */}
+            {wireRemedy === 'update-app' ? null : (
+              <Button
+                label={t('retry')}
+                systemImage="arrow.clockwise"
+                modifiers={[buttonStyle('borderedProminent')]}
+                onPress={onRetry}
+              />
+            )}
+            {/* The technical line distinguishes causes on an ordinary failure; under a named skew
+                it only repeats the copy above in triage voice. */}
+            {failure && wireRemedy === undefined ? (
               <Text modifiers={[FOOTNOTE, SECONDARY, CENTERED, textSelection(true)]}>
                 {failure}
               </Text>
