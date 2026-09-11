@@ -38,12 +38,14 @@ declare const wireMessageValidated: unique symbol;
  * A WireMessage a transport accepts for send. Minted in exactly two places: here by
  * {@link parseWireMessage} (zod at the receive trust boundary) and by the transport package's
  * `createWireMessage` (typed local construction). The brand keeps raw, unvalidated objects out
- * of the send path without paying a per-frame parse there.
+ * of the send path without paying a per-frame parse there. One receive-side exception: a
+ * below-floor `ping`/`pong` carries the brand too, so a version skew can be answered and named.
  */
 export type ValidatedWireMessage = WireMessage & { readonly [wireMessageValidated]: true };
 
-/** Why a frame was refused. Only `unsupported-version` is fatal to a connection; the rest describe
- * one frame, and `unknown-kind` is the routine cost of talking to a newer peer. */
+/** Why a frame was refused. Every reason describes one frame and leaves the connection open;
+ * `unsupported-version` names the peer's version for the log, and `unknown-kind` is the routine
+ * cost of talking to a newer peer. */
 export type WireParseFailure =
   | { reason: 'malformed-envelope' }
   | { reason: 'unsupported-version'; version: number }
@@ -54,15 +56,30 @@ export type WireParseResult =
   | { ok: true; message: ValidatedWireMessage }
   | ({ ok: false } & WireParseFailure);
 
+/** The handshake is the one exchange both ends of a version skew can still read: a `ping` or a
+ * `pong` is accepted whatever `v` it carries, so a peer below this build's floor learns the range
+ * it must update into instead of timing out against silence. */
+const VERSION_AGNOSTIC_KINDS: ReadonlySet<string> = new Set(['ping', 'pong']);
+
 /** Parse + validate an inbound message; success mints the {@link ValidatedWireMessage} brand. */
 export function parseWireMessage(input: unknown): WireParseResult {
   const envelope = WireEnvelopeSchema.safeParse(input);
   if (!envelope.success) return { ok: false, reason: 'malformed-envelope' };
+  const kind = payloadKind(envelope.data.payload);
   if (envelope.data.v < MIN_COMPATIBLE_WIRE_VERSION) {
-    return { ok: false, reason: 'unsupported-version', version: envelope.data.v };
+    const handshake =
+      kind !== undefined && VERSION_AGNOSTIC_KINDS.has(kind)
+        ? WirePayloadSchema.safeParse(envelope.data.payload)
+        : undefined;
+    if (!handshake?.success) {
+      return { ok: false, reason: 'unsupported-version', version: envelope.data.v };
+    }
+    return {
+      ok: true,
+      message: { ...envelope.data, payload: handshake.data } as ValidatedWireMessage,
+    };
   }
 
-  const kind = payloadKind(envelope.data.payload);
   if (kind === undefined) return { ok: false, reason: 'malformed-envelope' };
   if (!WIRE_PAYLOAD_KINDS.has(kind)) return { ok: false, reason: 'unknown-kind', kind };
 

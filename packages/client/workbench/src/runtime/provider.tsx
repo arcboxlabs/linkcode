@@ -81,6 +81,16 @@ export function useWorkbenchRuntimeEndpoint(): string | undefined {
   );
 }
 
+/** The last connection failure, for copy that depends on its type (a wire skew names an update). */
+export function useWorkbenchRuntimeError(): unknown {
+  const controller = useWorkbenchConnectionController();
+  return useSyncExternalStore(
+    controller.subscribe,
+    () => controller.getSnapshot().error,
+    () => controller.getSnapshot().error,
+  );
+}
+
 export function useWorkbenchRuntimeRetry(): () => void {
   return useWorkbenchConnectionController().retry;
 }

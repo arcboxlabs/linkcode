@@ -2,6 +2,7 @@ import type { Transport, Unsubscribe } from '@linkcode/transport';
 import type { AsyncRetryOptions } from 'foxts/async-retry';
 import { asyncRetry } from 'foxts/async-retry';
 import { noop } from 'foxts/noop';
+import { WireIncompatibleError } from './wire-incompatible-error';
 
 const DEFAULT_RETRY_POLICY = {
   factor: 2,
@@ -70,8 +71,8 @@ export interface ConnectionControllerOptions<TClient> {
   onPromote?: (client: TClient | null) => void;
   onOutcome?: (outcome: ConnectionOutcome) => void;
   /** `retries` defaults to infinity — right for a local daemon that will eventually come back,
-   * wrong for a battery-powered client, and wrong for a permanent failure such as a wire-protocol
-   * mismatch. Cap it to surface `error` and let the caller re-trigger deliberately. */
+   * wrong for a battery-powered client. Cap it to surface `error` and let the caller re-trigger
+   * deliberately; a wire incompatibility stops the run on its own regardless of the cap. */
   retry?: Partial<Pick<AsyncRetryOptions, 'factor' | 'maxTimeout' | 'minTimeout' | 'retries'>>;
 }
 
@@ -251,7 +252,13 @@ export class ConnectionController<TClient extends RecoverableClient> {
             return bail(error);
           }
         })();
-        return this.connectGeneration(run, attempt, resolved, client);
+        try {
+          return await this.connectGeneration(run, attempt, resolved, client);
+        } catch (error) {
+          // A wire skew cannot heal by retrying: stop at once so the app can show an update state.
+          if (error instanceof WireIncompatibleError) return bail(error);
+          throw error;
+        }
       },
       {
         ...this.retryPolicy,

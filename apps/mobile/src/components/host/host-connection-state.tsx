@@ -5,6 +5,7 @@ import {
   multilineTextAlignment,
   textSelection,
 } from '@expo/ui/swift-ui/modifiers';
+import type { WireIncompatibilityRemedy } from '@linkcode/client-core';
 import { FOOTNOTE, SECONDARY } from '@mobile/components/form/styles';
 import { useTranslations } from 'use-intl';
 
@@ -16,6 +17,8 @@ export interface HostConnectionStateProps {
   url: string;
   /** The underlying failure, when the controller reported one. */
   failure?: string;
+  /** A wire skew: retrying cannot help, one side has to update. */
+  wireRemedy?: WireIncompatibilityRemedy;
   onRetry: () => void;
 }
 
@@ -24,9 +27,20 @@ export function HostConnectionState({
   status,
   url,
   failure,
+  wireRemedy,
   onRetry,
 }: HostConnectionStateProps): React.ReactNode {
   const t = useTranslations('mobile.connection');
+
+  let title = t('unavailableTitle');
+  let body = t('error', { url });
+  if (wireRemedy === 'update-app') {
+    title = t('updateAppTitle');
+    body = t('updateAppBody');
+  } else if (wireRemedy === 'update-host') {
+    title = t('updateHostTitle');
+    body = t('updateHostBody');
+  }
 
   return (
     <Host style={{ flex: 1 }} useViewportSizeMeasurement>
@@ -38,20 +52,29 @@ export function HostConnectionState({
           </>
         ) : (
           <>
-            <Image systemName="wifi.exclamationmark" size={44} modifiers={[SECONDARY]} />
-            <VStack spacing={6}>
-              <Text modifiers={[TITLE, CENTERED]}>{t('unavailableTitle')}</Text>
-              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>
-                {t('error', { url })}
-              </Text>
-            </VStack>
-            <Button
-              label={t('retry')}
-              systemImage="arrow.clockwise"
-              modifiers={[buttonStyle('borderedProminent')]}
-              onPress={onRetry}
+            <Image
+              systemName={wireRemedy ? 'arrow.down.circle' : 'wifi.exclamationmark'}
+              size={44}
+              modifiers={[SECONDARY]}
             />
-            {failure ? (
+            <VStack spacing={6}>
+              <Text modifiers={[TITLE, CENTERED]}>{title}</Text>
+              <Text modifiers={[SECONDARY, CENTERED, textSelection(true)]}>{body}</Text>
+            </VStack>
+            {/* An app below the host's floor has nothing to retry: redialing only flashes
+                "connecting" and lands back here. Updating the host is a real action, so that
+                skew keeps the button. */}
+            {wireRemedy === 'update-app' ? null : (
+              <Button
+                label={t('retry')}
+                systemImage="arrow.clockwise"
+                modifiers={[buttonStyle('borderedProminent')]}
+                onPress={onRetry}
+              />
+            )}
+            {/* The technical line distinguishes causes on an ordinary failure; under a named skew
+                it only repeats the copy above in triage voice. */}
+            {failure && wireRemedy === undefined ? (
               <Text modifiers={[FOOTNOTE, SECONDARY, CENTERED, textSelection(true)]}>
                 {failure}
               </Text>

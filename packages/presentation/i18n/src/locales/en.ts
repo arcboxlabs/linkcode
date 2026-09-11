@@ -121,6 +121,8 @@ export const en = {
       error: 'Unable to connect to the daemon ({url}). Run {command} first.',
       errorManaged:
         'Unable to connect to the daemon ({url}). It starts automatically with the app — retry, and restart the app if this keeps failing.',
+      updateApp: 'This LinkCode build is too old to talk to the daemon at {url}. Update the app.',
+      updateHost: 'The daemon at {url} is too old for this LinkCode build. Update the daemon.',
       retry: 'Retry',
     },
     errors: {
@@ -1427,6 +1429,12 @@ export const en = {
       connecting: 'Connecting to the host…',
       unavailableTitle: 'Host unavailable',
       error: 'Unable to reach the host at {url}.',
+      updateAppTitle: 'Update LinkCode',
+      updateAppBody:
+        'This version of the app is too old to talk to that host. Update it from the App Store and try again.',
+      updateHostTitle: 'Update the host',
+      updateHostBody:
+        'That host runs a LinkCode version too old for this app. Update LinkCode on the computer and try again.',
       retry: 'Retry',
     },
     settings: {

@@ -1,9 +1,15 @@
 import type { ValidatedWireMessage, WirePayload } from '@linkcode/schema';
-import { SessionIdSchema, SessionResourceSchema, WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
+import {
+  MIN_COMPATIBLE_WIRE_VERSION,
+  SessionIdSchema,
+  SessionResourceSchema,
+  WIRE_PROTOCOL_VERSION,
+} from '@linkcode/schema';
 import type { Transport, Unsubscribe } from '@linkcode/transport';
 import { createWireMessage, pong } from '@linkcode/transport';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { LinkCodeClient } from '../client';
+import { WireIncompatibleError } from '../wire-incompatible-error';
 
 class ControlledTransport implements Transport {
   readonly sent: WirePayload[] = [];
@@ -75,9 +81,12 @@ describe('LinkCodeClient connection lifetime', () => {
   it('names the skew when the host has moved its floor past this build', async () => {
     const transport = new ControlledTransport();
     const client = new LinkCodeClient(transport);
-    const connecting = expect(client.connect()).rejects.toThrow(
-      `this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${WIRE_PROTOCOL_VERSION + 3} the host needs`,
-    );
+    const connecting = client
+      .connect()
+      .then(() => {
+        throw new Error('handshake should have failed');
+      })
+      .catch((error: unknown) => error);
 
     await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
     transport.receive({
@@ -86,7 +95,45 @@ describe('LinkCodeClient connection lifetime', () => {
       minCompatible: WIRE_PROTOCOL_VERSION + 3,
     });
 
-    await connecting;
+    const error = await connecting;
+    expect(error).toBeInstanceOf(WireIncompatibleError);
+    expect(error).toMatchObject({
+      remedy: 'update-app',
+      peerVersion: WIRE_PROTOCOL_VERSION + 5,
+      peerMinCompatible: WIRE_PROTOCOL_VERSION + 3,
+      message: expect.stringContaining(
+        `this build speaks wire v${WIRE_PROTOCOL_VERSION}, older than the v${WIRE_PROTOCOL_VERSION + 3} the host needs`,
+      ),
+    });
+    client.dispose();
+  });
+
+  it('names the skew when the host is older than this build accepts', async () => {
+    const transport = new ControlledTransport();
+    const client = new LinkCodeClient(transport);
+    const connecting = client
+      .connect()
+      .then(() => {
+        throw new Error('handshake should have failed');
+      })
+      .catch((error: unknown) => error);
+
+    await vi.waitFor(() => expect(transport.sent).toContainEqual({ kind: 'ping' }));
+    transport.receive({
+      kind: 'pong',
+      version: MIN_COMPATIBLE_WIRE_VERSION - 1,
+      minCompatible: MIN_COMPATIBLE_WIRE_VERSION - 4,
+    });
+
+    const error = await connecting;
+    expect(error).toBeInstanceOf(WireIncompatibleError);
+    expect(error).toMatchObject({
+      remedy: 'update-host',
+      peerVersion: MIN_COMPATIBLE_WIRE_VERSION - 1,
+      message: expect.stringContaining(
+        `host speaks wire v${MIN_COMPATIBLE_WIRE_VERSION - 1}, older than the v${MIN_COMPATIBLE_WIRE_VERSION} this build needs`,
+      ),
+    });
     client.dispose();
   });
 
