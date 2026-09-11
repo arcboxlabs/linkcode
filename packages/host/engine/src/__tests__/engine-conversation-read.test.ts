@@ -17,6 +17,7 @@ import {
 } from '@linkcode/schema';
 import { nullthrow } from 'foxts/guard';
 import { describe, expect, it } from 'vitest';
+import { InMemoryConversationStore } from '../conversation/conversation-store';
 import {
   FakeAdapter,
   createSessionHarness as harness,
@@ -61,6 +62,12 @@ function userRow(itemId: string, text: string): AgentHistoryEvent {
     messageId: itemId as MessageId,
     content: [{ type: 'text', text }],
   });
+}
+
+/** A provider user row carrying the adapter-opaque cursor that forks right before it. */
+function cursorRow(itemId: string, text: string, branchCursor: string): AgentHistoryEvent {
+  const row = userRow(itemId, text);
+  return { ...row, event: { ...row.event, branchCursor } as AgentEvent };
 }
 
 function assistantRow(itemId: string, text: string): AgentHistoryEvent {
@@ -234,6 +241,139 @@ describe('conversation.read', () => {
     );
     // codex resolves its rollout home through the project env, so the read must carry the cwd.
     expect(shared.lastReadOpts?.cwd).toBe('/repo');
+  });
+
+  it('backfills replay bindings for attributed turns without overwriting a live capture', async () => {
+    const shared: SharedHistory = { events: [], failRead: false };
+    const conversationStore = new InMemoryConversationStore();
+    const h = harness(
+      undefined,
+      () => new HistoryFakeAdapter(shared),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]);
+    adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    const texts = ['first', 'second', 'third'];
+    for (let i = 0, len = texts.length; i < len; i++) {
+      const text = texts[i];
+      // eslint-disable-next-line no-await-in-loop -- turns are sequential by construction
+      await h.inject({
+        kind: 'turn.submit',
+        clientReqId: `s-${text}`,
+        sessionId,
+        operationId: OperationIdSchema.parse(`op-${text}`),
+        input: { type: 'prompt', blocks: [{ type: 'text', text }] },
+      });
+      if (text === 'first') {
+        adapter.emitCheckpoint({
+          historyId: HISTORY_ID,
+          cursor: 'live-after-first',
+          turn: 'ending',
+        });
+      }
+      adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+      adapter.emit({ type: 'status', status: 'idle' });
+      // eslint-disable-next-line no-await-in-loop -- settle the store hops before the next turn
+      await settleEngineTasks();
+    }
+    const [first, second, third] = await conversationStore.listTurns(sessionId);
+    shared.events = [
+      cursorRow('u1', 'first', 'before-first'),
+      cursorRow('u2', 'second', 'before-second'),
+      cursorRow('u3', 'third', 'before-third'),
+    ];
+    await h.inject({ kind: 'session.stop', clientReqId: 'stop', sessionId });
+
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId });
+    await settleEngineTasks();
+
+    expect(readResult(h.sent, 'rr').events).not.toContainEqual(
+      expect.objectContaining({ type: 'history-unavailable' }),
+    );
+    expect(await conversationStore.listBindings(first.turnId)).toEqual([
+      expect.objectContaining({ checkpoint: 'live-after-first', capturedFrom: 'live' }),
+    ]);
+    expect(await conversationStore.listBindings(second.turnId)).toEqual([
+      {
+        turnId: second.turnId,
+        runId: second.runId,
+        historyId: HISTORY_ID,
+        checkpoint: 'before-third',
+        capturedFrom: 'replay',
+      },
+    ]);
+    // The lineage tip has no successor row, hence no replay cut (fork stays unavailable).
+    expect(await conversationStore.listBindings(third.turnId)).toEqual([]);
+  });
+
+  it('backfills nothing past a fingerprint mismatch, and never the live row across the gap', async () => {
+    const shared: SharedHistory = { events: [], failRead: false };
+    const conversationStore = new InMemoryConversationStore();
+    const h = harness(
+      undefined,
+      () => new HistoryFakeAdapter(shared),
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      { conversationStore },
+    );
+    await h.engine.start();
+    await h.inject({
+      kind: 'session.start',
+      clientReqId: 'r1',
+      opts: { kind: 'claude-code', cwd: '/repo' },
+    });
+    const sessionId = startedId(h.sent, 'r1');
+    const adapter = nullthrow(h.adapters[0]);
+    adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    const texts = ['first', 'second'];
+    for (let i = 0, len = texts.length; i < len; i++) {
+      const text = texts[i];
+      // eslint-disable-next-line no-await-in-loop -- turns are sequential by construction
+      await h.inject({
+        kind: 'turn.submit',
+        clientReqId: `s-${text}`,
+        sessionId,
+        operationId: OperationIdSchema.parse(`op-${text}`),
+        input: { type: 'prompt', blocks: [{ type: 'text', text }] },
+      });
+      adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+      adapter.emit({ type: 'status', status: 'idle' });
+      // eslint-disable-next-line no-await-in-loop -- settle the store hops before the next turn
+      await settleEngineTasks();
+    }
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's-third',
+      sessionId,
+      operationId: OperationIdSchema.parse('op-third'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'third' }] },
+    });
+    const [first, second] = await conversationStore.listTurns(sessionId);
+    // Position 2 mismatches the host prompt; position 3 is the in-flight turn's own row.
+    shared.events = [
+      cursorRow('u1', 'first', 'before-first'),
+      cursorRow('u2', 'not the second prompt', 'before-mismatch'),
+      cursorRow('u3', 'third', 'before-third'),
+    ];
+
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr', sessionId });
+    await settleEngineTasks();
+
+    expect(await conversationStore.listBindings(first.turnId)).toEqual([]);
+    expect(await conversationStore.listBindings(second.turnId)).toEqual([]);
   });
 
   it('refreshes a stale corpus captured before the newest settle', async () => {

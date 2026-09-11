@@ -255,7 +255,7 @@ interface CodexIndexEntry {
   updatedAt?: number;
 }
 
-interface CodexTranscriptSummary {
+export interface CodexTranscriptSummary {
   id: string;
   path?: string;
   title?: string;
@@ -264,7 +264,16 @@ interface CodexTranscriptSummary {
   createdAt?: number;
   updatedAt?: number;
   messageCount?: number;
+  /** `session_meta.history_mode`: `paginated` rollouts (codex ≥0.150.x) fail resume AND fork
+   * with -32601 on the pinned 0.144.6, so fork goes dark for them. Re-check on any pin bump. */
+  historyMode?: string;
   metadata?: Record<string, unknown>;
+}
+
+const CODEX_PAGINATED_HISTORY_MODE = 'paginated';
+
+export function isCodexRolloutForkable(summary: Pick<CodexTranscriptSummary, 'historyMode'>) {
+  return summary.historyMode !== CODEX_PAGINATED_HISTORY_MODE;
 }
 
 interface DirectoryEntry {
@@ -432,6 +441,7 @@ async function readCodexTranscriptSummary(
   let threadSource: string | undefined;
   let modelProvider: string | undefined;
   let gitBranch: string | undefined;
+  let historyMode: string | undefined;
 
   const rowCount = await forEachJsonlRow(path, (row) => {
     const rowType = stringField(row, 'type');
@@ -459,6 +469,7 @@ async function readCodexTranscriptSummary(
         threadSource = stringField(payload, 'thread_source') ?? threadSource;
         cliVersion = stringField(payload, 'cli_version') ?? cliVersion;
         modelProvider = stringField(payload, 'model_provider') ?? modelProvider;
+        historyMode = stringField(payload, 'history_mode') ?? historyMode;
         const git = recordField(payload, 'git');
         if (git) gitBranch = stringField(git, 'branch') ?? gitBranch;
         createdAt = timestampMs(payload.timestamp) ?? createdAt;
@@ -518,6 +529,7 @@ async function readCodexTranscriptSummary(
     updatedAt:
       indexEntry?.updatedAt ?? updatedAt ?? (fileStat ? Math.trunc(fileStat.mtimeMs) : undefined),
     messageCount,
+    historyMode,
     metadata: compactRecord({
       source: 'codex-local-jsonl',
       transcriptPath: path,
@@ -527,6 +539,7 @@ async function readCodexTranscriptSummary(
       threadSource,
       modelProvider,
       gitBranch,
+      historyMode,
     }),
   };
 }
@@ -647,6 +660,7 @@ export function mapCodexHistoryEvents(
   let currentTurnId: string | null = null;
   let previousTurnId: string | null = null;
   let userPromptCount = 0;
+  let forkable = true;
 
   // Records the snapshot as the call's latest state (settle reads it back as `existing`) AND
   // builds the history event — both announce and settle go through it, so the latest wins.
@@ -656,6 +670,14 @@ export function mapCodexHistoryEvents(
   };
 
   rows.forEach((row, index) => {
+    if (stringField(row, 'type') === 'session_meta') {
+      const payload = recordField(row, 'payload');
+      // No branch cursors for a rollout the pinned app-server cannot fork: capability-dark.
+      forkable = isCodexRolloutForkable({
+        historyMode: payload ? stringField(payload, 'history_mode') : undefined,
+      });
+      return;
+    }
     if (stringField(row, 'type') === 'turn_context') {
       const payload = recordField(row, 'payload');
       const turnId = payload ? stringField(payload, 'turn_id') : undefined;
@@ -743,7 +765,7 @@ export function mapCodexHistoryEvents(
         : textHistoryEvent(historyId, role, itemId, payload, timestampMs(row.timestamp));
     if (event) {
       if (event.event.type === 'user-message') {
-        if (userPromptCount === 0 || previousTurnId !== null) {
+        if (forkable && (userPromptCount === 0 || previousTurnId !== null)) {
           event.event.branchCursor = encodeHistoryBranchCursor('codex', historyId, previousTurnId);
         }
         userPromptCount += 1;

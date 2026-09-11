@@ -43,11 +43,26 @@ class HangingSendAdapter extends FakeAdapter {
   }
 }
 
+/** send() spans the whole turn (pi-style): checkpoint, stop, and idle land before it resolves. */
+class WholeTurnCheckpointAdapter extends FakeAdapter {
+  override async send(input: AgentInput): Promise<void> {
+    this.sentInputs.push(input);
+    if (input.type !== 'prompt') return;
+    this.emit({ type: 'status', status: 'running' });
+    await Promise.resolve();
+    this.emitCheckpoint({ historyId: asHistoryId('native-1'), cursor: 'cp-whole', turn: 'ending' });
+    this.emit({ type: 'stop', stopReason: 'end_turn' });
+    this.emit({ type: 'status', status: 'idle' });
+  }
+}
+
+/** The opencode shape: the legacy `history.branch` path without turn-level forks. */
 class BranchingAdapter extends FakeAdapter {
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: false,
     read: true,
     resume: true,
+    forkAfterTurn: false,
     branch: true,
   };
 
@@ -83,6 +98,110 @@ async function startedHarness(makeAdapter: () => FakeAdapter = () => new FakeAda
     adapter: nullthrow(h.adapters[0]),
   };
 }
+
+async function legacyPrompt(h: Awaited<ReturnType<typeof startedHarness>>, id: string) {
+  await h.inject({
+    kind: 'agent.input',
+    clientReqId: id,
+    sessionId: h.sessionId,
+    input: { type: 'prompt', content: [textBlock(id)] },
+  });
+}
+
+describe('live checkpoint capture', () => {
+  it('persists an ending checkpoint as the running turn’s live binding', async () => {
+    const h = await startedHarness();
+    await legacyPrompt(h, 'first');
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-1',
+      turn: 'ending',
+    });
+    h.adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    expect(await h.conversationStore.listBindings(turn.turnId)).toEqual([
+      {
+        turnId: turn.turnId,
+        runId: turn.runId,
+        historyId: 'native-1',
+        checkpoint: 'cp-1',
+        capturedFrom: 'live',
+      },
+    ]);
+  });
+
+  it('keeps the first live checkpoint of a (turn, history) when a later one arrives', async () => {
+    const h = await startedHarness();
+    await legacyPrompt(h, 'first');
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-1',
+      turn: 'ending',
+    });
+    // A compaction or a re-emitted prompt minting after the real cut must not move it.
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-late',
+      turn: 'ending',
+    });
+    await settleEngineTasks();
+
+    expect(await h.conversationStore.listBindings(turn.turnId)).toEqual([
+      expect.objectContaining({ checkpoint: 'cp-1', capturedFrom: 'live' }),
+    ]);
+  });
+
+  it('binds a preceding checkpoint to the parent turn and nothing to a root', async () => {
+    const h = await startedHarness();
+    await legacyPrompt(h, 'first');
+    const [first] = await h.conversationStore.listTurns(h.sessionId);
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'msg-first',
+      turn: 'preceding',
+    });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+    expect(await h.conversationStore.listBindings(first.turnId)).toEqual([]);
+
+    await legacyPrompt(h, 'second');
+    h.adapter.emitCheckpoint({
+      historyId: asHistoryId('native-1'),
+      cursor: 'msg-second',
+      turn: 'preceding',
+    });
+    await settleEngineTasks();
+
+    expect(await h.conversationStore.listBindings(first.turnId)).toEqual([
+      expect.objectContaining({ turnId: first.turnId, checkpoint: 'msg-second' }),
+    ]);
+    const second = (await h.conversationStore.listTurns(h.sessionId)).find(
+      (turn) => turn.turnId !== first.turnId,
+    );
+    expect(await h.conversationStore.listBindings(nullthrow(second).turnId)).toEqual([]);
+  });
+
+  it('binds a checkpoint minted inside a whole-turn send to the turn being dispatched', async () => {
+    const h = await startedHarness(() => new WholeTurnCheckpointAdapter());
+    await legacyPrompt(h, 'first');
+    await settleEngineTasks();
+
+    const [turn] = await h.conversationStore.listTurns(h.sessionId);
+    expect(await h.conversationStore.listBindings(turn.turnId)).toEqual([
+      expect.objectContaining({
+        turnId: turn.turnId,
+        checkpoint: 'cp-whole',
+        capturedFrom: 'live',
+      }),
+    ]);
+  });
+});
 
 describe('legacy input turn tracking', () => {
   it('persists a turn for a legacy prompt and completes it on idle', async () => {
@@ -497,5 +616,32 @@ describe('commitRunning idempotence', () => {
     const stored = await store.getOperation(OperationIdSchema.parse('op-1'));
     expect(result).toEqual(stored);
     expect(result.state).toBe('succeeded');
+  });
+
+  it('binds a live checkpoint only for the run that owns the dispatching or running turn', async () => {
+    const { store, turns, intent } = await turnServiceFixture();
+    const checkpoint = {
+      historyId: asHistoryId('native-1'),
+      cursor: 'cp-1',
+      turn: 'ending' as const,
+    };
+
+    turns.bindLiveCheckpoint(sessionId, RunIdSchema.parse('run-replaced'), checkpoint);
+    await settleEngineTasks();
+    expect(await store.listBindings(intent.turn.turnId)).toEqual([]);
+
+    // Dispatching (persisted, not yet committed): the pi-style pre-commit settle.
+    turns.bindLiveCheckpoint(sessionId, RunIdSchema.parse('run-1'), checkpoint);
+    await settleEngineTasks();
+    expect(await store.listBindings(intent.turn.turnId)).toHaveLength(1);
+
+    // Failed before commit: the intent is no longer dispatching, so nothing binds to it.
+    await Effect.runPromise(turns.resolveFailed(intent, { code: 'timeout', message: 'slow' }));
+    turns.bindLiveCheckpoint(sessionId, RunIdSchema.parse('run-1'), {
+      ...checkpoint,
+      historyId: asHistoryId('native-2'),
+    });
+    await settleEngineTasks();
+    expect(await store.listBindings(intent.turn.turnId)).toHaveLength(1);
   });
 });

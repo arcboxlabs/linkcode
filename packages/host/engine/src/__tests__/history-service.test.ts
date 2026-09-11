@@ -1,11 +1,32 @@
-import { MessageIdSchema, textBlock } from '@linkcode/schema';
+import { HistoryCheckpointInvalidError } from '@linkcode/agent-adapter';
+import type { AgentHistoryBranchOptions, AgentHistoryCapabilities } from '@linkcode/schema';
+import { MessageIdSchema } from '@linkcode/schema';
 import { Effect } from 'effect';
 import { describe, expect, it } from 'vitest';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { HistoryService } from '../session/history-service';
-import { promptContentFingerprint } from '../session/live-session';
 import type { FakeHistoryState } from './fixtures/history-adapter';
-import { fakeHistoryFactory, historyId } from './fixtures/history-adapter';
+import { FakeHistoryAdapter, fakeHistoryFactory, historyId } from './fixtures/history-adapter';
+
+class ForkingHistoryAdapter extends FakeHistoryAdapter {
+  override readonly historyCapabilities: AgentHistoryCapabilities;
+  readonly branched: AgentHistoryBranchOptions[] = [];
+  failWith: Error | undefined;
+
+  constructor(
+    state: FakeHistoryState,
+    capabilities: Pick<AgentHistoryCapabilities, 'forkAfterTurn' | 'branch'>,
+  ) {
+    super('codex', state);
+    this.historyCapabilities = { list: true, read: true, resume: true, ...capabilities };
+  }
+
+  override branchHistory(opts: AgentHistoryBranchOptions): Promise<void> {
+    if (this.failWith) return Promise.reject(this.failWith);
+    this.branched.push(opts);
+    return Promise.resolve();
+  }
+}
 
 describe('HistoryService', () => {
   it('caches list results until forceRefresh', async () => {
@@ -100,71 +121,52 @@ describe('HistoryService', () => {
     });
   });
 
-  it('resolves live prompt offsets against fresh provider history', async () => {
-    const events = ['first-cursor', 'second-cursor'].map((branchCursor, index) => ({
-      historyId,
-      itemId: `u${index + 1}`,
-      event: {
-        type: 'user-message' as const,
-        messageId: MessageIdSchema.parse(`u${index + 1}`),
-        content: [{ type: 'text' as const, text: `prompt ${index + 1}` }],
-        branchCursor,
-      },
-    }));
-    const state: FakeHistoryState = {
-      listCalls: 0,
-      readCalls: 0,
-      resumeCalls: 0,
-      events,
-    };
-    const service = new HistoryService(fakeHistoryFactory(state));
+  describe('branch', () => {
+    const start = { kind: 'codex' as const, cwd: '/repo' };
+    const opts = { historyId, cursor: 'opaque-cursor' };
 
-    await expect(
-      Effect.runPromise(
-        service.resolveLiveBranchCursor(
-          'codex',
-          historyId,
-          '/repo',
-          0,
-          promptContentFingerprint([textBlock('prompt 2')]),
-        ),
-      ),
-    ).resolves.toBe('second-cursor');
-    await expect(
-      Effect.runPromise(
-        service.resolveLiveBranchCursor(
-          'codex',
-          historyId,
-          '/repo',
-          0,
-          promptContentFingerprint([textBlock('prompt 1')]),
-        ),
-      ),
-    ).resolves.toBe('first-cursor');
-    await expect(
-      Effect.runPromise(
-        service.resolveLiveBranchCursor(
-          'codex',
-          historyId,
-          '/repo',
-          0,
-          promptContentFingerprint([
-            textBlock('prompt 2'),
-            { type: 'image', mimeType: 'image/png', data: 'AA==' },
-          ]),
-        ),
-      ),
-    ).resolves.toBe('second-cursor');
-    await expect(
-      Effect.runPromise(
-        service.resolveLiveBranchCursor(
-          'codex',
-          historyId,
-          '/repo',
-          0,
-          promptContentFingerprint([textBlock('different prompt')]),
-        ),
-      ),
-    ).rejects.toThrow('The prompt does not match the latest provider history');
+    it('is gated on the legacy branch capability, not on forkAfterTurn', async () => {
+      const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+      const service = new HistoryService(fakeHistoryFactory(state));
+      const turnForksOnly = new ForkingHistoryAdapter(state, { forkAfterTurn: true });
+
+      const failure = await Effect.runPromise(
+        service.branch(turnForksOnly, opts, start).pipe(Effect.flip),
+      );
+      expect(failure).toMatchObject({ _tag: 'RequestError', code: 'unsupported' });
+      expect(turnForksOnly.branched).toEqual([]);
+
+      // The opencode shape: turn-level forks dark, the legacy cold-read fork still shipped.
+      const legacyOnly = new ForkingHistoryAdapter(state, { branch: true });
+      await Effect.runPromise(service.branch(legacyOnly, opts, start));
+      expect(legacyOnly.branched).toEqual([opts]);
+    });
+
+    it('maps an invalid checkpoint to a fixed typed unsupported and keeps other failures opaque', async () => {
+      const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+      const service = new HistoryService(fakeHistoryFactory(state));
+
+      const invalid = new ForkingHistoryAdapter(state, { branch: true });
+      invalid.failWith = new HistoryCheckpointInvalidError('codex: thread/fork refused turn-9');
+      const refused = await Effect.runPromise(
+        service.branch(invalid, opts, start).pipe(Effect.flip),
+      );
+      // Provider ids stay in the daemon log; the wire carries the fixed message only.
+      expect(refused).toMatchObject({
+        _tag: 'RequestError',
+        code: 'unsupported',
+        message: 'The provider no longer honours this fork checkpoint',
+      });
+
+      const broken = new ForkingHistoryAdapter(state, { branch: true });
+      broken.failWith = new Error('secret provider transcript path');
+      const failure = await Effect.runPromise(
+        service.branch(broken, opts, start).pipe(Effect.flip),
+      );
+      expect(failure).toMatchObject({
+        _tag: 'OperationError',
+        publicMessage: 'Failed to branch agent history',
+      });
+    });
   });
 });
