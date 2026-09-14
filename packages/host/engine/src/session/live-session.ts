@@ -55,17 +55,26 @@ export class LiveSession {
   private closing = false;
   private historyId: AgentHistoryId | undefined;
   private readonly livePrompts: LivePrompt[] = [];
+  private seq = 0;
 
   constructor(
     readonly adapter: AgentAdapter,
     sessionId: SessionId,
     /** The `SessionRun` this adapter serves — run bookkeeping addresses runs by this id. */
     readonly runId: RunId,
+    /** The session's event epoch captured at launch: a replaced adapter's stragglers keep minting
+     * under their own epoch, so they always compare below the replacement's positions. */
+    readonly epoch: number,
     readonly scope: Scope.Closeable,
     readonly closed: Deferred.Deferred<void, OperationError>,
   ) {
     this.interactions = new InteractiveRequests(sessionId);
     this.capabilities = adapter.capabilities;
+  }
+
+  /** Mint the next event-plane position; monotone within this adapter's epoch. */
+  nextSeq(): number {
+    return ++this.seq;
   }
 
   run<A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E, R> {

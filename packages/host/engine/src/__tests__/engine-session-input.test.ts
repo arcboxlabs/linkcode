@@ -266,16 +266,18 @@ describe('engine session input', () => {
       message: 'Agent input was rejected',
       reportedInConversation: true,
     });
-    expect(h.sent).toContainEqual({
-      kind: 'agent.event',
-      sessionId,
-      event: {
-        type: 'error',
-        message: 'Agent input was rejected',
-        code: 'input_rejected',
-        recoverable: true,
-      },
-    });
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.event',
+        sessionId,
+        event: {
+          type: 'error',
+          message: 'Agent input was rejected',
+          code: 'input_rejected',
+          recoverable: true,
+        },
+      }),
+    );
   });
 
   it('does not leave the turn busy when source lookup fails', async () => {
@@ -356,16 +358,18 @@ describe('engine session input', () => {
       message: `Session is busy: ${sessionId}`,
       reportedInConversation: true,
     });
-    expect(h.sent).toContainEqual({
-      kind: 'agent.event',
-      sessionId,
-      event: {
-        type: 'error',
-        message: `Session is busy: ${sessionId}`,
-        code: 'input_rejected',
-        recoverable: true,
-      },
-    });
+    expect(h.sent).toContainEqual(
+      expect.objectContaining({
+        kind: 'agent.event',
+        sessionId,
+        event: {
+          type: 'error',
+          message: `Session is busy: ${sessionId}`,
+          code: 'input_rejected',
+          recoverable: true,
+        },
+      }),
+    );
     adapter.releaseSend();
   });
 });

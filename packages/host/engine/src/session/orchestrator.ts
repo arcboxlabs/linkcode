@@ -19,6 +19,7 @@ import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
+import type { ConversationLiveJournals } from '../conversation/live-journal';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
@@ -45,6 +46,7 @@ export class SessionOrchestrator {
     private readonly onStopped: (sessionId: SessionId) => void,
     private readonly resources: ResourceService,
     private readonly turns: ConversationTurnService,
+    private readonly journals: ConversationLiveJournals,
     private readonly browserTools?: BrowserToolsetFactory,
     /** Restricted-brand allowlist (CODE-618); `null` (the default) is unrestricted. Enforced only
      * here, at the one place every start/resume/relaunch path constructs a live adapter — never at
@@ -60,6 +62,7 @@ export class SessionOrchestrator {
       reportFailure,
       resources,
       turns,
+      journals,
     );
     this.inputs = new SessionInputDispatcher(records, this.events, resources, turns);
   }
@@ -111,7 +114,7 @@ export class SessionOrchestrator {
 
   replay(sessionId: SessionId): void {
     const session = this.sessions.get(sessionId);
-    if (session) this.events.broadcast(sessionId, session.replay());
+    if (session) this.events.broadcast(sessionId, session, session.replay());
   }
 
   sendInput(
@@ -151,6 +154,7 @@ export class SessionOrchestrator {
       yield* resources.deleteSession(sessionId);
       yield* this.turns.deleteSession(sessionId);
       yield* this.records.delete(sessionId);
+      this.journals.drop(sessionId);
     });
   }
 
@@ -208,7 +212,7 @@ export class SessionOrchestrator {
             input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
           });
           const result = yield* Effect.sync(() => {
-            this.events.broadcast(sessionId, [
+            this.events.broadcast(sessionId, session, [
               { type: 'user-message', messageId: nextMessageId(), content },
             ]);
             records.setTitleFromContent(sessionId, content);
@@ -299,7 +303,14 @@ export class SessionOrchestrator {
         if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
-        const session = new LiveSession(adapter, sessionId, runId, scope, closed);
+        const session = new LiveSession(
+          adapter,
+          sessionId,
+          runId,
+          record.eventEpoch,
+          scope,
+          closed,
+        );
         const startupEvents: AgentEvent[] = [];
         let bufferEvents = rewindMessageId !== undefined;
         session.listen((event) => {
@@ -344,7 +355,7 @@ export class SessionOrchestrator {
             ),
           );
         if (rewindMessageId !== undefined) {
-          events.broadcast(sessionId, [
+          events.broadcast(sessionId, session, [
             { type: 'conversation-rewind', messageId: rewindMessageId },
           ]);
           bufferEvents = false;
@@ -429,7 +440,7 @@ export class SessionOrchestrator {
         return Scope.close(session.scope, Exit.interrupt()).pipe(
           Effect.andThen(
             Effect.sync(() => {
-              this.events.broadcast(sessionId, session.closeInteractions());
+              this.events.broadcast(sessionId, session, session.closeInteractions());
               session.stopListening();
             }),
           ),
@@ -441,6 +452,9 @@ export class SessionOrchestrator {
               // Teardown mid-turn kills the turn without a stop frame; settle it here.
               this.turns.settleStatus(sessionId, session.runId, 'stopped');
               this.records.sealRun(sessionId, session.runId);
+              // The live tail dies with the live session (readers see the epoch-jump gap), so
+              // journal memory stays bounded by the number of concurrent live adapters.
+              this.journals.drop(sessionId);
               return recordLiveSessions(this.sessions.size);
             }),
           ),
@@ -476,6 +490,7 @@ export class SessionOrchestrator {
             // token minted while resolving start options. Normal teardown does this via `onStopped`;
             // a discarded failed start must too, or that token leaks until daemon shutdown.
             this.onStopped(sessionId);
+            this.journals.drop(sessionId);
             return recordLiveSessions(this.sessions.size);
           }),
         ),

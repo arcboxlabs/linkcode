@@ -163,6 +163,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, startedAt: now, ...runOf(resolved, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -203,6 +204,7 @@ export class SessionLifecycleService {
             updatedAt: now,
             runs: [],
             graphRevision: 0,
+            eventEpoch: 0,
           };
           yield* records.importRecord(record);
           if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
@@ -243,6 +245,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, historyId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -850,14 +853,22 @@ export class SessionLifecycleService {
         runId,
         baseTurnId,
       });
-      return this.sessions.startLive(
-        replyTo,
-        record,
-        launchedRunId,
-        startAdapter,
-        resolved.warnings,
-        startOptions,
-      );
+      // The bumped epoch must be durable before the LiveSession exists to mint under it; a lost
+      // write here would re-mint the same (epoch, seq) pairs after a reboot, with no gap signal.
+      return this.records
+        .flush(record.sessionId)
+        .pipe(
+          Effect.andThen(
+            this.sessions.startLive(
+              replyTo,
+              record,
+              launchedRunId,
+              startAdapter,
+              resolved.warnings,
+              startOptions,
+            ),
+          ),
+        );
     });
   }
 
@@ -900,6 +911,7 @@ export class SessionLifecycleService {
         updatedAt: now,
         runs: [{ runId, startedAt: now, ...runOf(startOptions, accountId) }],
         graphRevision: 0,
+        eventEpoch: 0,
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, runId, (adapter) =>

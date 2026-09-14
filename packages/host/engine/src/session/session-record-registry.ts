@@ -60,6 +60,9 @@ export class SessionRecordRegistry {
         Effect.sync(() => {
           for (let i = 0, len = records.length; i < len; i++) {
             const record = records[i];
+            // Boot epoch bump, in memory only: nothing mints events before a launch, and every
+            // launch persists the record — writing all rows here would churn updatedAt (recency).
+            record.eventEpoch += 1;
             this.records.set(record.sessionId, record);
           }
         }),
@@ -216,6 +219,8 @@ export class SessionRecordRegistry {
     const runId = run.runId ?? mintRunId();
     const record = this.records.get(sessionId);
     if (!record) return runId;
+    // A replacement adapter must mint above everything the old one could have minted.
+    record.eventEpoch += 1;
     record.runs.push({ startedAt: Date.now(), ...definedFields(run), runId });
     this.persist(record);
     // A new run re-points the identity `list()` projects — `accountId`, `historyId` — so clients
@@ -223,6 +228,17 @@ export class SessionRecordRegistry {
     // resumed run already carries the historyId that would otherwise notify via `bindHistoryId`.
     this.onChanged(sessionId, 'updated');
     return runId;
+  }
+
+  /** Awaited durable save, for the launch path only: the bumped epoch must reach the store before
+   * a LiveSession can mint under it, and a lost write must fail the launch loud — the general
+   * fire-and-forget {@link persist} cannot guarantee either. */
+  flush(sessionId: SessionId): Effect.Effect<void, OperationError> {
+    const record = this.records.get(sessionId);
+    if (!record) return Effect.void;
+    return storeOperation('session-records.save', 'Failed to persist session record', () =>
+      this.store.save(record),
+    );
   }
 
   setTitleFromContent(sessionId: SessionId, content: ContentBlock[]): void {

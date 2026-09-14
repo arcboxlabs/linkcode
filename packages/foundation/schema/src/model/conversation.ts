@@ -130,3 +130,12 @@ export const ConversationWatermarkSchema = z.object({
   seq: z.number().int().nonnegative(),
 });
 export type ConversationWatermark = z.infer<typeof ConversationWatermarkSchema>;
+
+/** Lexicographic `(epoch, seq)` order: an event at or below a watermark is dropped by the merge
+ * rule, so any straggler from an older epoch compares below every position of a newer one. */
+export function compareConversationWatermarks(
+  a: ConversationWatermark,
+  b: ConversationWatermark,
+): number {
+  return a.epoch === b.epoch ? a.seq - b.seq : a.epoch - b.epoch;
+}

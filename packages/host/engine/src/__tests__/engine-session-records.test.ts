@@ -748,6 +748,7 @@ describe('engine session records', () => {
         { runId: 'run-1' as RunId, historyId: asHistoryId('native-1'), startedAt: 1, endedAt: 2 },
       ],
       graphRevision: 0,
+      eventEpoch: 0,
     });
     const h = harness(store);
     await h.engine.start();
@@ -871,6 +872,7 @@ describe('engine session records', () => {
       updatedAt: 2,
       runs: [],
       graphRevision: 0,
+      eventEpoch: 0,
     };
     const created: SessionRecord = {
       sessionId: 's-created' as SessionId,
@@ -881,6 +883,7 @@ describe('engine session records', () => {
       updatedAt: 2,
       runs: [],
       graphRevision: 0,
+      eventEpoch: 0,
     };
     await sessionStore.save(imported);
     await sessionStore.save(created);

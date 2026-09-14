@@ -372,6 +372,7 @@ describe('engine session lifecycle', () => {
           new FakeAdapter(),
           'sess-interrupt' as SessionId,
           'run-interrupt' as RunId,
+          0,
           scope,
           closed,
         );
