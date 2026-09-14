@@ -1,4 +1,12 @@
 export {
+  ATTACHMENT_STORE_WIRE_VERSION,
+  ATTACHMENT_UPLOAD_CHUNK_BASE64_MAX,
+  ATTACHMENT_UPLOAD_CHUNK_BYTES,
+  ATTACHMENT_UPLOAD_WINDOW_CHUNKS,
+  type AttachmentUploadState,
+  AttachmentUploadStateSchema,
+} from './attachment';
+export {
   CONVERSATION_GRAPH_WIRE_VERSION,
   type ConversationEvent,
   ConversationEventSchema,

@@ -1,4 +1,5 @@
-import type { SupportedAttachmentImageMimeType } from '@linkcode/schema';
+import type { SupportedAttachmentImageMimeType } from './content';
+import { isSupportedAttachmentImageMimeType } from './content';
 
 const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
 
@@ -23,13 +24,6 @@ export function sniffImageMimeType(head: Uint8Array): SupportedAttachmentImageMi
   return undefined;
 }
 
-const SNIFFABLE_IMAGE_TYPES = new Set<string>([
-  'image/jpeg',
-  'image/png',
-  'image/gif',
-  'image/webp',
-]);
-
 /** A declared sniffable `image/*` type must match its bytes — model APIs refuse the mismatch
  * later and less legibly. Other declarations (svg, heic, pdf, …) have no reliable sniff here
  * and are trusted. */
@@ -37,5 +31,5 @@ export function declaredMimeTypeMatches(declared: string, head: Uint8Array): boo
   if (!declared.startsWith('image/')) return true;
   const sniffed = sniffImageMimeType(head);
   if (sniffed !== undefined) return sniffed === declared;
-  return !SNIFFABLE_IMAGE_TYPES.has(declared);
+  return !isSupportedAttachmentImageMimeType(declared);
 }

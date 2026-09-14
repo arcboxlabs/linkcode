@@ -6,6 +6,8 @@ import type {
   AgentInput,
   AgentKind,
   AgentRuntimes,
+  AttachmentId,
+  BlobId,
   ContentBlock,
   ConversationGraphTurn,
   ConversationReadItem,
@@ -34,6 +36,7 @@ import type {
   ToolCall,
   TurnId,
   TurnSubmitInput,
+  UploadId,
   WireMessage,
   WirePayload,
   WorkspaceId,
@@ -42,6 +45,10 @@ import type {
 } from '@linkcode/schema';
 import {
   AGENT_INPUT_CAPABILITIES,
+  ATTACHMENT_UPLOAD_CHUNK_BYTES,
+  AttachmentIdSchema,
+  blobIdFromSha256,
+  declaredMimeTypeMatches,
   managedAgentAssetId,
   managedAssetIdEquals,
   managedAssetKey,
@@ -49,6 +56,7 @@ import {
   normalizeCwdKey,
   SessionResourceIdSchema,
   textBlock,
+  UploadIdSchema,
   userRowMessageId,
 } from '@linkcode/schema';
 import type { Transport } from '@linkcode/transport';
@@ -175,6 +183,26 @@ interface MockTerminal {
   attachments: Map<string, string>;
 }
 
+interface MockAttachmentUpload {
+  uploadId: UploadId;
+  declaredSha256: string;
+  declaredSize: number;
+  name: string;
+  mimeType?: string;
+  attachmentKind: string;
+  received: number;
+  bytes: Uint8Array;
+  state: 'ready' | 'exists';
+  attachmentId?: AttachmentId;
+  blobId?: BlobId;
+}
+
+interface MockAttachmentBegin {
+  uploadId: UploadId;
+  chunkBytes: number;
+  state: 'ready' | 'exists';
+}
+
 function createMockTerminal(
   terminalId: string,
   opts: {
@@ -237,6 +265,17 @@ export class DevMockHost {
   private readonly installedAssets = new Set<ManagedAssetKey>();
   private readonly cleanGitWorkspaces = new Set<string>();
   private readonly createdGitBranches = new Map<string, Set<string>>();
+  private readonly attachmentUploads = new Map<string, MockAttachmentUpload>();
+  private readonly attachmentBlobs = new Map<string, Uint8Array>();
+  private readonly attachmentRecords = new Map<
+    string,
+    { blobId: BlobId; sizeBytes: number; name: string }
+  >();
+  private readonly attachmentBegins = new Map<string, MockAttachmentBegin>();
+  /** The daemon's `isReachable` roots: sessions whose prompt or resource names the attachment. */
+  private readonly attachmentSessions = new Map<AttachmentId, Set<SessionId>>();
+  private uploadSeq = 0;
+  private attachmentSeq = 0;
 
   constructor(private readonly transport: Transport) {
     this.terminals.set(
@@ -452,6 +491,25 @@ export class DevMockHost {
       case 'resource.host':
         await wait(CONTROL_LATENCY_MS);
         this.hostResource(p.clientReqId, p.resourceId);
+        break;
+      case 'attachment.upload.begin':
+        await wait(CONTROL_LATENCY_MS);
+        this.beginAttachmentUpload(p);
+        break;
+      case 'attachment.upload.chunk':
+        this.chunkAttachmentUpload(p);
+        break;
+      case 'attachment.upload.commit':
+        await wait(CONTROL_LATENCY_MS);
+        await this.commitAttachmentUpload(p);
+        break;
+      case 'attachment.upload.abort':
+        await wait(CONTROL_LATENCY_MS);
+        this.abortAttachmentUpload(p);
+        break;
+      case 'attachment.read':
+        await wait(CONTROL_LATENCY_MS);
+        this.readAttachment(p);
         break;
       case 'config.get':
         await wait(CONTROL_LATENCY_MS);
@@ -914,7 +972,16 @@ export class DevMockHost {
     this.resources.set(resourceId, processing);
     this.send({ kind: 'resource.changed', resource: processing });
     await wait(CONTROL_LATENCY_MS);
-    const ready: SessionResource = { ...processing, status: 'ready', updatedAt: Date.now() };
+    // Resource bytes land in the attachment store on the daemon, which is what roots them for
+    // `attachment.read`; a resource with no attachment id would be unreadable through the wire.
+    const attachmentId = await this.publishResourceAttachment(payload);
+    this.rootAttachment(payload.sessionId, attachmentId);
+    const ready: SessionResource = {
+      ...processing,
+      status: 'ready',
+      attachmentId,
+      updatedAt: Date.now(),
+    };
     this.resources.set(resourceId, ready);
     this.send({ kind: 'resource.changed', resource: ready });
     this.send({ kind: 'resource.uploaded', replyTo: payload.clientReqId, resource: ready });
@@ -1350,6 +1417,13 @@ export class DevMockHost {
     if (p.parentTurnId !== undefined || p.expectedGraphRevision !== undefined) {
       this.sendFailure(p.clientReqId, 'Dev mock host does not support explicit-parent submits.');
       return;
+    }
+    if (p.input.type === 'prompt') {
+      const blocks = p.input.blocks;
+      for (let i = 0, len = blocks.length; i < len; i++) {
+        const block = blocks[i];
+        if (block.type === 'attachment_ref') this.rootAttachment(p.sessionId, block.attachmentId);
+      }
     }
     const content = turnSubmitContent(p.input);
     const turn = this.beginTurn(session, content, p.input.type === 'prompt' ? undefined : p.input);
@@ -1857,6 +1931,224 @@ export class DevMockHost {
     });
   }
 
+  private beginAttachmentUpload(
+    payload: Extract<WirePayload, { kind: 'attachment.upload.begin' }>,
+  ): void {
+    if (payload.operationId !== undefined) {
+      const replayed = this.attachmentBegins.get(payload.operationId);
+      if (replayed) {
+        this.send({
+          kind: 'attachment.upload.begun',
+          replyTo: payload.clientReqId,
+          ...replayed,
+        });
+        return;
+      }
+    }
+    const existing = this.attachmentBlobs.get(payload.declaredSha256);
+    const state = existing?.byteLength === payload.declaredSize ? 'exists' : 'ready';
+    this.uploadSeq += 1;
+    const uploadId = UploadIdSchema.parse(`upl-mock-${this.uploadSeq}`);
+    const bytes =
+      existing !== undefined && state === 'exists'
+        ? existing
+        : new Uint8Array(payload.declaredSize);
+    this.attachmentUploads.set(uploadId, {
+      uploadId,
+      declaredSha256: payload.declaredSha256,
+      declaredSize: payload.declaredSize,
+      name: payload.name,
+      mimeType: payload.mimeType,
+      attachmentKind: payload.attachmentKind,
+      received: state === 'exists' ? payload.declaredSize : 0,
+      bytes,
+      state,
+      blobId: state === 'exists' ? blobIdFromSha256(payload.declaredSha256) : undefined,
+    });
+    const begun: MockAttachmentBegin = {
+      uploadId,
+      chunkBytes: ATTACHMENT_UPLOAD_CHUNK_BYTES,
+      state,
+    };
+    if (payload.operationId !== undefined) this.attachmentBegins.set(payload.operationId, begun);
+    this.send({ kind: 'attachment.upload.begun', replyTo: payload.clientReqId, ...begun });
+  }
+
+  private chunkAttachmentUpload(
+    payload: Extract<WirePayload, { kind: 'attachment.upload.chunk' }>,
+  ): void {
+    const upload = this.attachmentUploads.get(payload.uploadId);
+    if (!upload) {
+      this.sendFailure(payload.clientReqId, 'Upload not found', { code: 'not_found' });
+      return;
+    }
+    if (upload.state === 'exists') {
+      this.sendFailure(payload.clientReqId, 'Blob already stored; commit without chunks', {
+        code: 'invalid_request',
+      });
+      return;
+    }
+    if (payload.offset !== upload.received) {
+      this.sendFailure(
+        payload.clientReqId,
+        `Expected offset ${upload.received}, got ${payload.offset}`,
+        { code: 'invalid_request' },
+      );
+      return;
+    }
+    const chunk = mockBase64ToBytes(payload.data);
+    if (upload.received + chunk.byteLength > upload.declaredSize) {
+      this.sendFailure(payload.clientReqId, 'Chunk exceeds the declared size', {
+        code: 'invalid_request',
+      });
+      return;
+    }
+    upload.bytes.set(chunk, payload.offset);
+    upload.received += chunk.byteLength;
+    this.send({
+      kind: 'attachment.upload.chunk.acked',
+      replyTo: payload.clientReqId,
+      uploadId: payload.uploadId,
+      receivedBytes: upload.received,
+    });
+  }
+
+  private async commitAttachmentUpload(
+    payload: Extract<WirePayload, { kind: 'attachment.upload.commit' }>,
+  ): Promise<void> {
+    const upload = this.attachmentUploads.get(payload.uploadId);
+    if (!upload) {
+      this.sendFailure(payload.clientReqId, 'Upload not found', { code: 'not_found' });
+      return;
+    }
+    if (upload.attachmentId !== undefined && upload.blobId !== undefined) {
+      this.send({
+        kind: 'attachment.upload.committed',
+        replyTo: payload.clientReqId,
+        attachmentId: upload.attachmentId,
+        blobId: upload.blobId,
+      });
+      return;
+    }
+    if (upload.state === 'ready' && upload.received !== upload.declaredSize) {
+      this.sendFailure(
+        payload.clientReqId,
+        `Uploaded ${upload.received} bytes, declared ${upload.declaredSize}`,
+        { code: 'invalid_request' },
+      );
+      return;
+    }
+    // Engine order: size, then declared MIME vs bytes, then SHA-256 — a rejected commit must
+    // leave no blob behind.
+    const declaredMime = upload.mimeType ?? 'application/octet-stream';
+    if (!declaredMimeTypeMatches(declaredMime, upload.bytes.subarray(0, 16))) {
+      this.sendFailure(payload.clientReqId, `File contents are not ${declaredMime}`, {
+        code: 'invalid_request',
+      });
+      return;
+    }
+    if (upload.state === 'ready') {
+      const digest = await mockSha256Hex(upload.bytes);
+      if (digest !== upload.declaredSha256) {
+        this.sendFailure(payload.clientReqId, 'Uploaded bytes do not match the declared SHA-256', {
+          code: 'invalid_request',
+        });
+        return;
+      }
+      this.attachmentBlobs.set(upload.declaredSha256, upload.bytes);
+    }
+    this.attachmentSeq += 1;
+    const attachmentId = AttachmentIdSchema.parse(`att-mock-${this.attachmentSeq}`);
+    const blobId = blobIdFromSha256(upload.declaredSha256);
+    upload.attachmentId = attachmentId;
+    upload.blobId = blobId;
+    this.attachmentRecords.set(attachmentId, {
+      blobId,
+      sizeBytes: upload.declaredSize,
+      name: upload.name,
+    });
+    this.send({
+      kind: 'attachment.upload.committed',
+      replyTo: payload.clientReqId,
+      attachmentId,
+      blobId,
+    });
+  }
+
+  private abortAttachmentUpload(
+    payload: Extract<WirePayload, { kind: 'attachment.upload.abort' }>,
+  ): void {
+    if (!this.attachmentUploads.has(payload.uploadId)) {
+      this.sendFailure(payload.clientReqId, 'Upload not found', { code: 'not_found' });
+      return;
+    }
+    this.attachmentUploads.delete(payload.uploadId);
+    // The replay must die with the upload it names, or a retried operationId resolves to a dead id.
+    for (const [operationId, begun] of this.attachmentBegins) {
+      if (begun.uploadId === payload.uploadId) this.attachmentBegins.delete(operationId);
+    }
+    this.sendSuccess(payload.clientReqId);
+  }
+
+  private async publishResourceAttachment(
+    payload: Extract<WirePayload, { kind: 'resource.source.upload' }>,
+  ): Promise<AttachmentId> {
+    const bytes = mockBase64ToBytes(payload.data);
+    const digest = await mockSha256Hex(bytes);
+    this.attachmentBlobs.set(digest, bytes);
+    this.attachmentSeq += 1;
+    const attachmentId = AttachmentIdSchema.parse(`att-mock-${this.attachmentSeq}`);
+    this.attachmentRecords.set(attachmentId, {
+      blobId: blobIdFromSha256(digest),
+      sizeBytes: bytes.byteLength,
+      name: payload.name,
+    });
+    return attachmentId;
+  }
+
+  /** Root an attachment in a session, the way persisting a prompt or a resource does on the daemon. */
+  private rootAttachment(sessionId: SessionId, attachmentId: AttachmentId): void {
+    const rooted = this.attachmentSessions.get(attachmentId) ?? new Set<SessionId>();
+    rooted.add(sessionId);
+    this.attachmentSessions.set(attachmentId, rooted);
+  }
+
+  private readAttachment(payload: Extract<WirePayload, { kind: 'attachment.read' }>): void {
+    if (!this.attachmentSessions.get(payload.attachmentId)?.has(payload.sessionId)) {
+      this.sendFailure(payload.clientReqId, 'Attachment not found', { code: 'not_found' });
+      return;
+    }
+    const record = this.attachmentRecords.get(payload.attachmentId);
+    if (!record) {
+      this.sendFailure(payload.clientReqId, 'Attachment not found', { code: 'not_found' });
+      return;
+    }
+    const hex = record.blobId.slice('sha256:'.length);
+    const bytes = this.attachmentBlobs.get(hex);
+    if (!bytes) {
+      this.sendFailure(payload.clientReqId, 'Attachment bytes are missing', { code: 'not_found' });
+      return;
+    }
+    if (payload.offset > bytes.byteLength) {
+      this.sendFailure(payload.clientReqId, 'Read offset is past the end of the attachment', {
+        code: 'invalid_request',
+      });
+      return;
+    }
+    const slice = bytes.subarray(payload.offset, payload.offset + payload.length);
+    this.send({
+      kind: 'attachment.read.result',
+      replyTo: payload.clientReqId,
+      sessionId: payload.sessionId,
+      attachmentId: payload.attachmentId,
+      blobId: record.blobId,
+      offset: payload.offset,
+      data: mockBytesToBase64(slice),
+      sizeBytes: bytes.byteLength,
+      eof: payload.offset + slice.byteLength >= bytes.byteLength,
+    });
+  }
+
   private send(payload: WirePayload): void {
     this.transport.send(createWireMessage(payload));
   }
@@ -1868,7 +2160,7 @@ export class DevMockHost {
   private sendFailure(
     replyTo: string,
     message: string,
-    reporting: { reportedInConversation?: true } = {},
+    reporting: { reportedInConversation?: true; code?: string } = {},
   ): void {
     this.send({ kind: 'request.failed', replyTo, message, ...reporting });
   }
@@ -1971,6 +2263,35 @@ function toSessionInfo(session: MockSession): SessionInfo {
 
 function isRunningTurn(session: MockSession, epoch: number): boolean {
   return session.epoch === epoch && session.status === 'running';
+}
+
+function mockBase64ToBytes(data: string): Uint8Array {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0, len = binary.length; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function mockBytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  for (let i = 0, len = bytes.byteLength; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+async function mockSha256Hex(bytes: Uint8Array): Promise<string> {
+  const buffer = new ArrayBuffer(bytes.byteLength);
+  new Uint8Array(buffer).set(bytes);
+  const digest = await crypto.subtle.digest('SHA-256', buffer);
+  const view = new Uint8Array(digest);
+  let hex = '';
+  for (let i = 0, len = view.byteLength; i < len; i++) {
+    hex += view[i].toString(16).padStart(2, '0');
+  }
+  return hex;
 }
 
 async function waitForShowcaseStep(session: MockSession, epoch: number): Promise<boolean> {

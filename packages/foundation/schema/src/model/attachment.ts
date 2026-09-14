@@ -23,8 +23,11 @@ export function blobIdFromSha256(hex: string): BlobId {
   return BlobIdSchema.parse(`sha256:${hex.toLowerCase()}`);
 }
 
-/** Upload ID: daemon-minted identity of one in-flight upload lease. */
-export const UploadIdSchema = z.string().min(1).brand<'UploadId'>();
+const rUploadId = /^[\w-]{1,128}$/;
+
+/** Upload ID: daemon-minted identity of one in-flight upload lease. The charset is the staging
+ * filename — anything else is a path traversal. */
+export const UploadIdSchema = z.string().regex(rUploadId).brand<'UploadId'>();
 export type UploadId = z.infer<typeof UploadIdSchema>;
 
 export const BlobRecordSchema = z.object({

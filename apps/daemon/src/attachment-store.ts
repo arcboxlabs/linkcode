@@ -4,7 +4,14 @@ import type {
   AttachmentSweepWindow,
   StoredAttachment,
 } from '@linkcode/engine';
-import type { AttachmentId, BlobId, BlobRecord, UploadId, UploadLease } from '@linkcode/schema';
+import type {
+  AttachmentId,
+  BlobId,
+  BlobRecord,
+  SessionId,
+  UploadId,
+  UploadLease,
+} from '@linkcode/schema';
 import {
   AttachmentRecordSchema,
   BlobIdSchema,
@@ -18,6 +25,7 @@ import {
   attachmentBlobs,
   attachments,
   blobs,
+  conversationTurns,
   promptAttachmentRefs,
   sessionResources,
   uploadLeases,
@@ -88,6 +96,32 @@ export function createAttachmentStore(db: DaemonDatabaseClient): AttachmentStore
     deleteLease(uploadId: UploadId): Promise<void> {
       db.delete(uploadLeases).where(eq(uploadLeases.uploadId, uploadId)).run();
       return Promise.resolve();
+    },
+
+    isReachable(sessionId: SessionId, attachmentId: AttachmentId): Promise<boolean> {
+      const fromPrompt = db
+        .select({ id: promptAttachmentRefs.attachmentId })
+        .from(promptAttachmentRefs)
+        .innerJoin(conversationTurns, eq(conversationTurns.promptId, promptAttachmentRefs.promptId))
+        .where(
+          and(
+            eq(conversationTurns.sessionId, sessionId),
+            eq(promptAttachmentRefs.attachmentId, attachmentId),
+          ),
+        )
+        .get();
+      if (fromPrompt) return Promise.resolve(true);
+      const fromResource = db
+        .select({ id: sessionResources.attachmentId })
+        .from(sessionResources)
+        .where(
+          and(
+            eq(sessionResources.sessionId, sessionId),
+            eq(sessionResources.attachmentId, attachmentId),
+          ),
+        )
+        .get();
+      return Promise.resolve(fromResource !== undefined);
     },
 
     commitAttachment({ attachment, blob, uploadId }: AttachmentCommit): Promise<void> {
