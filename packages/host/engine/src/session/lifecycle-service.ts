@@ -28,6 +28,7 @@ import type {
   SessionRecordRegistry,
   SessionRunIntent,
 } from './session-record-registry';
+import { mintRunId } from './session-record-registry';
 import type { ResolvedStartOptions, SessionStartOptionsResolver } from './start-options-resolver';
 
 type RunEffect = <A, E>(effect: Effect.Effect<A, E>, options?: Effect.RunOptions) => Promise<A>;
@@ -111,7 +112,8 @@ export class SessionLifecycleService {
         createdVia: resolved.createdVia,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now, ...runOf(resolved, accountId) }],
+        runs: [{ runId: mintRunId(), startedAt: now, ...runOf(resolved, accountId) }],
+        graphRevision: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -150,6 +152,7 @@ export class SessionLifecycleService {
             createdAt: session.createdAt ?? now,
             updatedAt: now,
             runs: [],
+            graphRevision: 0,
           };
           yield* records.importRecord(record);
           if (record.cwd) yield* workspaceTouch(workspaces, record.cwd);
@@ -187,7 +190,10 @@ export class SessionLifecycleService {
         origin: { type: 'imported', historyId, importedAt: now },
         createdAt: now,
         updatedAt: now,
-        runs: [{ historyId, startedAt: now, ...runOf(startOptions, accountId) }],
+        runs: [
+          { runId: mintRunId(), historyId, startedAt: now, ...runOf(startOptions, accountId) },
+        ],
+        graphRevision: 0,
       };
       yield* sessions.startLive(
         replyTo,
@@ -529,7 +535,8 @@ export class SessionLifecycleService {
         automation: options.automation,
         createdAt: now,
         updatedAt: now,
-        runs: [{ startedAt: now, ...runOf(startOptions, accountId) }],
+        runs: [{ runId: mintRunId(), startedAt: now, ...runOf(startOptions, accountId) }],
+        graphRevision: 0,
       };
       if (startOptions.cwd) yield* workspaceTouch(workspaces, startOptions.cwd);
       yield* sessions.startLive(undefined, record, (adapter) =>

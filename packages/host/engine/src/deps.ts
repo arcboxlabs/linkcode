@@ -6,6 +6,7 @@ import type { ProviderConfigStore } from './agent/provider-config';
 import type { TranslatorService } from './agent/translator';
 import type { AssetService } from './asset/service';
 import type { LoopStore, ScheduleStore } from './automation';
+import type { ConversationStore } from './conversation/conversation-store';
 import type { GitService } from './git/git-service';
 import type { PreviewRouteRegistry } from './preview/route-registry';
 import type { ResourceStore } from './resource/resource-store';
@@ -30,6 +31,9 @@ export interface EngineDeps {
   /** Read-only native plugin providers aggregated by the Engine plugin service. */
   pluginFactory?: PluginProviderAdapterFactory;
   sessionStore?: SessionStore;
+  /** Durable turn-tree/prompt storage. The daemon injects the single-connection SQLite store its
+   * multi-table transactions require; the in-memory default keeps bare engines and tests free. */
+  conversationStore?: ConversationStore;
   resourceStore?: ResourceStore;
   /** Daemon profile state directory containing managed resource bytes. */
   stateDir?: string;

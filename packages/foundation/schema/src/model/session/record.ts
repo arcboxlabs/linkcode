@@ -5,8 +5,10 @@ import { ImPlatformSchema } from '../im';
 import {
   AgentHistoryIdSchema,
   AgentKindSchema,
+  RunIdSchema,
   SessionIdSchema,
   TimestampSchema,
+  TurnIdSchema,
 } from '../primitives';
 import { ApprovalPolicyIdSchema } from './control';
 import { SessionStatusSchema } from './lifecycle';
@@ -34,6 +36,15 @@ export const SessionOriginSchema = z.discriminatedUnion('type', [
 ]);
 export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
 
+/** Additive fork provenance: old peers ignore this key and keep parsing `origin: created`. */
+export const ForkOriginSchema = z.object({
+  sourceSessionId: SessionIdSchema,
+  /** The source turn the fork was taken through (its copied prefix ends there). */
+  sourceTurnId: TurnIdSchema,
+  forkedAt: TimestampSchema,
+});
+export type ForkOrigin = z.infer<typeof ForkOriginSchema>;
+
 /**
  * One live start/resume of a session. Providers usually mint a new native id per resume, so a
  * session accumulates runs; `historyId` is backfilled once the adapter reports it (session-ref).
@@ -44,6 +55,12 @@ export type SessionOrigin = z.infer<typeof SessionOriginSchema>;
  * that would pin every thread to its first launch and cut it off from the agent's default for good.
  */
 export const SessionRunSchema = z.object({
+  /** Explicit run identity — writers always mint it. Optional at the parse boundary until the
+   * compatibility floor passes v80: ≤v79 daemons emit runs without it, and `session.imported`
+   * carries this schema, so a required field would make newer clients drop that reply. */
+  runId: RunIdSchema.optional(),
+  /** The turn this run was launched from (fork/resume base); absent for a fresh root run. */
+  baseTurnId: TurnIdSchema.optional(),
   historyId: AgentHistoryIdSchema.optional(),
   /** The account this run resolved to. Credentials and base URL are injected once at spawn, so the
    * account is fixed for the run's lifetime and a later rebind does not move it. */
@@ -66,6 +83,7 @@ export const SessionRecordSchema = z.object({
   /** Provider title when available; otherwise derived from the first prompt. */
   title: z.string().optional(),
   origin: SessionOriginSchema,
+  forkOrigin: ForkOriginSchema.optional(),
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
   /** Set when an automation created this session; clients hide tagged sessions from Threads. */
@@ -73,6 +91,10 @@ export const SessionRecordSchema = z.object({
   createdAt: TimestampSchema,
   updatedAt: TimestampSchema,
   runs: z.array(SessionRunSchema),
+  /** Host default view of the turn tree; moves only on a successful submit. */
+  activeLeafTurnId: TurnIdSchema.optional(),
+  /** Optimistic-concurrency counter for graph mutations. */
+  graphRevision: z.number().int().nonnegative().default(0),
 });
 export type SessionRecord = z.infer<typeof SessionRecordSchema>;
 
@@ -87,6 +109,7 @@ export const SessionInfoSchema = z.object({
   updatedAt: TimestampSchema,
   title: z.string().optional(),
   origin: SessionOriginSchema.optional(),
+  forkOrigin: ForkOriginSchema.optional(),
   /** The IM platform this session was created from (attribution/audit); absent for LinkCode clients. */
   createdVia: ImPlatformSchema.optional(),
   /** Set when an automation created this session; clients hide tagged sessions from Threads. */

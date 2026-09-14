@@ -31,6 +31,26 @@ export type ScheduleRunId = z.infer<typeof ScheduleRunIdSchema>;
 export const LoopIdSchema = z.string().min(1).brand<'LoopId'>();
 export type LoopId = z.infer<typeof LoopIdSchema>;
 
+/** Turn ID: host-minted, durable identity of one conversation turn (see conversation.ts). */
+export const TurnIdSchema = z.string().min(1).brand<'TurnId'>();
+export type TurnId = z.infer<typeof TurnIdSchema>;
+
+/** Prompt ID: identity of an immutable prompt record, shared by reference across forks. */
+export const PromptIdSchema = z.string().min(1).brand<'PromptId'>();
+export type PromptId = z.infer<typeof PromptIdSchema>;
+
+/** Run ID: explicit identity of one live start/resume of a session (see session/record.ts). */
+export const RunIdSchema = z.string().min(1).brand<'RunId'>();
+export type RunId = z.infer<typeof RunIdSchema>;
+
+/** Attachment ID: identity of an immutable prompt/session attachment. */
+export const AttachmentIdSchema = z.string().min(1).brand<'AttachmentId'>();
+export type AttachmentId = z.infer<typeof AttachmentIdSchema>;
+
+/** Operation ID: client-minted idempotency key for conversation mutations (see conversation.ts). */
+export const OperationIdSchema = z.string().min(1).brand<'OperationId'>();
+export type OperationId = z.infer<typeof OperationIdSchema>;
+
 /** Epoch timestamp in milliseconds. */
 export const TimestampSchema = z.number().int().nonnegative();
 export type Timestamp = z.infer<typeof TimestampSchema>;

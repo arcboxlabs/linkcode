@@ -1,7 +1,8 @@
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { SessionRecordSchema } from '@linkcode/schema';
+import { SessionRecordSchema, SessionRunSchema } from '@linkcode/schema';
+import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createSessionStore } from '../session-store';
 
@@ -34,9 +35,13 @@ describe('SQLite session store', () => {
       origin: { type: 'created' },
       createdAt: 1,
       updatedAt: 2,
+      activeLeafTurnId: 'turn-leaf',
+      graphRevision: 7,
       runs: [
-        { startedAt: 1, endedAt: 2, historyId: 'native-1', accountId: 'acc_first' },
+        { runId: 'run-1', startedAt: 1, endedAt: 2, historyId: 'native-1', accountId: 'acc_first' },
         {
+          runId: 'run-2',
+          baseTurnId: 'turn-base',
           startedAt: 3,
           historyId: 'native-2',
           accountId: 'acc_second',
@@ -51,6 +56,35 @@ describe('SQLite session store', () => {
     expect(await createSessionStore(database).load()).toEqual([record]);
   });
 
+  it('round-trips additive fork provenance and upgrades an existing forked origin row', async () => {
+    const database = await databasePath();
+    const record = SessionRecordSchema.parse({
+      sessionId: 'session-forked',
+      kind: 'codex',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      forkOrigin: {
+        sourceSessionId: 'session-source',
+        sourceTurnId: 'turn-cut',
+        forkedAt: 5,
+      },
+      createdAt: 5,
+      updatedAt: 6,
+      runs: [],
+    });
+    await createSessionStore(database).save(record);
+
+    expect(await createSessionStore(database).load()).toEqual([record]);
+
+    const sqlite = new Sqlite(database);
+    expect(sqlite.prepare('SELECT origin_type FROM sessions').pluck().get()).toBe('created');
+    sqlite
+      .prepare("UPDATE sessions SET origin_type = 'forked' WHERE session_id = ?")
+      .run(record.sessionId);
+    sqlite.close();
+    expect(await createSessionStore(database).load()).toEqual([record]);
+  });
+
   it('keeps run order across a reload, since the array position is part of the record', async () => {
     const database = await databasePath();
     const record = SessionRecordSchema.parse({
@@ -61,17 +95,41 @@ describe('SQLite session store', () => {
       createdAt: 1,
       updatedAt: 1,
       runs: [
-        { startedAt: 1, model: 'first' },
-        { startedAt: 2, model: 'second' },
-        { startedAt: 3, model: 'third' },
+        { runId: 'run-1', startedAt: 1, model: 'first' },
+        { runId: 'run-2', startedAt: 2, model: 'second' },
+        { runId: 'run-3', startedAt: 3, model: 'third' },
       ],
     });
     const store = createSessionStore(database);
     await store.save(record);
     // A later save rewrites the whole run list; the newest run is what a relaunch reads back.
-    await store.save({ ...record, runs: [...record.runs, { startedAt: 4, model: 'fourth' }] });
+    await store.save({
+      ...record,
+      runs: [
+        ...record.runs,
+        SessionRunSchema.parse({ runId: 'run-4', startedAt: 4, model: 'fourth' }),
+      ],
+    });
 
     const [reloaded] = await createSessionStore(database).load();
     expect(reloaded.runs.map((run) => run.model)).toEqual(['first', 'second', 'third', 'fourth']);
+  });
+
+  it('refuses to save a run without a runId instead of minting a drifting one', async () => {
+    const database = await databasePath();
+    // runId is optional at the wire parse boundary only; every engine writer mints it.
+    const record = SessionRecordSchema.parse({
+      sessionId: 'session-runless',
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 1,
+      runs: [{ startedAt: 1 }],
+    });
+
+    await expect(async () => createSessionStore(database).save(record)).rejects.toThrow(
+      'without runId',
+    );
   });
 });

@@ -1,7 +1,14 @@
 import type { AgentInput, SessionId, StartOptions } from '@linkcode/schema';
+import {
+  ConversationOperationSchema,
+  ConversationTurnSchema,
+  PromptRecordSchema,
+  SessionRecordSchema,
+} from '@linkcode/schema';
 import { Deferred, Effect, Exit, Fiber, Scope } from 'effect';
 import { noop } from 'foxts/noop';
 import { describe, expect, it } from 'vitest';
+import { InMemoryConversationStore } from '../conversation/conversation-store';
 import type { OperationError } from '../failure';
 import { LiveSession } from '../session/live-session';
 import type { SessionStore } from '../session/session-store';
@@ -139,6 +146,90 @@ describe('engine session lifecycle', () => {
     expect(second.sent.some((p) => p.kind === 'request.succeeded' && p.replyTo === 'r3')).toBe(
       true,
     );
+  });
+
+  it('deletes graph rows and collects a shared prompt after its last owning session', async () => {
+    const sessions = new InMemorySessionStore();
+    const conversations = new InMemoryConversationStore();
+    const parent = SessionRecordSchema.parse({
+      sessionId: 'session-parent',
+      kind: 'claude-code',
+      cwd: '/repo',
+      origin: { type: 'created' },
+      createdAt: 1,
+      updatedAt: 1,
+      runs: [],
+    });
+    const fork = SessionRecordSchema.parse({
+      ...parent,
+      sessionId: 'session-fork',
+      forkOrigin: {
+        sourceSessionId: parent.sessionId,
+        sourceTurnId: 'turn-parent',
+        forkedAt: 2,
+      },
+    });
+    await sessions.save(parent);
+    await sessions.save(fork);
+    const prompt = PromptRecordSchema.parse({
+      promptId: 'prompt-shared',
+      blocks: [{ type: 'attachment_ref', attachmentId: 'attachment-block' }],
+      contextAttachmentIds: ['attachment-context'],
+      createdAt: 2,
+    });
+    await conversations.persistTurnIntent({
+      turn: ConversationTurnSchema.parse({
+        turnId: 'turn-parent',
+        sessionId: parent.sessionId,
+        parentTurnId: null,
+        siblingOrdinal: 1,
+        input: { type: 'prompt', promptId: prompt.promptId },
+        runId: 'run-parent',
+        state: 'completed',
+        createdAt: 2,
+      }),
+      prompt,
+      operation: ConversationOperationSchema.parse({
+        operationId: 'operation-parent',
+        sessionId: parent.sessionId,
+        kind: 'turn.submit',
+        state: 'open',
+        createdAt: 2,
+      }),
+    });
+    await conversations.saveTurn(
+      ConversationTurnSchema.parse({
+        turnId: 'turn-fork',
+        sessionId: fork.sessionId,
+        parentTurnId: null,
+        siblingOrdinal: 1,
+        input: { type: 'prompt', promptId: prompt.promptId },
+        runId: 'run-fork',
+        state: 'completed',
+        createdAt: 3,
+      }),
+    );
+    const h = harness(sessions, undefined, undefined, undefined, undefined, undefined, {
+      conversationStore: conversations,
+    });
+    await h.engine.start();
+
+    await h.inject({
+      kind: 'session.delete',
+      clientReqId: 'delete-parent',
+      sessionId: parent.sessionId,
+    });
+    expect(await conversations.listTurns(parent.sessionId)).toEqual([]);
+    expect(await conversations.listOpenOperations(parent.sessionId)).toEqual([]);
+    expect(await conversations.getPrompt(prompt.promptId)).toEqual(prompt);
+
+    await h.inject({
+      kind: 'session.delete',
+      clientReqId: 'delete-fork',
+      sessionId: fork.sessionId,
+    });
+    expect(await conversations.listTurns(fork.sessionId)).toEqual([]);
+    expect(await conversations.getPrompt(prompt.promptId)).toBeUndefined();
   });
 
   it('deleting a session cancels its pending start without reporting a request failure', async () => {

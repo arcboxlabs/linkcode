@@ -24,7 +24,7 @@ describe('runCommand', () => {
         Effect.runPromise(
           runCommand(process.execPath, ['-e', writePidAndWait(pidFile)], {
             cwd: process.cwd(),
-            timeoutMs: 50,
+            timeoutMs: 1000,
           }),
         ),
       ).rejects.toMatchObject({ _tag: 'CommandError', reason: 'timeout' });

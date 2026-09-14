@@ -966,6 +966,7 @@ export class DevMockHost {
         createdAt: session.createdAt,
         updatedAt: now,
         runs: [],
+        graphRevision: 0,
       },
     });
   }

@@ -1,0 +1,3 @@
+CREATE UNIQUE INDEX `conversation_operations_open_session_unique` ON `conversation_operations` (`session_id`) WHERE state = 'open';--> statement-breakpoint
+CREATE UNIQUE INDEX `conversation_turns_sibling_unique` ON `conversation_turns` (`session_id`,`parent_turn_id`,`sibling_ordinal`) WHERE parent_turn_id IS NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX `conversation_turns_root_sibling_unique` ON `conversation_turns` (`session_id`,`sibling_ordinal`) WHERE parent_turn_id IS NULL;

@@ -27,6 +27,7 @@ export const WIRE_DELIVERY: WireDeliveryTable = {
   'terminal.controller.changed': { scope: 'terminal', terminalId: (p) => p.terminalId },
   'terminal.exit': { scope: 'terminal', terminalId: (p) => p.terminalId },
   'agent.event': { scope: 'session', sessionId: (p) => p.sessionId },
+  'conversation.graph.changed': { scope: 'session', sessionId: (p) => p.sessionId },
   'simulator.stream.frame': { scope: 'session', sessionId: (p) => p.sessionId },
   'browser.command': { scope: 'browser-host' },
 };
