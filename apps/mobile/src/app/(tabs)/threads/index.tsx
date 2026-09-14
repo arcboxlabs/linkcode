@@ -20,7 +20,10 @@ import { HostClientGate } from '@mobile/components/host/host-client-gate';
 import { NewThreadSheet } from '@mobile/components/host/new-thread-sheet';
 import { ThreadList } from '@mobile/components/host/thread-list/thread-list';
 import { useHostMenuItems } from '@mobile/components/host/use-host-menu-items';
-import { HeaderIconButton } from '@mobile/components/shell/header-icon-button';
+import type { PrimaryAction } from '@mobile/components/shell/primary-action';
+import { usePrimaryAction } from '@mobile/components/shell/primary-action';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
+import { useTrailingActions } from '@mobile/components/shell/use-trailing-actions';
 import { useHostConnection } from '@mobile/runtime/host-connection';
 import { captureMobileProductEvent } from '@mobile/runtime/product-analytics';
 import { useWorkspaces } from '@mobile/runtime/use-workspaces';
@@ -49,24 +52,26 @@ export default function ThreadsRoute(): React.ReactNode {
   const connection = useHostConnection();
   const [sheetOpen, setSheetOpen] = useState(false);
 
+  const primaryAction: PrimaryAction | null =
+    connection?.status === 'ready'
+      ? {
+          sf: 'square.and.pencil',
+          icon: SquarePenIcon,
+          label: t('newThread'),
+          onPress: () => setSheetOpen(true),
+        }
+      : null;
+  usePrimaryAction('threads', primaryAction);
+  const trailingActions = useTrailingActions(primaryAction);
+
   return (
     <View className="flex-1 bg-background">
       <Stack.Screen
         options={{
-          headerShown: true,
-          headerLargeTitle: true,
+          ...VISIBLE_HEADER_OPTIONS,
           title: t('title'),
           unstable_headerLeftItems: () => hostMenuItems,
-          headerRight:
-            connection?.status === 'ready'
-              ? () => (
-                  <HeaderIconButton
-                    icon={SquarePenIcon}
-                    label={t('newThread')}
-                    onPress={() => setSheetOpen(true)}
-                  />
-                )
-              : undefined,
+          ...trailingActions,
         }}
       />
       <HostClientGate>
@@ -77,7 +82,7 @@ export default function ThreadsRoute(): React.ReactNode {
 }
 
 /** Threads inbox: sessions grouped by workspace (project) under collapsible headers, with the
- * native search bar stacked under the large title. Empty workspace groups are hidden — the sheet
+ * native search bar stacked below the navigation bar. Empty workspace groups are hidden — the sheet
  * is where they surface. */
 function ThreadsScreen({
   sheetOpen,
@@ -151,12 +156,11 @@ function ThreadsScreen({
 
   return (
     <>
-      {/* `stacked` keeps the field under the large title instead of collapsing into the iOS 26
-          toolbar; the screen body is a SwiftUI host, so nothing here can drive hide-on-scroll. */}
+      {/* `stacked` keeps the field below the inline title instead of moving into the iOS 26 toolbar. */}
       <Stack.SearchBar
         placeholder={t('searchPlaceholder')}
         placement="stacked"
-        hideWhenScrolling={false}
+        hideWhenScrolling
         hideNavigationBar={false}
         autoCapitalize="none"
         onChangeText={onSearchChange}

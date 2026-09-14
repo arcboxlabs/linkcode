@@ -2,6 +2,7 @@ import { Button, Form, Host, ProgressView, Section } from '@expo/ui/swift-ui';
 import { DeleteAccountSection } from '@mobile/components/account/delete-account-section';
 import { DevicesSection } from '@mobile/components/account/devices-section';
 import { ProfileRow } from '@mobile/components/account/profile-row';
+import { VISIBLE_HEADER_OPTIONS } from '@mobile/components/shell/use-stack-screen-options';
 import { signOutOfCloud, useCloudAccount } from '@mobile/runtime/cloud/account';
 import { Redirect, Stack } from 'expo-router';
 import { Alert } from 'react-native';
@@ -16,7 +17,7 @@ export default function AccountScreen(): React.ReactNode {
 
   return (
     <>
-      <Stack.Screen options={{ headerShown: true, title: t('title') }} />
+      <Stack.Screen options={{ ...VISIBLE_HEADER_OPTIONS, title: t('title') }} />
       {/* Form needs the viewport as its proposed size, otherwise it collapses to its content. */}
       <Host style={{ flex: 1 }} useViewportSizeMeasurement>
         <Form>

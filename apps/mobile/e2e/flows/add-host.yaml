@@ -18,16 +18,13 @@ appId: com.arcboxlabs.linkcode.mobile
     commands:
       - openLink: linkcode://connect
       - waitForAnimationToEnd
-      - assertVisible: 'Connect to a host'
+      - assertVisible: 'Manage hosts'
       - assertVisible: 'Add a host by URL'
 
-# The manual form is a DisclosureGroup; signed out it starts expanded, but a previous run in this
-# simulator may have collapsed it, so open it whenever the fields are not already on screen.
-- runFlow:
-    when:
-      notVisible: 'Host URL'
-    commands:
-      - tapOn: 'Add a host by URL'
+- tapOn: 'Add a host by URL'
+- waitForAnimationToEnd
+- assertVisible: 'Name'
+- assertVisible: 'Host URL'
 
 - tapOn:
     id: 'host-name-input'
@@ -35,15 +32,12 @@ appId: com.arcboxlabs.linkcode.mobile
 # Typing goes to whatever holds focus, so a tap that missed the field would silently type into
 # nothing; assert the field took it rather than discovering it three steps later.
 - assertVisible: 'Probe'
-# SwiftUI scrolls the *focused* field clear of the keyboard, which leaves the next one under it;
-# tapping a covered element lands on the keyboard, so bring the form up before reaching for it.
+# SwiftUI scrolls the focused field clear of the keyboard, which can leave the next one under it.
 - scroll
 - tapOn:
     id: 'host-url-input'
 - inputText: 'http://127.0.0.1:19599'
-# Submitting from the keyboard rather than the "Add host" button: the button sits under the
-# keyboard, a tap on a covered element lands on the keyboard instead, and `hideKeyboard` has no
-# effect on a SwiftUI form. This is the return key the field advertises with `submitLabel('go')`.
+# The URL field advertises the system Go return key as its submit action.
 - pressKey: Enter
 
 # Naming the URL back is the assertion that matters: it can only come from text that made it

@@ -1293,7 +1293,7 @@ export const en = {
       note: 'Connects directly to a Link Code host (daemon) over its transport. Remote access through the LinkCode Cloud tunnel arrives with device pairing.',
     },
     connect: {
-      title: 'Connect to a host',
+      title: 'Manage hosts',
       emptyHint:
         'Add the address of a running Link Code daemon. On the iOS simulator, http://127.0.0.1:19523 reaches the daemon on this machine.',
       nameLabel: 'Name',
@@ -1302,6 +1302,7 @@ export const en = {
       urlPlaceholder: 'http://127.0.0.1:19523',
       invalidUrl: 'Enter an http(s):// or ws(s):// URL.',
       add: 'Add host',
+      cancel: 'Cancel',
       savedHosts: 'Saved hosts',
       open: 'Open',
       remove: 'Remove',
@@ -1470,6 +1471,7 @@ export const en = {
     },
     settings: {
       title: 'Settings',
+      more: 'More',
       signIn: 'Sign in to LinkCode Cloud',
       manageHosts: 'Manage hosts',
       terminalAppearance: 'Terminal appearance',
