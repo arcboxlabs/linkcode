@@ -17,7 +17,7 @@
     "foxts": "^5.9.1",
     "mac-system-proxy": "^1.0.4",
     "make-fetch-happen": "^16.0.1",
-    "p-map": "^7.0.6",
+    "p-map": "^7.0.7",
     "semver": "^7.8.5",
     "ssri": "^14.0.0",
     "tar": "^7.5.21",
@@ -26,7 +26,7 @@
   "devDependencies": {
     "@types/make-fetch-happen": "^10.0.4",
     "@types/node": "catalog:",
-    "@types/semver": "^7.7.1",
+    "@types/semver": "^7.8.0",
     "@types/ssri": "^7.1.5",
     "tsx": "catalog:",
     "typescript": "catalog:",
