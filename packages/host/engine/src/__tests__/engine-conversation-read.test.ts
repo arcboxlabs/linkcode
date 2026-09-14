@@ -169,6 +169,34 @@ describe('conversation.graph.get', () => {
 });
 
 describe('conversation.read', () => {
+  it('retains a completed live reply when history fails after a real prompt dispatch', async () => {
+    const shared: SharedHistory = { events: [], failRead: true };
+    const h = await startedHarness(() => new HistoryFakeAdapter(shared));
+    h.adapter.emit({ type: 'session-ref', historyId: HISTORY_ID });
+    await h.inject({
+      kind: 'turn.submit',
+      clientReqId: 's-live',
+      sessionId: h.sessionId,
+      operationId: OperationIdSchema.parse('op-live'),
+      input: { type: 'prompt', blocks: [{ type: 'text', text: 'keep this reply' }] },
+    });
+    h.adapter.emit(assistantRow('a-live', 'retained reply').event);
+    h.adapter.emit({ type: 'stop', stopReason: 'end_turn' });
+    h.adapter.emit({ type: 'status', status: 'idle' });
+    await settleEngineTasks();
+
+    await h.inject({ kind: 'conversation.read', clientReqId: 'rr-live', sessionId: h.sessionId });
+
+    const result = readResult(h.sent, 'rr-live');
+    expect(userTexts(result.events)).toEqual(['keep this reply']);
+    expect(result.events).toContainEqual(
+      expect.objectContaining({ event: assistantRow('a-live', 'retained reply').event }),
+    );
+    expect(result.events).not.toContainEqual(
+      expect.objectContaining({ type: 'history-unavailable' }),
+    );
+  });
+
   it('renders prompts and placeholders when the harness has no history', async () => {
     const h = await startedHarness();
     await completeTurn(h, 's1', 'hello one');

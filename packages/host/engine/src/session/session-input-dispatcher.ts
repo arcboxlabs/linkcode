@@ -118,22 +118,33 @@ export class SessionInputDispatcher {
       }
       const persisted = intent;
       const dispatch = Effect.gen(function* () {
-        // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+        // Echo before awaiting send: provider events can outrun the acknowledgement. The
+        // persisted intent supplies its turn ID before the adapter signals running.
         if (promptMessageId !== undefined && input.type === 'prompt') {
-          events.broadcast(sessionId, session, session.trackPrompt(promptMessageId, input.content));
+          events.broadcast(
+            sessionId,
+            session,
+            session.trackPrompt(promptMessageId, input.content),
+            persisted?.turn.turnId,
+          );
           records.setTitleFromContent(sessionId, input.content);
         } else if (input.type === 'command' || input.type === 'shell-command') {
           const text =
             input.type === 'command'
               ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
               : `$ ${input.command}`;
-          events.broadcast(sessionId, session, [
-            {
-              type: 'user-message',
-              messageId: nextMessageId(),
-              content: [{ type: 'text', text }],
-            },
-          ]);
+          events.broadcast(
+            sessionId,
+            session,
+            [
+              {
+                type: 'user-message',
+                messageId: nextMessageId(),
+                content: [{ type: 'text', text }],
+              },
+            ],
+            persisted?.turn.turnId,
+          );
         }
         const responseInput =
           input.type === 'permission-response' || input.type === 'question-response'

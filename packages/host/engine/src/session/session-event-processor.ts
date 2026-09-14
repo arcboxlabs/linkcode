@@ -43,8 +43,12 @@ export class SessionEventProcessor {
     private readonly journals: ConversationLiveJournals,
   ) {}
 
-  broadcast(sessionId: SessionId, session: LiveSession, events: Iterable<AgentEvent>): void {
-    const turnId = this.turns.runningTurnId(sessionId, session.runId);
+  broadcast(
+    sessionId: SessionId,
+    session: LiveSession,
+    events: Iterable<AgentEvent>,
+    turnId = this.turns.runningTurnId(sessionId, session.runId),
+  ): void {
     for (const event of events) this.send(sessionId, session, event, turnId);
   }
 
