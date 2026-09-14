@@ -5,6 +5,8 @@ import type { SessionRecord } from '@linkcode/schema';
 import { SessionRecordSchema } from '@linkcode/schema';
 import Sqlite from 'better-sqlite3';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { DaemonDatabase } from '../../src/db/database';
+import { openDaemonDatabase } from '../../src/db/database';
 import { createSessionStore } from '../../src/session-store';
 
 const collator = new Intl.Collator();
@@ -24,12 +26,24 @@ function makeRecord(value: Record<string, unknown>): SessionRecord {
 
 describe('daemon sqlite session store', () => {
   const tmpDirs: string[] = [];
+  const openDatabases = new Set<DaemonDatabase>();
+  const openDatabase = (path: string): DaemonDatabase => {
+    const database = openDaemonDatabase(path);
+    openDatabases.add(database);
+    return database;
+  };
+  const closeDatabase = (database: DaemonDatabase): void => {
+    database.close();
+    openDatabases.delete(database);
+  };
   afterEach(() => {
+    for (const database of openDatabases) database.close();
+    openDatabases.clear();
     while (tmpDirs.length > 0) rmSync(tmpDirs.pop()!, { recursive: true, force: true });
   });
 
   it('round-trips created and imported records', async () => {
-    const store = createSessionStore(':memory:');
+    const store = createSessionStore(openDatabase(':memory:').client);
     const created = makeRecord({
       runs: [
         { runId: 'run-a', startedAt: 1 },
@@ -51,7 +65,7 @@ describe('daemon sqlite session store', () => {
   });
 
   it('saves as a whole-record upsert, rewriting runs', async () => {
-    const store = createSessionStore(':memory:');
+    const store = createSessionStore(openDatabase(':memory:').client);
     await store.save(makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] }));
     const next = makeRecord({
       title: 'Renamed',
@@ -72,9 +86,11 @@ describe('daemon sqlite session store', () => {
     tmpDirs.push(dir);
     const dbPath = join(dir, 'daemon.db');
 
-    const first = createSessionStore(dbPath);
+    const firstDatabase = openDatabase(dbPath);
+    const first = createSessionStore(firstDatabase.client);
     const record = makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] });
     await first.save(record);
+    closeDatabase(firstDatabase);
 
     // Simulate a dev DB migrated under an older journal: the newest migration's created_at predates
     // the journal's `when`, which without reconciliation re-runs it and crashes on the duplicate column.
@@ -87,12 +103,12 @@ describe('daemon sqlite session store', () => {
       .run();
     raw.close();
 
-    const second = createSessionStore(dbPath);
+    const second = createSessionStore(openDatabase(dbPath).client);
     expect(await second.load()).toEqual([record]);
   });
 
   it('deletes a record together with its runs', async () => {
-    const store = createSessionStore(':memory:');
+    const store = createSessionStore(openDatabase(':memory:').client);
     const record = makeRecord({ runs: [{ runId: 'run-a', startedAt: 1 }] });
     await store.save(record);
     await store.delete(record.sessionId);

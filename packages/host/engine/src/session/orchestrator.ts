@@ -8,6 +8,7 @@ import type {
   ContentBlock,
   McpWarning,
   MessageId,
+  RunId,
   SessionId,
   SessionInfo,
   SessionRecord,
@@ -18,7 +19,8 @@ import { Cause, Deferred, Effect, Exit, Scope } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
 import type { TurnResult } from '../automation/turn-watcher';
 import { watchTurn } from '../automation/turn-watcher';
-import type { ConversationStore } from '../conversation/conversation-store';
+import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import type { EngineFailure } from '../failure';
 import { OperationError, RequestError, toOperationFailure } from '../failure';
 import { observeOperation, recordLiveSessions } from '../observability';
@@ -42,7 +44,7 @@ export class SessionOrchestrator {
     reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly onStopped: (sessionId: SessionId) => void,
     private readonly resources: ResourceService,
-    private readonly conversations: ConversationStore,
+    private readonly turns: ConversationTurnService,
     private readonly browserTools?: BrowserToolsetFactory,
     /** Restricted-brand allowlist (CODE-618); `null` (the default) is unrestricted. Enforced only
      * here, at the one place every start/resume/relaunch path constructs a live adapter — never at
@@ -51,8 +53,15 @@ export class SessionOrchestrator {
      * fully readable; only starting a new live run of it is refused. */
     private readonly allowedAgents: readonly AgentKind[] | null = null,
   ) {
-    this.events = new SessionEventProcessor(transport, records, runtimes, reportFailure, resources);
-    this.inputs = new SessionInputDispatcher(records, this.events, resources);
+    this.events = new SessionEventProcessor(
+      transport,
+      records,
+      runtimes,
+      reportFailure,
+      resources,
+      turns,
+    );
+    this.inputs = new SessionInputDispatcher(records, this.events, resources, turns);
   }
 
   private get(sessionId: SessionId): LiveSession | undefined {
@@ -83,6 +92,17 @@ export class SessionOrchestrator {
     return session !== undefined && (session.turnInputActive || session.status === 'running');
   }
 
+  /** The adapter has visibly emitted `running` — deliberately narrower than {@link isBusy}:
+   * `turnInputActive` is set by the dispatch itself and proves nothing about acceptance. */
+  isTurnRunning(sessionId: SessionId): boolean {
+    return this.sessions.get(sessionId)?.status === 'running';
+  }
+
+  /** The run the live adapter serves; `undefined` doubles as the cold-session signal. */
+  liveRunId(sessionId: SessionId): RunId | undefined {
+    return this.sessions.get(sessionId)?.runId;
+  }
+
   /** The running adapter's history capabilities — asked of the live instance rather than a fresh
    * one, so a caller about to tear it down learns what *this* session can do. */
   historyCapabilities(sessionId: SessionId): AgentHistoryCapabilities | undefined {
@@ -94,10 +114,16 @@ export class SessionOrchestrator {
     if (session) this.events.broadcast(sessionId, session.replay());
   }
 
-  sendInput(sessionId: SessionId, input: AgentInput): Effect.Effect<void, unknown> {
+  sendInput(
+    sessionId: SessionId,
+    input: AgentInput,
+    prepared?: PersistedTurnIntent,
+  ): Effect.Effect<void, unknown> {
     return Effect.suspend<void, unknown, never>(() => {
       const session = this.requireSession(sessionId);
-      return session.run(Effect.suspend(() => this.inputs.send(sessionId, session, input)));
+      return session.run(
+        Effect.suspend(() => this.inputs.send(sessionId, session, input, prepared)),
+      );
     });
   }
 
@@ -116,22 +142,14 @@ export class SessionOrchestrator {
   }
 
   delete(sessionId: SessionId): Effect.Effect<void, EngineFailure> {
-    const { conversations, resources } = this;
+    const { resources } = this;
     return Effect.gen({ self: this }, function* () {
       const session = this.sessions.get(sessionId);
       if (session) {
         yield* this.teardown(sessionId, session, 'session.delete');
       }
       yield* resources.deleteSession(sessionId);
-      yield* Effect.tryPromise({
-        try: () => conversations.deleteSession(sessionId),
-        catch: (cause) =>
-          toOperationFailure(cause, {
-            subsystem: 'store',
-            operation: 'conversation.delete-session',
-            publicMessage: 'Failed to delete conversation graph',
-          }),
-      });
+      yield* this.turns.deleteSession(sessionId);
       yield* this.records.delete(sessionId);
     });
   }
@@ -174,20 +192,56 @@ export class SessionOrchestrator {
       }
       session.turnInputActive = true;
       const content: ContentBlock[] = [{ type: 'text', text }];
+      const { records, turns } = this;
       return session.run(
-        Effect.sync(() => {
-          this.events.broadcast(sessionId, [
-            { type: 'user-message', messageId: nextMessageId(), content },
-          ]);
-          this.records.setTitleFromContent(sessionId, content);
-        }).pipe(
-          Effect.andThen(
-            watchTurn(
-              session.adapter,
-              () => session.adapter.send({ type: 'prompt', content }),
-              opts,
+        Effect.gen({ self: this }, function* () {
+          if (yield* turns.hasOpenOperation(sessionId)) {
+            return yield* Effect.fail(
+              new RequestError({ code: 'busy', message: `Session is busy: ${sessionId}` }),
+            );
+          }
+          const intent = yield* turns.persistIntent({
+            sessionId,
+            operationId: mintOperationId(),
+            runId: session.runId,
+            parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+            input: { type: 'prompt', blocks: promptBlocksFromContent(content) },
+          });
+          const result = yield* Effect.sync(() => {
+            this.events.broadcast(sessionId, [
+              { type: 'user-message', messageId: nextMessageId(), content },
+            ]);
+            records.setTitleFromContent(sessionId, content);
+          }).pipe(
+            Effect.andThen(
+              watchTurn(session.adapter, () => session.adapter.send({ type: 'prompt', content }), {
+                ...opts,
+                onDispatchAccepted: turns.commitRunning(intent),
+              }),
             ),
-          ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? turns
+                    .resolveFailed(intent, {
+                      code: 'operation_failed',
+                      message: 'Automation prompt failed',
+                    })
+                    .pipe(
+                      Effect.catch((error) =>
+                        Effect.logError(
+                          'Failed to record the rejected automation turn',
+                          { sessionId },
+                          error.cause,
+                        ),
+                      ),
+                    )
+                : Effect.void,
+            ),
+          );
+          turns.settleStop(sessionId, session.runId, result.stopReason);
+          if (session.status !== 'running') session.turnInputActive = false;
+          return result;
+        }).pipe(
           Effect.onExit((exit) =>
             Exit.isFailure(exit)
               ? Effect.sync(() => {
@@ -201,14 +255,17 @@ export class SessionOrchestrator {
     });
   }
 
-  /** Bind a record to a live adapter. The record's current run must already be last in `runs`. */
+  /** Bind a record to a live adapter serving `runId` — the run the caller just recorded. */
   startLive(
     replyTo: string | undefined,
     record: SessionRecord,
+    runId: RunId,
     startAdapter: (adapter: AgentAdapter) => Effect.Effect<void, EngineFailure>,
     mcpWarnings: readonly McpWarning[] = [],
     options: {
       initialInput?: AgentInput;
+      /** Turn intent already persisted for `initialInput`; its dispatch commits or fails it. */
+      preparedTurn?: PersistedTurnIntent;
       registerRecord?: boolean;
       rewindMessageId?: MessageId;
     } = {},
@@ -226,7 +283,7 @@ export class SessionOrchestrator {
     const { browserTools, allowedAgents } = this;
     const discardFailedStart = (session: LiveSession): Effect.Effect<void> =>
       this.discardFailedStart(record.sessionId, session);
-    const { initialInput, registerRecord = true, rewindMessageId } = options;
+    const { initialInput, preparedTurn, registerRecord = true, rewindMessageId } = options;
     return observeOperation(
       Effect.gen(function* () {
         const sessionId = record.sessionId;
@@ -242,7 +299,7 @@ export class SessionOrchestrator {
         if (browserTools) adapter.attachBrowserTools?.(browserTools);
         const scope = yield* Scope.fork(parentScope);
         const closed = yield* Deferred.make<void, OperationError>();
-        const session = new LiveSession(adapter, sessionId, scope, closed);
+        const session = new LiveSession(adapter, sessionId, runId, scope, closed);
         const startupEvents: AgentEvent[] = [];
         let bufferEvents = rewindMessageId !== undefined;
         session.listen((event) => {
@@ -270,13 +327,20 @@ export class SessionOrchestrator {
           yield* startAdapter(adapter);
           if (sessions.get(sessionId) !== session) return yield* Effect.interrupt;
         });
+        // Exit-based, not tapError: an interrupted start (submit timeout, teardown racing the
+        // launch) must also unregister the session, or it stays a zombie in `'starting'` whose
+        // next submit would 'continue' into an adapter that never started.
         yield* session
           .run(startAdapterSession)
           .pipe(
-            Effect.tapError(() =>
-              discardFailedStart(session).pipe(
-                Effect.catch((error) => Effect.logError('Failed to discard session record', error)),
-              ),
+            Effect.onExit((exit) =>
+              Exit.isFailure(exit)
+                ? discardFailedStart(session).pipe(
+                    Effect.catch((error) =>
+                      Effect.logError('Failed to discard session record', error),
+                    ),
+                  )
+                : Effect.void,
             ),
           );
         if (rewindMessageId !== undefined) {
@@ -291,7 +355,7 @@ export class SessionOrchestrator {
         }
         if (initialInput !== undefined) {
           yield* session
-            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput)))
+            .run(Effect.suspend(() => inputs.send(sessionId, session, initialInput, preparedTurn)))
             .pipe(
               Effect.mapError((cause) =>
                 toOperationFailure(cause, {
@@ -374,7 +438,9 @@ export class SessionOrchestrator {
             Effect.suspend(() => {
               if (!this.remove(sessionId, session)) return Effect.void;
               if (releaseSession) this.onStopped(sessionId);
-              this.records.sealCurrentRun(sessionId);
+              // Teardown mid-turn kills the turn without a stop frame; settle it here.
+              this.turns.settleStatus(sessionId, session.runId, 'stopped');
+              this.records.sealRun(sessionId, session.runId);
               return recordLiveSessions(this.sessions.size);
             }),
           ),
@@ -399,7 +465,7 @@ export class SessionOrchestrator {
         Effect.andThen(
           Effect.sync(() => {
             session.stopListening();
-            this.records.sealCurrentRun(sessionId);
+            this.records.sealRun(sessionId, session.runId);
           }),
         ),
         Effect.andThen(stopBestEffort(session.adapter)),

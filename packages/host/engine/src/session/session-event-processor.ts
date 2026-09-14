@@ -4,11 +4,25 @@ import type { Transport } from '@linkcode/transport';
 import { createWireMessage } from '@linkcode/transport';
 import { Effect } from 'effect';
 import type { AgentRuntimeService } from '../agent/runtime-service';
+import type { ConversationTurnService } from '../conversation/turn-service';
 import type { ResourceService } from '../resource/service';
 import type { LiveSession } from './live-session';
 import type { SessionRecordRegistry } from './session-record-registry';
 
 const SOURCE_TOOL_KINDS = new Set<ToolKind>(['fetch', 'read', 'search']);
+
+/** Events describing the SESSION rather than a turn — status and catalogs. A replaced adapter's
+ * stragglers of these kinds must not paint the session with a dead run's state; turn-scoped
+ * events keep their old attribution and pass through. */
+const SESSION_SCOPED_EVENT_TYPES = new Set<AgentEvent['type']>([
+  'status',
+  'approval-policy-update',
+  'model-update',
+  'effort-update',
+  'available-commands-update',
+  'available-models-update',
+  'capabilities-update',
+]);
 
 /** Applies adapter events to live state, durable records, and wire projections. */
 export class SessionEventProcessor {
@@ -18,6 +32,7 @@ export class SessionEventProcessor {
     private readonly runtimes: AgentRuntimeService,
     private readonly reportFailure: (effect: Effect.Effect<void>) => void,
     private readonly resources: ResourceService,
+    private readonly turns: ConversationTurnService,
   ) {}
 
   broadcast(sessionId: SessionId, events: Iterable<AgentEvent>): void {
@@ -95,20 +110,33 @@ export class SessionEventProcessor {
     // Adapter callbacks are synchronous; contain failures to this session instead of throwing into
     // the SDK operation that emitted the event.
     try {
+      if (
+        SESSION_SCOPED_EVENT_TYPES.has(event.type) &&
+        !this.records.isCurrentRun(sessionId, session.runId)
+      ) {
+        return;
+      }
       this.broadcast(sessionId, session.apply(event));
       this.registerResources(sessionId, event);
       switch (event.type) {
         case 'status':
-          if (event.status === 'stopped') this.records.sealCurrentRun(sessionId);
+          if (event.status === 'stopped') this.records.sealRun(sessionId, session.runId);
+          if (event.status === 'idle' || event.status === 'stopped') {
+            this.turns.settleStatus(sessionId, session.runId, event.status);
+          }
+          break;
+        case 'stop':
+          this.turns.settleStop(sessionId, session.runId, event.stopReason);
           break;
         case 'session-ref':
-          this.records.bindHistoryId(sessionId, event.historyId);
+          this.records.bindHistoryId(sessionId, session.runId, event.historyId);
           break;
         case 'title-update':
           this.records.setProviderTitle(sessionId, event.title);
           break;
         case 'error':
           if (event.code === AUTH_FAILED_ERROR_CODE) this.runtimes.refresh();
+          this.turns.noteError(sessionId, session.runId);
           break;
         default:
           break;

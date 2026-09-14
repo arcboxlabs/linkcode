@@ -1,4 +1,4 @@
-import { Data } from 'effect';
+import { Cause, Data } from 'effect';
 
 interface FailureReporting {
   /** True only when an emitted conversation event already owns presentation of this failure. */
@@ -9,6 +9,8 @@ export type RequestErrorCode =
   | 'invalid_request'
   | 'not_found'
   | 'conflict'
+  /** A turn is running or another operation is open on the session; retry once it settles. */
+  | 'busy'
   /** The request was understood and refused — the user withheld consent, not a broken call. */
   | 'forbidden'
   | 'unsupported'
@@ -102,6 +104,15 @@ export function toRequestFailure(error: unknown): RequestFailure {
     return withFailureReporting(error, { code: 'timeout', message: error.publicMessage });
   }
   return { code: 'internal_error', message: 'Internal engine error' };
+}
+
+/** A storable failure for exits that bypass the typed error channel: interruption (teardown or a
+ * timeout race) and defects. Typed failures inside the cause keep their precise mapping. */
+export function causeToRequestFailure(cause: Cause.Cause<unknown>): RequestFailure {
+  if (Cause.hasInterruptsOnly(cause)) {
+    return { code: 'cancelled', message: 'The turn was interrupted before dispatch completed' };
+  }
+  return toRequestFailure(Cause.squash(cause));
 }
 
 function withFailureReporting(error: FailureReporting, failure: RequestFailure): RequestFailure {

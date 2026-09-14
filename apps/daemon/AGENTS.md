@@ -82,10 +82,11 @@ Runs via `tsx` in dev (`pnpm -F @linkcode/daemon dev`) and a `tsup` bundle in pr
     reach `ensureDeviceKey`.
   - A missing `@napi-rs/keyring` native binding is a **packaging** defect, not a host property, and it
     silently downgrades every credential to plaintext. `verify-artifacts.mts` fails the release on it.
-- **`daemon.db`** — better-sqlite3 session/workspace registry (`session-store.ts` / `workspace-store.ts`,
-  tables in `src/db/schema.ts`). The zod `SessionRecordSchema` is the contract: rows are re-validated
-  through it on load; the table is just storage. After editing `src/db/schema.ts`, run
-  `pnpm -F @linkcode/daemon exec drizzle-kit generate` and commit `drizzle/` — migrations run at boot.
+- **`daemon.db`** — better-sqlite3 persistence (tables in `src/db/schema.ts`). `src/db/database.ts`
+  owns and migrates the shared graph/session connection; its stores borrow that client, while the
+  other stores retain their own connections. The zod `SessionRecordSchema` is the contract: rows
+  are re-validated through it on load; the table is just storage. After editing `src/db/schema.ts`,
+  run `pnpm -F @linkcode/daemon exec drizzle-kit generate` and commit `drizzle/` — migrations run at boot.
   - **A record field with no column is dropped in silence.** The store enumerates columns on write and
     rebuilds the record on read, so an `.optional()` field added to the schema alone survives until the
     next boot and then parses cleanly as `undefined`. Adding one is three edits (column, write, read)

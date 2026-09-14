@@ -1,8 +1,10 @@
 import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
-import { Effect } from 'effect';
-import { OperationError, RequestError } from '../failure';
+import { Cause, Effect, Exit } from 'effect';
+import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
+import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
+import { causeToRequestFailure, OperationError, RequestError } from '../failure';
 import type { ResourceService } from '../resource/service';
 import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { assertAttachmentContentAllowed } from './attachment-guard';
@@ -16,12 +18,16 @@ export class SessionInputDispatcher {
     private readonly records: SessionRecordRegistry,
     private readonly events: SessionEventProcessor,
     private readonly resources: ResourceService,
+    private readonly turns: ConversationTurnService,
   ) {}
 
+  /** `prepared` is a submit-saga intent already persisted for this dispatch; without one, a
+   * turn-starting legacy input persists its own plain-send intent — the graph misses no turns. */
   send(
     sessionId: SessionId,
     session: LiveSession,
     input: AgentInput,
+    prepared?: PersistedTurnIntent,
   ): Effect.Effect<void, unknown> {
     const startsTurn =
       input.type === 'prompt' || input.type === 'command' || input.type === 'shell-command';
@@ -56,9 +62,22 @@ export class SessionInputDispatcher {
       this.events.rejectInput(sessionId, error.message);
       return Effect.fail(error);
     }
-    const { events, records, resources } = this;
+    const { events, records, resources, turns } = this;
     const promptMessageId = input.type === 'prompt' ? nextMessageId() : undefined;
+    // Set synchronously, before the first await, so a same-tick second turn input cannot slip
+    // past the gate above while this one is still validating; every failure exit releases it.
+    if (startsTurn) session.turnInputActive = true;
     return Effect.gen(function* () {
+      // A submit operation in flight owns the session; legacy inputs respect the same admit gate.
+      if (startsTurn && prepared === undefined && (yield* turns.hasOpenOperation(sessionId))) {
+        const error = new RequestError({
+          code: 'busy',
+          message: `Session is busy: ${sessionId}`,
+          reportedInConversation: true,
+        });
+        events.rejectInput(sessionId, error.message);
+        return yield* Effect.fail(error);
+      }
       let adapterInput: AgentInput = input;
       if (input.type === 'prompt') {
         yield* Effect.try({
@@ -82,73 +101,131 @@ export class SessionInputDispatcher {
           ),
         );
       }
-      if (startsTurn) session.turnInputActive = true;
-      // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
-      if (promptMessageId !== undefined && input.type === 'prompt') {
-        events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
-        records.setTitleFromContent(sessionId, input.content);
-      } else if (input.type === 'command' || input.type === 'shell-command') {
-        const text =
-          input.type === 'command'
-            ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
-            : `$ ${input.command}`;
-        events.broadcast(sessionId, [
-          {
-            type: 'user-message',
-            messageId: nextMessageId(),
-            content: [{ type: 'text', text }],
-          },
-        ]);
+      // The durable commit point precedes the irreversible dispatch: kill or failure past here
+      // leaves a `failed` turn, never an absent one.
+      let intent = prepared;
+      if (startsTurn && intent === undefined) {
+        intent = yield* turns.persistIntent({
+          sessionId,
+          operationId: mintOperationId(),
+          runId: session.runId,
+          parentTurnId: records.get(sessionId)?.activeLeafTurnId ?? null,
+          input:
+            input.type === 'prompt'
+              ? { type: 'prompt', blocks: promptBlocksFromContent(input.content) }
+              : input,
+        });
       }
-      const responseInput =
-        input.type === 'permission-response' || input.type === 'question-response'
-          ? input
+      const persisted = intent;
+      const dispatch = Effect.gen(function* () {
+        // Echo before awaiting send: provider events can outrun the dispatch acknowledgement.
+        if (promptMessageId !== undefined && input.type === 'prompt') {
+          events.broadcast(sessionId, session.trackPrompt(promptMessageId, input.content));
+          records.setTitleFromContent(sessionId, input.content);
+        } else if (input.type === 'command' || input.type === 'shell-command') {
+          const text =
+            input.type === 'command'
+              ? `/${input.name}${input.arguments ? ` ${input.arguments}` : ''}`
+              : `$ ${input.command}`;
+          events.broadcast(sessionId, [
+            {
+              type: 'user-message',
+              messageId: nextMessageId(),
+              content: [{ type: 'text', text }],
+            },
+          ]);
+        }
+        const responseInput =
+          input.type === 'permission-response' || input.type === 'question-response'
+            ? input
+            : undefined;
+        const respondingAsk = responseInput
+          ? session.interactions.beginResponse(responseInput)
           : undefined;
-      const respondingAsk = responseInput
-        ? session.interactions.beginResponse(responseInput)
-        : undefined;
-      if (responseInput && respondingAsk) {
-        events.broadcast(sessionId, [
-          {
-            type: 'prompt-response-status',
-            requestId: responseInput.requestId,
-            status: 'responding',
-          },
-        ]);
-      }
-      yield* Effect.tryPromise({
-        try: () => session.adapter.send(adapterInput),
-        catch: (cause) =>
-          new OperationError({
-            subsystem: 'agent',
-            operation: 'session.input',
-            publicMessage: 'Agent input was rejected',
-            cause,
-            ...(startsTurn && { reportedInConversation: true }),
-          }),
-      }).pipe(
-        Effect.catch((error) =>
-          Effect.sync(() => {
-            if (responseInput && respondingAsk) {
-              events.broadcast(
-                sessionId,
-                session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
-              );
-            }
-            if (promptMessageId !== undefined) {
-              events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
-            }
-            if (startsTurn && session.status !== 'running') session.turnInputActive = false;
-            if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
-          }).pipe(Effect.andThen(Effect.fail(error))),
-        ),
+        if (responseInput && respondingAsk) {
+          events.broadcast(sessionId, [
+            {
+              type: 'prompt-response-status',
+              requestId: responseInput.requestId,
+              status: 'responding',
+            },
+          ]);
+        }
+        yield* Effect.tryPromise({
+          try: () => session.adapter.send(adapterInput),
+          catch: (cause) =>
+            new OperationError({
+              subsystem: 'agent',
+              operation: 'session.input',
+              publicMessage: 'Agent input was rejected',
+              cause,
+              ...(startsTurn && { reportedInConversation: true }),
+            }),
+        }).pipe(
+          Effect.tapError((error) =>
+            Effect.sync(() => {
+              if (responseInput && respondingAsk) {
+                events.broadcast(
+                  sessionId,
+                  session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
+                );
+              }
+              if (promptMessageId !== undefined) {
+                events.broadcast(sessionId, session.untrackPrompt(promptMessageId));
+              }
+              if (startsTurn) events.rejectInput(sessionId, error.publicMessage);
+            }),
+          ),
+        );
+        if (responseInput && respondingAsk) {
+          const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
+          if (resolution) events.broadcast(sessionId, [resolution]);
+        }
+        // The provider accepted the dispatch: the turn flips to running and the default leaf moves.
+        if (persisted !== undefined) yield* turns.commitRunning(persisted);
+        // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
+        if (startsTurn && session.status !== 'running') session.turnInputActive = false;
+      });
+      // A saga-prepared intent is resolved by its saga's own exit backstop in the request fiber;
+      // this fiber resolves only the intents it minted, so the saga's precise error (e.g. the
+      // dispatch timeout) can never lose the store race to this fiber's interrupt exit.
+      if (persisted === undefined || prepared !== undefined) return yield* dispatch;
+      // Every non-success exit past the durable commit point — dispatch rejection, commit failure,
+      // interrupt, defect — must resolve the operation, or the session wedges `busy`.
+      return yield* dispatch.pipe(
+        Effect.onExit((exit) => {
+          if (!Exit.isFailure(exit)) return Effect.void;
+          const failure = causeToRequestFailure(exit.cause);
+          // An interrupt exit means the session scope is tearing down, and awaiting store hops in
+          // this finalizer would block Scope.close — that one path stays detached.
+          if (Cause.hasInterruptsOnly(exit.cause)) {
+            return Effect.sync(() => {
+              turns.resolveFailedDetached(persisted, failure);
+            });
+          }
+          // Typed failures await, so the failure reply can never beat the stored resolution and
+          // hand an instant retry a spurious `busy`.
+          return turns.resolveFailed(persisted, failure).pipe(
+            Effect.catch((resolveError) =>
+              Effect.logError(
+                'Failed to record the rejected turn',
+                { sessionId },
+                resolveError.cause,
+              ),
+            ),
+            Effect.asVoid,
+          );
+        }),
       );
-      if (responseInput && respondingAsk) {
-        const resolution = session.interactions.resolveResponse(responseInput, respondingAsk);
-        if (resolution) events.broadcast(sessionId, [resolution]);
-      }
-      // Synchronous controls may not produce lifecycle events; only a running turn keeps the gate.
-      if (startsTurn && session.status !== 'running') session.turnInputActive = false;
-    });
+    }).pipe(
+      Effect.onExit((exit) =>
+        startsTurn && Exit.isFailure(exit)
+          ? Effect.sync(() => {
+              // A failed or interrupted dispatch can exit before a lifecycle event releases it.
+              if (session.status !== 'running') session.turnInputActive = false;
+            })
+          : Effect.void,
+      ),
+    );
   }
 }

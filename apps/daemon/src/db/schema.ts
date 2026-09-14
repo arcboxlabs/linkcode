@@ -32,8 +32,8 @@ export const sessions = sqliteTable(
     /** Automation that created this session (`SessionRecord.automation`); null for user sessions. */
     automationKind: text('automation_kind', { enum: ['loop', 'schedule'] }),
     automationId: text('automation_id'),
-    /** Deliberately no FK to `conversation_turns`: the turn tree is written on the conversation
-     * store's own connection, and the two tables would otherwise cycle. */
+    /** Deliberately no FK to `conversation_turns`: turns already reference sessions, and the two
+     * tables would otherwise cycle. */
     activeLeafTurnId: text('active_leaf_turn_id'),
     graphRevision: integer('graph_revision').notNull().default(0),
     createdAt: integer('created_at').notNull(),
@@ -103,9 +103,9 @@ export const sessionResources = sqliteTable(
 
 /**
  * Conversation turn-tree tables. These mirror the `Conversation*` schemas from `@linkcode/schema`
- * and are written ONLY by the conversation store's dedicated connection (../conversation-store.ts):
- * the submit saga's transactions are multi-table, and atomicity across the per-store connections
- * does not exist. Prompt content is user-authored and must never enter logs/telemetry.
+ * and are written by the conversation store (../conversation-store.ts) on the shared connection
+ * owned by ./database.ts — the submit saga's multi-table transactions need that one connection.
+ * Prompt content is user-authored and must never enter logs/telemetry.
  */
 export const prompts = sqliteTable('prompts', {
   promptId: text('prompt_id').primaryKey(),

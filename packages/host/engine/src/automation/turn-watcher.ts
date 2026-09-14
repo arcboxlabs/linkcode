@@ -11,6 +11,12 @@ export interface TurnResult {
   text: string;
 }
 
+interface WatchTurnOptions<E, R> {
+  readonly timeoutMs?: number;
+  /** Durable acknowledgement that must run once after dispatch acceptance or a terminal event. */
+  readonly onDispatchAccepted?: Effect.Effect<void, E, R>;
+}
+
 function joinSegments(segments: Map<MessageId, string>): string {
   return Array.from(segments.values())
     .filter((text) => text.length > 0)
@@ -28,14 +34,18 @@ function joinSegments(segments: Map<MessageId, string>): string {
  * a `send` rejection, or `opts.timeoutMs` elapsing. On every reject it best-effort cancels the turn so
  * the underlying session returns to idle. Interruption remains interruption and also cancels the turn.
  */
-export function watchTurn(
+export function watchTurn<E = never, R = never>(
   adapter: Pick<AgentAdapter, 'onEvent' | 'send'>,
   send: () => Promise<void>,
-  opts: { timeoutMs?: number } = {},
-): Effect.Effect<TurnResult, AutomationFailure> {
+  opts: WatchTurnOptions<E, R> = {},
+): Effect.Effect<TurnResult, AutomationFailure | E, R> {
   return Effect.gen(function* () {
     const segments = new Map<MessageId, string>();
     const outcome = yield* Deferred.make<TurnResult, AutomationFailure>();
+    const acceptDispatch =
+      opts.onDispatchAccepted === undefined
+        ? Effect.void
+        : yield* Effect.cached(Effect.uninterruptible(opts.onDispatchAccepted));
     const cancel = Effect.tryPromise({
       try: () => adapter.send({ type: 'cancel' }),
       catch: (cause) => cause,
@@ -114,11 +124,12 @@ export function watchTurn(
       ),
       () =>
         Deferred.await(outcome).pipe(
+          Effect.tap(() => acceptDispatch),
           Effect.raceFirst(
             Effect.tryPromise({
               try: () => send(),
               catch: (cause) => new AutomationDispatchFailure({ cause }),
-            }).pipe(Effect.andThen(Effect.never)),
+            }).pipe(Effect.andThen(acceptDispatch), Effect.andThen(Effect.never)),
           ),
         ),
       (unsubscribe) => Effect.sync(unsubscribe),

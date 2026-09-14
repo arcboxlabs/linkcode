@@ -3,12 +3,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SessionRecordSchema, SessionResourceSchema } from '@linkcode/schema';
 import { afterEach, describe, expect, it } from 'vitest';
+import type { DaemonDatabase } from '../db/database';
+import { openDaemonDatabase } from '../db/database';
 import { createResourceStore } from '../resource-store';
 import { createSessionStore } from '../session-store';
 
 const temporaryDirectories: string[] = [];
+const openDatabases = new Set<DaemonDatabase>();
 
 afterEach(async () => {
+  for (const database of openDatabases) database.close();
+  openDatabases.clear();
   await Promise.all(
     temporaryDirectories.splice(0).map((path) => rm(path, { recursive: true, force: true })),
   );
@@ -18,8 +23,10 @@ describe('SQLite resource store', () => {
   it('persists resources across store instances and deduplicates output locators', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'linkcode-resource-store-'));
     temporaryDirectories.push(directory);
-    const database = join(directory, 'daemon.db');
-    const sessions = createSessionStore(database);
+    const databasePath = join(directory, 'daemon.db');
+    const database = openDaemonDatabase(databasePath);
+    openDatabases.add(database);
+    const sessions = createSessionStore(database.client);
     const session = SessionRecordSchema.parse({
       sessionId: 'session-resource-test',
       kind: 'codex',
@@ -43,7 +50,7 @@ describe('SQLite resource store', () => {
       updatedAt: 2,
     });
 
-    const first = createResourceStore(database);
+    const first = createResourceStore(databasePath);
     expect(await first.save(resource, locatorKey)).toBe(true);
     expect(await first.findByLocator(session.sessionId, locatorKey)).toEqual(resource);
     expect(
@@ -75,7 +82,7 @@ describe('SQLite resource store', () => {
     expect(await first.save(promotedOutput, sourceUrl)).toBe(true);
     expect(await first.findByLocator(session.sessionId, sourceUrl)).toEqual(promotedOutput);
 
-    const restarted = createResourceStore(database);
+    const restarted = createResourceStore(databasePath);
     expect(await restarted.list(session.sessionId)).toEqual(
       expect.arrayContaining([resource, promotedOutput]),
     );
