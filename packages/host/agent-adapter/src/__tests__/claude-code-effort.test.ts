@@ -51,6 +51,7 @@ class FakeQuery {
   });
   private readonly buffered: Array<WireMessage | null> = [];
   private waiting: ((msg: WireMessage | null) => void) | null = null;
+  private failure: Error | undefined;
 
   constructor(input: QueryInput) {
     this.options = input.options;
@@ -70,6 +71,11 @@ class FakeQuery {
     }
   }
 
+  fail(error: Error): void {
+    this.failure = error;
+    this.push(null);
+  }
+
   async *[Symbol.asyncIterator](): AsyncGenerator<WireMessage> {
     while (true) {
       const next =
@@ -79,7 +85,10 @@ class FakeQuery {
             await new Promise<WireMessage | null>((resolve) => {
               this.waiting = resolve;
             });
-      if (next === null) return;
+      if (next === null) {
+        if (this.failure) throw this.failure;
+        return;
+      }
       yield next;
     }
   }
@@ -955,5 +964,29 @@ describe('ClaudeCodeAdapter turn lifecycle', () => {
         'Claude failed (error_during_execution, turn_setup_failed): MCP server failed; Connection refused',
       recoverable: true,
     });
+    events.length = 0;
+    queries[0].fail(
+      new Error('Claude Code returned an error result: MCP server failed; Connection refused'),
+    );
+    await waitIdle(events);
+    expect(events.filter((event) => event.type === 'error')).toEqual([]);
+  });
+
+  it('still reports a stream failure in a new turn after a failed result', async () => {
+    const { adapter, events } = await makeAdapter();
+    await prompt(adapter);
+    queries[0].push({ type: 'result', subtype: 'error_during_execution', errors: ['failed turn'] });
+    await waitIdle(events);
+    await prompt(adapter);
+    events.length = 0;
+    queries[0].fail(new Error('connection lost'));
+    await waitIdle(events);
+    expect(events.filter((event) => event.type === 'error')).toEqual([
+      {
+        type: 'error',
+        message: 'claude-code: query failed (Error: connection lost)',
+        recoverable: true,
+      },
+    ]);
   });
 });

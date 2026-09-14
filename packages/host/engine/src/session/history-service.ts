@@ -37,6 +37,7 @@ export interface HistoryServiceOptions {
   /** MCP server names the engine injects at session start (start-options-resolver) — passed to
    * cold reads so replayed calls to injected servers resolve like config-declared ones. */
   injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
+  historyConfig?: (kind: AgentKind, historyId: AgentHistoryId) => StartOptions['config'];
 }
 
 interface ListCacheEntry {
@@ -45,6 +46,7 @@ interface ListCacheEntry {
 }
 
 interface EventCacheEntry {
+  configFingerprint: string | undefined;
   expiresAt: number;
   builtAt: number;
   version: number;
@@ -61,6 +63,7 @@ export class HistoryService {
   private readonly ttlMs: number;
   private readonly now: () => number;
   private readonly injectedMcpServerNames?: (kind: AgentKind) => readonly string[];
+  private readonly historyConfig?: HistoryServiceOptions['historyConfig'];
 
   constructor(
     private readonly factory: AdapterFactory,
@@ -69,6 +72,7 @@ export class HistoryService {
     this.ttlMs = opts.ttlMs ?? 30000;
     this.now = opts.now ?? Date.now;
     this.injectedMcpServerNames = opts.injectedMcpServerNames;
+    this.historyConfig = opts.historyConfig;
   }
 
   list(
@@ -121,6 +125,8 @@ export class HistoryService {
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const key = eventCacheKey(kind, opts.historyId);
     const cwd = opts.cwd ?? this.historyCwdById.get(key);
+    const config = this.historyConfig?.(kind, opts.historyId);
+    const configFingerprint = JSON.stringify(config);
     const now = this.now();
     this.sweepExpired(now);
     const cached = this.eventCache.get(key);
@@ -129,6 +135,7 @@ export class HistoryService {
       cached &&
       !opts.forceRefresh &&
       cached.expiresAt > now &&
+      cached.configFingerprint === configFingerprint &&
       // Same-millisecond builds count as stale: the settle/build order is unknowable then.
       (opts.freshAfter === undefined || cached.builtAt > opts.freshAfter) &&
       cached.version === HISTORY_CONVERSION_CACHE_VERSION &&
@@ -148,6 +155,7 @@ export class HistoryService {
     }
     const mcpServerNames = this.injectedMcpServerNames?.(kind);
     const readContext = {
+      ...(config && { config }),
       ...(cwd && { cwd }),
       ...(mcpServerNames?.length && { mcpServerNames }),
     };
@@ -157,6 +165,7 @@ export class HistoryService {
       Effect.map(sanitizeHistoryResult),
       Effect.flatMap((fullResult) => {
         const entry: EventCacheEntry = {
+          configFingerprint,
           expiresAt: now + this.ttlMs,
           builtAt: now,
           version: HISTORY_CONVERSION_CACHE_VERSION,

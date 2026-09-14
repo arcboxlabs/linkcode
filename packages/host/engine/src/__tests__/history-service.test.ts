@@ -54,6 +54,23 @@ describe('HistoryService', () => {
     expect(state.lastReadOptions?.mcpServerNames).toBeUndefined();
   });
 
+  it('invalidates converted history when its account configuration changes', async () => {
+    const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
+    let root = '/claude-a';
+    const service = new HistoryService(fakeHistoryFactory(state), {
+      ttlMs: 60000,
+      historyConfig: () => ({ extraEnv: { CLAUDE_CONFIG_DIR: root } }),
+    });
+    await Effect.runPromise(service.read('claude-code', { historyId }));
+    await Effect.runPromise(service.read('claude-code', { historyId }));
+    expect(state.readCalls).toBe(1);
+    expect(state.lastReadOptions?.config).toEqual({ extraEnv: { CLAUDE_CONFIG_DIR: '/claude-a' } });
+    root = '/claude-b';
+    await Effect.runPromise(service.read('claude-code', { historyId }));
+    expect(state.readCalls).toBe(2);
+    expect(state.lastReadOptions?.config).toEqual({ extraEnv: { CLAUDE_CONFIG_DIR: '/claude-b' } });
+  });
+
   it('evicts expired cache entries instead of keeping dead transcripts', async () => {
     const state: FakeHistoryState = { listCalls: 0, readCalls: 0, resumeCalls: 0 };
     let now = 0;

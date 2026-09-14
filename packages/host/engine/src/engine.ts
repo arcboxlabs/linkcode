@@ -8,7 +8,7 @@ import { Cause, Effect, FiberSet } from 'effect';
 import { CustomMcpServerService } from './agent/custom-mcp-service';
 import { adoptDetectedLogins } from './agent/detected-logins';
 import { AgentLoginService } from './agent/login-service';
-import { InMemoryProviderConfigStore } from './agent/provider-config';
+import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import { ManagedAssetService } from './asset/service';
@@ -117,6 +117,19 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const history = new HistoryService(factory, {
     injectedMcpServerNames: (kind) => startOptions.injectedMcpServerNames(kind),
+    historyConfig(kind, historyId) {
+      for (const record of records.values()) {
+        if (record.kind !== kind) continue;
+        const run = record.runs.findLast((candidate) => candidate.historyId === historyId);
+        if (run) {
+          return applyProviderDefaults(
+            { kind, cwd: record.cwd, accountId: run.accountId },
+            providerStore.get(),
+            providerStore.getAccounts(),
+          ).options.config;
+        }
+      }
+    },
   });
   const runtimes = yield* AgentRuntimeService.make(
     {
