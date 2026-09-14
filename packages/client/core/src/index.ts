@@ -5,5 +5,6 @@
 export * from './client';
 export * from './connection-controller';
 export * from './conversation';
+export * from './conversation-read';
 export * from './conversation-store';
 export * from './react';

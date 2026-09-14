@@ -1,11 +1,25 @@
-import type { AgentEvent, AgentHistoryId, AgentKind, MessageId } from '@linkcode/schema';
+import type {
+  AgentEvent,
+  AgentHistoryId,
+  AgentKind,
+  MessageId,
+  SessionId,
+  TurnId,
+} from '@linkcode/schema';
 import { WIRE_PROTOCOL_VERSION } from '@linkcode/schema';
 import { describe, expect, it } from 'vitest';
 import type { SeedCacheStorage } from '../seed-cache';
-import { loadPersistedSeed, persistSeed } from '../seed-cache';
+import {
+  loadPersistedProjection,
+  loadPersistedSeed,
+  persistProjection,
+  persistSeed,
+} from '../seed-cache';
 
 const kind: AgentKind = 'claude-code';
 const historyId = (value: string): AgentHistoryId => value as AgentHistoryId;
+const sessionId = (value: string): SessionId => value as SessionId;
+const leafTurnId = 'turn-1' as TurnId;
 
 function userText(text: string): AgentEvent {
   return {
@@ -122,5 +136,36 @@ describe('seed cache', () => {
       events: [seedEvent('c')],
       uptoSeq: 0,
     });
+  });
+
+  it('round-trips a projection by session and loads it back without its watermark', () => {
+    const storage = fakeStorage();
+    const items = [{ turnId: leafTurnId, ts: 1_700_000_000_000, event: userText('hi') }];
+    persistProjection(
+      sessionId('s1'),
+      { items, graphRevision: 3, leafTurnId, watermark: { epoch: 2, seq: 5 } },
+      storage,
+    );
+    // The cut belonged to a connection that is gone: a loaded projection supersedes nothing.
+    expect(loadPersistedProjection(sessionId('s1'), storage)).toEqual({
+      items,
+      graphRevision: 3,
+      leafTurnId,
+    });
+    expect(loadPersistedProjection(sessionId('absent'), storage)).toBeUndefined();
+  });
+
+  it('shares the entry cap between transcripts and projections', () => {
+    const storage = fakeStorage();
+    persistSeed(kind, historyId('h-old'), { events: [seedEvent('a')], uptoSeq: 0 }, storage);
+    for (let index = 0; index < 20; index += 1) {
+      persistProjection(
+        sessionId(`s${index}`),
+        { items: [], graphRevision: index, leafTurnId },
+        storage,
+      );
+    }
+    expect(storage.map.has(`linkcode.seed.${kind}.h-old`)).toBe(false);
+    expect(loadPersistedProjection(sessionId('s19'), storage)?.graphRevision).toBe(19);
   });
 });

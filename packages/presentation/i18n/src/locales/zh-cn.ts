@@ -188,6 +188,7 @@ export const zhCN = {
       compacting: '正在压缩上下文…',
       compacted: '上下文已压缩',
       compactedTokens: '{pre} → {post} tokens',
+      historyUnavailable: '这一轮的输出已不可用',
       insufficientCreditsTitle: '需要 LinkCode 额度',
       insufficientCreditsHint: '充值后即可安全重试这条消息。',
       topUpCredits: '充值额度',
@@ -1404,6 +1405,7 @@ export const zhCN = {
       compacting: '正在压缩上下文…',
       compacted: '上下文已压缩',
       compactedTokens: '{pre} → {post} tokens',
+      historyUnavailable: '这一轮的输出已不可用',
     },
     chat: {
       allowTitle: '允许「{title}」？',

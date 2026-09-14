@@ -76,6 +76,18 @@ export interface PluginMutation {
   pendingAuthApps?: string[];
 }
 
+/** `conversation.graph.result` without its correlation fields. */
+export type ConversationGraphSnapshot = Omit<
+  Extract<WirePayload, { kind: 'conversation.graph.result' }>,
+  'kind' | 'replyTo'
+>;
+
+/** One `conversation.read.result` page without its correlation fields. */
+export type ConversationReadPage = Omit<
+  Extract<WirePayload, { kind: 'conversation.read.result' }>,
+  'kind' | 'replyTo'
+>;
+
 export type RandomUUID = () => string;
 
 export function resolveRandomUUID(provider?: RandomUUID): RandomUUID {
@@ -99,6 +111,8 @@ export interface PendingValueMap {
   import: SessionRecord;
   historyList: AgentHistoryListResult;
   historyRead: AgentHistoryReadResult;
+  conversationGraph: ConversationGraphSnapshot;
+  conversationRead: ConversationReadPage;
   configGet: ProvidersConfig;
   accountsGet: Accounts;
   accountModels: AccountModel[];
@@ -161,6 +175,8 @@ export class PendingRegistry {
     import: new Map(),
     historyList: new Map(),
     historyRead: new Map(),
+    conversationGraph: new Map(),
+    conversationRead: new Map(),
     configGet: new Map(),
     accountsGet: new Map(),
     accountModels: new Map(),

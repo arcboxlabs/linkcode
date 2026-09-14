@@ -345,11 +345,16 @@ describe('turn.submit saga', () => {
         activeLeafTurnId: turnId,
       }),
     );
+    // The echo carries the durable row's identity, so a later conversation.read converges on it.
     expect(
-      h.sent.some(
+      h.sent.filter(
         (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
       ),
-    ).toBe(true);
+    ).toEqual([
+      expect.objectContaining({
+        event: expect.objectContaining({ type: 'user-message', messageId: `msg-${turnId}` }),
+      }),
+    ]);
   });
 
   it('replays a lost reply verbatim instead of duplicating a sibling', async () => {

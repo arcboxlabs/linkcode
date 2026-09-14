@@ -1,4 +1,5 @@
 export {
+  CONVERSATION_GRAPH_WIRE_VERSION,
   type ConversationEvent,
   ConversationEventSchema,
   type ConversationGraphTurn,

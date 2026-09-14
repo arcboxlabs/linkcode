@@ -232,6 +232,18 @@ describe('engine schedule wiring', () => {
       graphRevision: 1,
       activeLeafTurnId: turn.turnId,
     });
+    expect(
+      h.sent.filter(
+        (payload) => payload.kind === 'agent.event' && payload.event.type === 'user-message',
+      ),
+    ).toEqual([
+      expect.objectContaining({
+        event: expect.objectContaining({
+          type: 'user-message',
+          messageId: `msg-${turn.turnId}`,
+        }),
+      }),
+    ]);
   });
 
   it('reports an unknown schedule as not found', async () => {

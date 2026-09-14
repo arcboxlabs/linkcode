@@ -1,25 +1,30 @@
-import type { Conversation, ConversationSeed, ConversationSeedEvent } from '@linkcode/client-core';
-import { useConversation, useLinkCodeClient } from '@linkcode/client-core';
+import type {
+  Conversation,
+  ConversationProjectionSeed,
+  ConversationSeed,
+} from '@linkcode/client-core';
+import { readConversationSeed, useConversation, useLinkCodeClient } from '@linkcode/client-core';
 import type { SessionId, SessionInfo } from '@linkcode/schema';
 import { noop } from 'foxact/noop';
 import { useEffect } from 'foxact/use-abortable-effect';
-import { useState } from 'react';
+import { useReducer, useState } from 'react';
 
-/** Upper bound on cursor pages one seed read follows, so a buggy cursor can't loop forever. */
-const MAX_SEED_PAGES = 20;
+type Seed = ConversationProjectionSeed | ConversationSeed;
 
 /**
- * The session's conversation view-model seeded from provider history — the live `agent.event`
- * subscription only covers this connection, so a cold-opened session replays its past from
- * `history.read` (same read walk as workbench's useSeededConversation, without the SWR cache).
- * A failed read degrades to live-only; the seed is keyed by session so it never bleeds across.
+ * The session's conversation view-model seeded from the daemon: the turn-graph projection where the
+ * host serves one, the provider transcript otherwise — the live `agent.event` subscription only
+ * covers this connection (same read as workbench's useSeededConversation, without the SWR cache).
+ * A failed read degrades to live-only; the seed is keyed by session so it never bleeds across, and
+ * a projection store's resync request re-runs the read.
  */
 export function useSeededConversation(
   sessionId: SessionId | null,
   session: SessionInfo | null,
 ): Conversation {
   const client = useLinkCodeClient();
-  const [seeded, setSeeded] = useState<{ for: SessionId; seed: ConversationSeed } | null>(null);
+  const [seeded, setSeeded] = useState<{ for: SessionId; seed: Seed } | null>(null);
+  const [readGeneration, requestReread] = useReducer((n: number) => n + 1, 0);
 
   const agentKind = session?.kind;
   const cwd = session?.cwd;
@@ -30,7 +35,7 @@ export function useSeededConversation(
   // The attach replay would not recover it — it carries control state only, and an in-flight
   // reply's chunks are not in `history.read` yet either, so the turn would render truncated.
   // Announcing before the seed read is also what keeps a re-broadcast ask: it lands inside the
-  // seed's `uptoSeq` cut, which only drops what the transcript verifiably covers (CODE-35).
+  // seed's cut, which only drops what the read verifiably covers (CODE-35).
   useEffect(() => {
     if (!sessionId) return;
     client.attachSession(sessionId);
@@ -39,34 +44,19 @@ export function useSeededConversation(
 
   useEffect(
     (signal) => {
-      if (!agentKind || !historyId || !sessionId) return;
+      if (!agentKind || cwd === undefined || !sessionId) return;
       void (async () => {
-        const events: ConversationSeedEvent[] = [];
-        let cursor: string | undefined;
-        for (let page = 0; page < MAX_SEED_PAGES; page += 1) {
-          // eslint-disable-next-line no-await-in-loop -- cursor pagination: each page's cursor comes from the previous reply
-          const result = await client.readHistory(agentKind, {
-            historyId,
-            cwd,
-            cursor,
-            forceRefresh: page === 0,
-          });
-          for (let i = 0, len = result.events.length; i < len; i++) {
-            const entry = result.events[i];
-            events.push({ event: entry.event, ts: entry.ts });
-          }
-          cursor = result.cursor;
-          if (cursor === undefined) break;
-        }
-        if (signal.aborted) return;
-        setSeeded({
-          for: sessionId,
-          seed: { events, uptoSeq: client.eventSeq(sessionId) },
-        });
+        const seed = await readConversationSeed(client, { sessionId, agentKind, cwd, historyId });
+        if (seed === undefined || signal.aborted) return;
+        setSeeded({ for: sessionId, seed });
       })().catch(noop);
     },
-    [agentKind, client, cwd, historyId, sessionId],
+    [agentKind, client, cwd, historyId, sessionId, readGeneration],
   );
 
-  return useConversation(sessionId, seeded?.for === sessionId ? seeded.seed : undefined);
+  return useConversation(
+    sessionId,
+    seeded?.for === sessionId ? seeded.seed : undefined,
+    requestReread,
+  );
 }

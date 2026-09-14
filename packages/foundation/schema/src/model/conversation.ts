@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import type { MessageId, TurnId } from './primitives';
 import {
   AttachmentIdSchema,
+  MessageIdSchema,
   OperationIdSchema,
   PromptIdSchema,
   RunIdSchema,
@@ -8,6 +10,12 @@ import {
   TimestampSchema,
   TurnIdSchema,
 } from './primitives';
+
+/** The one identity of a turn's user row: the daemon mints it for the live echo and for every
+ * `conversation.read`, and clients join graph turns to rows through it. */
+export function userRowMessageId(turnId: TurnId): MessageId {
+  return MessageIdSchema.parse(`msg-${turnId}`);
+}
 
 /**
  * The conversation turn tree: host-authoritative turn identity and durable user prompts.

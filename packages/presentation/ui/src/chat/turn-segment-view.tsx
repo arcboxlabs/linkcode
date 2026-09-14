@@ -10,6 +10,7 @@ import type { QuestionConversationItem } from './conversation-prompts';
 import { declinedToolCall } from './conversation-prompts';
 import { assistantTurnText, latestReceivedAt, turnModel } from './conversation-text';
 import { ErrorMessage } from './error-message';
+import { HistoryUnavailableMarker } from './history-unavailable-marker';
 import { Message, MessageContent } from './message';
 import { QuestionCallItem } from './question-call-item';
 import { SubagentCard } from './subagent-card';
@@ -193,6 +194,8 @@ export function TurnSegmentView({
             summary={item.summary}
           />
         );
+      case 'history-unavailable':
+        return <HistoryUnavailableMarker key={item.id} />;
       case 'approval':
         // Accepted / pending asks leave no receipt — the tool row (or the dock card) is the
         // record. A decline only materializes here when the agent never snapshotted the call.

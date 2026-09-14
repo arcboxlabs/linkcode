@@ -31,7 +31,11 @@ app-specific entries (`apps/desktop`, `apps/webview`) and pure presentation (`pa
   endpoint, starts a fresh cache after endpoint migration, and revalidates once after a generation
   becomes protocol-ready; it does not own connection state.
 - `surface/` — the workbench feature surface: the `Workbench` component, the `WorkbenchShell*`
-  contract plus the default shell, and session orchestration hooks.
+  contract plus the default shell, and session orchestration hooks. `use-seeded-conversation.ts`
+  seeds the active thread through client-core's `readConversationSeed` (the turn-graph projection
+  where the host serves one, the provider transcript otherwise — rules in
+  `packages/client/core/AGENTS.md`), answers a store's resync request with SWR `mutate()`, and
+  persists both seed shapes through `seed-cache.ts` for the instant repaint on reopen.
 - `terminal/` — the daemon-backed interactive terminal: the panel container, the key-scoped
   session registry that retains/detaches (rather than kills) a PTY across remounts, viewer
   attachment containers, and the transport-backed `TerminalSession`. Only the current controller
