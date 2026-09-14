@@ -688,9 +688,10 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     const predecessor = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
     if (predecessor !== null) {
+      const root = await this.historyConfigRoot(startOpts);
       // forkSession would throw on an unknown uuid too, but untyped; the raw transcript is the
       // authority on whether the checkpoint row still exists (deleted or rewritten history).
-      const supplement = await this.readTranscriptSupplement(opts.historyId);
+      const supplement = await this.readTranscriptSupplement(opts.historyId, root);
       if (!supplement.parentUuidByUuid.has(predecessor)) {
         throw new HistoryCheckpointInvalidError(
           `claude-code: checkpoint ${predecessor} is no longer in transcript ${opts.historyId}`,
@@ -700,7 +701,6 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         '@anthropic-ai/claude-agent-sdk',
         () => import('@anthropic-ai/claude-agent-sdk'),
       );
-      const root = await this.historyConfigRoot(startOpts);
       const fork = await claudeHistorySdk(mod, root).forkSession(opts.historyId, {
         upToMessageId: predecessor,
         dir: startOpts.cwd,
