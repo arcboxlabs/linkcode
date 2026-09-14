@@ -8,7 +8,7 @@ import { Cause, Effect, FiberSet } from 'effect';
 import { CustomMcpServerService } from './agent/custom-mcp-service';
 import { adoptDetectedLogins } from './agent/detected-logins';
 import { AgentLoginService } from './agent/login-service';
-import { InMemoryProviderConfigStore } from './agent/provider-config';
+import { applyProviderDefaults, InMemoryProviderConfigStore } from './agent/provider-config';
 import { AgentRequestHandler } from './agent/request-handler';
 import { AgentRuntimeService } from './agent/runtime-service';
 import { ManagedAssetService } from './asset/service';
@@ -24,6 +24,7 @@ import { BrowserReplHost } from './browser/repl-host';
 import { BrowserRequestHandler } from './browser/request-handler';
 import { InMemoryConversationStore } from './conversation/conversation-store';
 import { ConversationLiveJournals } from './conversation/live-journal';
+import { ConversationProjectionService } from './conversation/projection-service';
 import { ConversationRequestHandler } from './conversation/request-handler';
 import { ConversationTurnService } from './conversation/turn-service';
 import type { EngineDeps } from './deps';
@@ -116,6 +117,19 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
   );
   const history = new HistoryService(factory, {
     injectedMcpServerNames: (kind) => startOptions.injectedMcpServerNames(kind),
+    historyConfig(kind, historyId) {
+      for (const record of records.values()) {
+        if (record.kind !== kind) continue;
+        const run = record.runs.findLast((candidate) => candidate.historyId === historyId);
+        if (run) {
+          return applyProviderDefaults(
+            { kind, cwd: record.cwd, accountId: run.accountId },
+            providerStore.get(),
+            providerStore.getAccounts(),
+          ).options.config;
+        }
+      }
+    },
   });
   const runtimes = yield* AgentRuntimeService.make(
     {
@@ -232,9 +246,17 @@ export const createEngineRuntime = Effect.fn('Engine.create')(function* (
     sessionLifecycle,
     responder,
   );
+  const conversationProjection = new ConversationProjectionService(
+    conversationTurns,
+    records,
+    history,
+    conversationJournals,
+    (sessionId) => sessions.openInteractiveRequests(sessionId),
+  );
   const conversationRequests = new ConversationRequestHandler(
     transport,
     sessionLifecycle,
+    conversationProjection,
     responder,
   );
   const scheduler = new ScheduleService(

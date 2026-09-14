@@ -23,6 +23,13 @@ retain the daemon environment. Codex config/history paths use that same environm
 app-server treats it as a complete replacement. Resolution fails loudly instead of falling back to
 launchd's PATH.
 
+Claude history reads resolve the project environment and the recorded run's account configuration.
+SDK history calls for another `CLAUDE_CONFIG_DIR` run in a disposable worker: never change the
+daemon's process environment around an async SDK call. Raw transcript supplements use the same
+root. A missing native session rejects a direct history read instead of returning an empty seed.
+Changing or deleting the account configuration can still make older history inaccessible; this
+does not relocate transcripts or create a second transcript store.
+
 Pins as of 2026-07 (package.json ranges are caret; the lockfile is the real pin):
 
 | agent | JS package | version |

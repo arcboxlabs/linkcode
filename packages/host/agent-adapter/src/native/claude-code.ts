@@ -29,7 +29,6 @@ import type {
   AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
-  AgentHistoryReadOptions,
   AgentHistoryReadResult,
   AgentHistoryResumeOptions,
   AgentHistorySession,
@@ -63,7 +62,12 @@ import { extractErrorMessage } from 'foxts/extract-error-message';
 import { nullthrow } from 'foxts/guard';
 import { waitWithAbort } from 'foxts/wait';
 import { z } from 'zod';
-import type { AgentStartCatalogOptions, BrowserToolset, BrowserToolsetFactory } from '../adapter';
+import type {
+  AgentHistoryReadContext,
+  AgentStartCatalogOptions,
+  BrowserToolset,
+  BrowserToolsetFactory,
+} from '../adapter';
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
@@ -86,6 +90,8 @@ import {
 import { agentRuntimeProber } from '../probe';
 import { resolveAgentShellEnvironment } from '../shell-env';
 import { contentToText, imageBlocksFrom, locationsFromToolInput, toolKindFromName } from '../util';
+import type { ClaudeHistorySdk } from './claude-history-sdk';
+import { claudeConfigDir, claudeHistorySdk } from './claude-history-sdk';
 
 type AssistantSDKMessage = Extract<SDKMessage, { type: 'assistant' }>;
 type AssistantMessage = AssistantSDKMessage['message'];
@@ -543,7 +549,14 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
-    this.getSessionInfo = Object.hasOwn(sdk, 'getSessionInfo') ? sdk.getSessionInfo : undefined;
+    const root = claudeConfigDir(
+      claudeCodeEnv(this.processEnvironment, readAgentCredential(opts.config)) ??
+        this.processEnvironment,
+      opts.cwd,
+    );
+    this.getSessionInfo = Object.hasOwn(sdk, 'getSessionInfo')
+      ? claudeHistorySdk(sdk, root).getSessionInfo
+      : undefined;
     if (this.resumeFrom && this.getSessionInfo) {
       try {
         const info = await this.getSessionInfo(this.resumeFrom, { dir: opts.cwd });
@@ -668,7 +681,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         '@anthropic-ai/claude-agent-sdk',
         () => import('@anthropic-ai/claude-agent-sdk'),
       );
-      const fork = await mod.forkSession(opts.historyId, {
+      const root = await this.historyConfigRoot(startOpts);
+      const fork = await claudeHistorySdk(mod, root).forkSession(opts.historyId, {
         upToMessageId: predecessor,
         dir: startOpts.cwd,
       });
@@ -684,7 +698,8 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     );
     const offset = cursorOffset(opts?.cursor);
     const limit = boundedLimit(opts?.limit, 50, 200);
-    const sessions = await mod.listSessions({
+    const root = await this.historyConfigRoot(opts ?? {});
+    const sessions = await claudeHistorySdk(mod, root).listSessions({
       dir: opts?.cwd,
       limit: limit + 1,
       offset,
@@ -695,11 +710,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     };
   }
 
-  override async readHistory(opts: AgentHistoryReadOptions): Promise<AgentHistoryReadResult> {
-    const mod = await this.loadSdk(
+  override async readHistory(opts: AgentHistoryReadContext): Promise<AgentHistoryReadResult> {
+    const sdk = await this.loadSdk(
       '@anthropic-ai/claude-agent-sdk',
       () => import('@anthropic-ai/claude-agent-sdk'),
     );
+    const root = await this.historyConfigRoot(opts);
+    const mod = claudeHistorySdk(sdk, root);
     const offset = cursorOffset(opts.cursor);
     const limit = boundedLimit(opts.limit, 1000, 1000);
     const [info, messages, subagentEvents, supplement] = await Promise.all([
@@ -709,14 +726,22 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         offset,
       }),
       readSubagentTranscripts(mod, opts.historyId, (agentId) =>
-        this.readSubagentPatches(opts.historyId, agentId),
+        this.readSubagentPatches(opts.historyId, agentId, root),
       ),
       // Every page needs the raw transcript: getSessionMessages strips each result row's
       // structured toolUseResult, so the mapper re-attaches envelopes from here. The compaction
       // splice below stays first-page-only (the swapped-in summary is the SDK chain's head row).
-      this.readTranscriptSupplement(opts.historyId),
+      this.readTranscriptSupplement(opts.historyId, root),
     ]);
     const historyId = opts.historyId;
+    if (
+      offset === 0 &&
+      info === undefined &&
+      messages.length === 0 &&
+      supplement.droppedRows.length === 0
+    ) {
+      throw new Error(`claude-code: native history ${historyId} is unavailable in ${root}`);
+    }
     const mapper = createClaudeHistoryEventMapper(
       historyId,
       supplement.records,
@@ -773,16 +798,32 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   }
 
   /** Test seam over the raw transcript probe (see `readClaudeTranscriptSupplement`). */
-  protected readTranscriptSupplement(sessionId: string): Promise<ClaudeTranscriptSupplement> {
-    return readClaudeTranscriptSupplement(sessionId);
+  protected readTranscriptSupplement(
+    sessionId: string,
+    root = claudeConfigDir(process.env),
+  ): Promise<ClaudeTranscriptSupplement> {
+    return readClaudeTranscriptSupplement(sessionId, root);
   }
 
   /** Test seam over the per-subagent transcript probe (see `readSubagentPatches`). */
   protected readSubagentPatches(
     sessionId: string,
     agentId: string,
+    root = claudeConfigDir(process.env),
   ): Promise<ReadonlyMap<string, ToolCallContent[]>> {
-    return readSubagentPatches(sessionId, agentId);
+    return readSubagentPatches(sessionId, agentId, root);
+  }
+
+  private async historyConfigRoot(opts: {
+    cwd?: string;
+    config?: StartOptions['config'];
+  }): Promise<string> {
+    const environment =
+      opts.cwd === undefined ? process.env : await resolveAgentShellEnvironment(opts.cwd);
+    return claudeConfigDir(
+      claudeCodeEnv(environment, readAgentCredential(opts.config)) ?? environment,
+      opts.cwd,
+    );
   }
 
   protected async onPrompt(content: ContentBlock[]): Promise<void> {
@@ -928,9 +969,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
    * emits. Returns only when the underlying process exits (crash, `close()`, or the CLI quitting). */
   private async consume(q: Query): Promise<void> {
     let streamError: unknown;
+    let failedResult = false;
     try {
       for await (const msg of q) {
-        if (this.q === q) this.handleMessage(msg);
+        if (this.q === q) {
+          this.handleMessage(msg);
+          if (msg.type === 'result') failedResult = msg.subtype !== 'success';
+        }
       }
     } catch (err) {
       streamError = err;
@@ -949,7 +994,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     // this once. Without re-arming it, an async spawn failure silently starts a new conversation.
     this.resumeFrom = this.lastSessionRef;
     if (!cancelling) {
-      if (streamError !== undefined) {
+      if (streamError !== undefined && (!failedResult || interruptedTurn)) {
         this.emitError(
           `claude-code: query failed (${extractErrorMessage(streamError) ?? 'unknown error'})`,
         );
@@ -1943,8 +1988,11 @@ function harvestToolUseResult(
  * `<sessionId>.jsonl` (the id is unique, so at most one probe succeeds). Any failure degrades to
  * an empty supplement: history still reads, just without compaction markers or result envelopes.
  */
-async function readClaudeProjectText(segments: readonly string[]): Promise<string | null> {
-  const projectsDir = path.join(homedir(), '.claude', 'projects');
+async function readClaudeProjectText(
+  segments: readonly string[],
+  root: string,
+): Promise<string | null> {
+  const projectsDir = path.join(root, 'projects');
   let dirs: string[];
   try {
     dirs = await readdir(projectsDir);
@@ -1959,10 +2007,11 @@ async function readClaudeProjectText(segments: readonly string[]): Promise<strin
 
 async function readClaudeTranscriptSupplement(
   sessionId: string,
+  root: string,
 ): Promise<ClaudeTranscriptSupplement> {
   // The id becomes a filename — refuse anything that could traverse out of the projects dir.
   if (!SAFE_SESSION_ID.test(sessionId)) return EMPTY_SUPPLEMENT;
-  const text = await readClaudeProjectText([`${sessionId}.jsonl`]);
+  const text = await readClaudeProjectText([`${sessionId}.jsonl`], root);
   return text ? buildClaudeTranscriptSupplement(text.split('\n')) : EMPTY_SUPPLEMENT;
 }
 
@@ -1980,10 +2029,14 @@ async function readClaudeTranscriptSupplement(
 async function readSubagentPatches(
   sessionId: string,
   agentId: string,
+  root: string,
 ): Promise<ReadonlyMap<string, ToolCallContent[]>> {
   // Both ids become path segments.
   if (!SAFE_SESSION_ID.test(sessionId) || !SAFE_SESSION_ID.test(agentId)) return new Map();
-  const text = await readClaudeProjectText([sessionId, 'subagents', `agent-${agentId}.jsonl`]);
+  const text = await readClaudeProjectText(
+    [sessionId, 'subagents', `agent-${agentId}.jsonl`],
+    root,
+  );
   return text ? buildClaudeTranscriptSupplement(text.split('\n')).toolUsePatches : new Map();
 }
 
@@ -2010,7 +2063,7 @@ function mapClaudeHistorySession(session: SDKSessionInfo): AgentHistorySession {
  * stream's parent-linked events. Keyed by that parent id for splicing after the spawn announce.
  */
 async function readSubagentTranscripts(
-  mod: typeof import('@anthropic-ai/claude-agent-sdk'),
+  mod: ClaudeHistorySdk,
   sessionId: string,
   patchesFor: (agentId: string) => Promise<ReadonlyMap<string, ToolCallContent[]>>,
 ): Promise<Map<string, AgentHistoryEvent[]>> {

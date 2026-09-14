@@ -20,6 +20,8 @@ export type AgentStartCatalogOptions = Partial<Pick<StartOptions, 'cwd' | 'model
 
 /** Wire read options plus engine-supplied context that never crosses the wire. */
 export type AgentHistoryReadContext = AgentHistoryReadOptions & {
+  /** The account configuration that backed this native history; never supplied by a wire client. */
+  config?: StartOptions['config'];
   /** MCP server names the engine injects at session start (managed connectors, the daemon's
    * simulator endpoint). They exist only on a session's own live instance — never in the agent's
    * config — so a cold read cannot recover them itself. */

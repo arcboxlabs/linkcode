@@ -1,6 +1,12 @@
 export {
   type ConversationEvent,
   ConversationEventSchema,
+  type ConversationGraphTurn,
+  ConversationGraphTurnSchema,
+  type ConversationPlaceholder,
+  ConversationPlaceholderSchema,
+  type ConversationReadItem,
+  ConversationReadItemSchema,
   type TurnSubmitInput,
   TurnSubmitInputSchema,
 } from './conversation';

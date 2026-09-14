@@ -194,7 +194,10 @@ stable Link Code identity: each start/resume appends a *run* that the adapter's
 cold (stopped) sessions, `session.resume` wakes one under the same id, and
 `session.import` registers a provider-local history session as a cold record.
 Transcripts are not copied — they stay in provider-local history and are read back
-through the history contract.
+through the history contract. When a settled turn cannot be reconstructed, its complete
+start-to-stop interval may still render from the bounded live journal, identified by turn,
+run, and epoch. Once that interval is unavailable, the host retains the prompt and renders
+an unavailable-output placeholder; journal replay never creates provider checkpoints.
 
 ### Engine runtime ownership and composition
 
