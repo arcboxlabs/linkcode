@@ -706,7 +706,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         upToMessageId: predecessor,
         dir: startOpts.cwd,
       });
-      await this.copySubagentTranscripts(opts.historyId, fork.sessionId);
+      await this.copySubagentTranscripts(opts.historyId, fork.sessionId, root);
       this.resumeFrom = fork.sessionId;
       // A query rebuild re-arms `resumeFrom` from here; without it a child that dies before its
       // first init would silently start a new conversation instead of resuming the copy.
@@ -721,13 +721,13 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   /** `forkSession` copies the transcript alone; without its `subagents/` the child's cold read
    * finds no subagent detail. Best-effort: the fork already exists on disk, so a failed copy is
    * reported into the session, never a failed fork. */
-  protected async copySubagentTranscripts(sourceId: string, childId: string): Promise<void> {
+  protected async copySubagentTranscripts(
+    sourceId: string,
+    childId: string,
+    root: string,
+  ): Promise<void> {
     try {
-      await copyClaudeSubagentTranscripts(
-        path.join(homedir(), '.claude', 'projects'),
-        sourceId,
-        childId,
-      );
+      await copyClaudeSubagentTranscripts(path.join(root, 'projects'), sourceId, childId);
     } catch (error) {
       this.emitError(
         `claude-code: subagent transcripts were not copied into the fork: ${extractErrorMessage(error)}`,

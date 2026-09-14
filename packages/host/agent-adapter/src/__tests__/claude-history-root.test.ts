@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
@@ -54,7 +54,7 @@ async function transcript(sessionId: string, answer: string) {
     path.join(project, `${sessionId}.jsonl`),
     rows.map((row) => JSON.stringify(row)).join('\n') + '\n',
   );
-  return { root, assistantId };
+  return { root, project, assistantId };
 }
 
 describe('Claude native history config roots', () => {
@@ -83,7 +83,11 @@ describe('Claude native history config roots', () => {
 
   it('forks in the source config root and reports a missing history explicitly', async () => {
     const historyId = asHistoryId(randomUUID());
-    const { root, assistantId } = await transcript(historyId, 'retained answer');
+    const { root, project, assistantId } = await transcript(historyId, 'retained answer');
+    const subagents = path.join(project, historyId, 'subagents');
+    await mkdir(subagents, { recursive: true });
+    const subagent = '{"type":"assistant","message":{"content":"subagent detail"}}\n';
+    await writeFile(path.join(subagents, 'agent-fixture.jsonl'), subagent);
     const scoped = claudeHistorySdk(sdk, root);
     await new HistoryOnlyClaude().branchHistory(
       {
@@ -99,6 +103,12 @@ describe('Claude native history config roots', () => {
     const child = (await scoped.listSessions()).find((session) => session.sessionId !== historyId);
     expect(child).toBeDefined();
     expect(await scoped.getSessionMessages(child!.sessionId)).toHaveLength(2);
+    expect(
+      await readFile(
+        path.join(project, child!.sessionId, 'subagents', 'agent-fixture.jsonl'),
+        'utf8',
+      ),
+    ).toBe(subagent);
     await expect(
       new ClaudeCodeAdapter().readHistory({
         historyId: asHistoryId(randomUUID()),
