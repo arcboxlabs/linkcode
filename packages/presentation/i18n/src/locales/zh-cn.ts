@@ -1386,7 +1386,7 @@ export const zhCN = {
       unavailableTitle: '无法连接 host',
       error: '无法连接 host（{url}）。',
       updateAppTitle: '请更新 LinkCode',
-      updateAppBody: '此版本的应用过旧，无法连接到该 host。请从 App Store 更新后重试。',
+      updateAppBody: '此版本的应用过旧，无法连接到该 host。请更新应用。',
       updateHostTitle: '请更新 host',
       updateHostBody:
         '该 host 的 LinkCode 版本过旧，无法与此版本的应用通信。请在电脑上更新 LinkCode。',
