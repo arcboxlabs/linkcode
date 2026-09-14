@@ -1,4 +1,5 @@
 import type {
+  AttachmentId,
   ConversationOperation,
   ConversationTurn,
   OperationId,
@@ -64,6 +65,21 @@ export class InMemoryConversationStore implements ConversationStore {
   private readonly prompts = new Map<PromptId, PromptRecord>();
   private readonly bindings = new Map<string, ProviderTurnBinding>();
   private readonly operations = new Map<OperationId, ConversationOperation>();
+
+  /** GC roots for the in-memory attachment store: every attachment a persisted prompt references. */
+  referencedAttachmentIds(): AttachmentId[] {
+    const ids: AttachmentId[] = [];
+    for (const prompt of this.prompts.values()) {
+      for (let i = 0, len = prompt.contextAttachmentIds.length; i < len; i++) {
+        ids.push(prompt.contextAttachmentIds[i]);
+      }
+      for (let i = 0, len = prompt.blocks.length; i < len; i++) {
+        const block = prompt.blocks[i];
+        if (block.type === 'attachment_ref') ids.push(block.attachmentId);
+      }
+    }
+    return ids;
+  }
 
   listTurns(sessionId: SessionId): Promise<ConversationTurn[]> {
     const turns = [];

@@ -8,6 +8,7 @@ import { RESOURCE_CONTEXT_SENTINEL } from '../resource/service';
 import { createSessionHarness, startedSessionId } from './fixtures/session-harness';
 
 const temporaryDirectories: string[] = [];
+const rAttachmentId = /^att-/;
 
 afterEach(async () => {
   await Promise.all(
@@ -72,9 +73,12 @@ describe('engine session resources', () => {
       name: 'brief.txt',
       status: 'ready',
       locator: { type: 'managed-file' },
+      attachmentId: expect.stringMatching(rAttachmentId),
     });
     if (source.locator.type !== 'managed-file') throw new Error('expected managed source');
+    expect(source.locator.path.startsWith(join(stateDir, 'blobs', 'sha256'))).toBe(true);
     expect(await readFile(source.locator.path, 'utf8')).toBe('source material');
+    expect((await stat(source.locator.path)).mode & 0o222).toBe(0);
 
     const mark = h.sent.length;
     await h.inject({
@@ -111,7 +115,60 @@ describe('engine session resources', () => {
     await vi.waitFor(() => {
       expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'remove' });
     });
-    await expect(stat(source.locator.path)).rejects.toMatchObject({ code: 'ENOENT' });
+    // Store bytes are shared and immutable: removal drops the reference, the reaper takes the file.
+    expect(await readFile(source.locator.path, 'utf8')).toBe('source material');
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-after-remove', sessionId });
+    expect(listedResources(h.sent, 'list-after-remove')).toEqual([]);
+
+    await h.inject({
+      kind: 'resource.source.upload',
+      clientReqId: 'upload-mismatch',
+      sessionId,
+      name: 'photo.png',
+      mimeType: 'image/png',
+      data: Buffer.from('not a png').toString('base64'),
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({
+          kind: 'request.failed',
+          replyTo: 'upload-mismatch',
+          code: 'invalid_request',
+        }),
+      );
+    });
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-after-mismatch', sessionId });
+    expect(listedResources(h.sent, 'list-after-mismatch')).toEqual([]);
+
+    await h.inject({
+      kind: 'resource.source.upload',
+      clientReqId: 'upload-svg',
+      sessionId,
+      name: 'icon.svg',
+      mimeType: 'image/svg+xml',
+      data: Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"/>').toString('base64'),
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual(
+        expect.objectContaining({ kind: 'resource.uploaded', replyTo: 'upload-svg' }),
+      );
+    });
+    await h.inject({ kind: 'resource.list', clientReqId: 'list-svg', sessionId });
+    expect(listedResources(h.sent, 'list-svg')).toEqual([
+      expect.objectContaining({
+        name: 'icon.svg',
+        status: 'ready',
+        mimeType: 'image/svg+xml',
+      }),
+    ]);
+    await h.inject({
+      kind: 'resource.remove',
+      clientReqId: 'remove-svg',
+      resourceId: listedResources(h.sent, 'list-svg')[0].resourceId,
+    });
+    await vi.waitFor(() => {
+      expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'remove-svg' });
+    });
 
     await h.inject({
       kind: 'resource.source.upload',
@@ -134,7 +191,7 @@ describe('engine session resources', () => {
     await vi.waitFor(() => {
       expect(h.sent).toContainEqual({ kind: 'request.succeeded', replyTo: 'delete-session' });
     });
-    await expect(stat(uploaded.resource.locator.path)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(uploaded.resource.locator.path, 'utf8')).toBe('temporary');
 
     const retained = join(stateDir, 'retained.txt');
     await writeFile(retained, 'safe');
