@@ -2,6 +2,7 @@ import { nextMessageId } from '@linkcode/agent-adapter';
 import type { AgentInput, SessionId } from '@linkcode/schema';
 import { agentCommandMatches } from '@linkcode/schema';
 import { Cause, Effect, Exit } from 'effect';
+import { nullthrow } from 'foxts/guard';
 import type { ConversationTurnService, PersistedTurnIntent } from '../conversation/turn-service';
 import { mintOperationId, promptBlocksFromContent } from '../conversation/turn-service';
 import { causeToRequestFailure, OperationError, RequestError } from '../failure';
@@ -121,11 +122,12 @@ export class SessionInputDispatcher {
         // Echo before awaiting send: provider events can outrun the acknowledgement. The
         // persisted intent supplies its turn ID before the adapter signals running.
         if (promptMessageId !== undefined && input.type === 'prompt') {
+          const { turnId } = nullthrow(persisted, 'prompt dispatch without a persisted turn').turn;
           events.broadcast(
             sessionId,
             session,
-            session.trackPrompt(promptMessageId, input.content),
-            persisted?.turn.turnId,
+            session.trackPrompt(promptMessageId, input.content, turnId),
+            turnId,
           );
           records.setTitleFromContent(sessionId, input.content);
         } else if (input.type === 'command' || input.type === 'shell-command') {
@@ -182,9 +184,7 @@ export class SessionInputDispatcher {
                   session.interactions.restoreResponse(responseInput.requestId, respondingAsk),
                 );
               }
-              if (promptMessageId !== undefined) {
-                events.broadcast(sessionId, session, session.untrackPrompt(promptMessageId));
-              }
+              if (promptMessageId !== undefined) session.untrackPrompt(promptMessageId);
               if (startsTurn) events.rejectInput(sessionId, session, error.publicMessage);
             }),
           ),

@@ -4,11 +4,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import * as sdk from '@anthropic-ai/claude-agent-sdk';
 import { afterEach, describe, expect, it } from 'vitest';
+import { encodeHistoryBranchCursor } from '../history-branch';
 import { asHistoryId } from '../history-util';
 import { ClaudeCodeAdapter } from '../native/claude-code';
 import { claudeHistorySdk } from '../native/claude-history-sdk';
 
 const roots: string[] = [];
+const RE_PROJECT_PATH = /[^a-z0-9-]/gi;
+class HistoryOnlyClaude extends ClaudeCodeAdapter {
+  protected override onStart(): Promise<void> {
+    return Promise.resolve();
+  }
+}
 afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
@@ -16,7 +23,7 @@ afterEach(async () => {
 async function transcript(sessionId: string, answer: string) {
   const root = await mkdtemp(path.join(tmpdir(), 'linkcode-claude-root-'));
   roots.push(root);
-  const project = path.join(root, 'projects', 'fixture');
+  const project = path.join(root, 'projects', process.cwd().replaceAll(RE_PROJECT_PATH, '-'));
   await mkdir(project, { recursive: true });
   const userId = randomUUID();
   const assistantId = randomUUID();
@@ -78,8 +85,20 @@ describe('Claude native history config roots', () => {
     const historyId = asHistoryId(randomUUID());
     const { root, assistantId } = await transcript(historyId, 'retained answer');
     const scoped = claudeHistorySdk(sdk, root);
-    const child = await scoped.forkSession(historyId, { upToMessageId: assistantId });
-    expect(await scoped.getSessionMessages(child.sessionId)).toHaveLength(2);
+    await new HistoryOnlyClaude().branchHistory(
+      {
+        historyId,
+        cursor: encodeHistoryBranchCursor('claude-code', historyId, assistantId),
+      },
+      {
+        kind: 'claude-code',
+        cwd: process.cwd(),
+        config: { extraEnv: { CLAUDE_CONFIG_DIR: root } },
+      },
+    );
+    const child = (await scoped.listSessions()).find((session) => session.sessionId !== historyId);
+    expect(child).toBeDefined();
+    expect(await scoped.getSessionMessages(child!.sessionId)).toHaveLength(2);
     await expect(
       new ClaudeCodeAdapter().readHistory({
         historyId: asHistoryId(randomUUID()),

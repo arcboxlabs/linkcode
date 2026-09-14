@@ -2,6 +2,9 @@ import type { AgentEvent } from '@linkcode/schema';
 import { noop } from 'foxts/noop';
 import { wait } from 'foxts/wait';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor } from '../history-branch';
+import { asHistoryId } from '../history-util';
 import { OpenCodeAdapter } from '../native/opencode';
 
 const sdkMock = vi.hoisted(
@@ -153,6 +156,24 @@ function pushIdle(): void {
     type: 'session.idle',
     properties: { sessionID: 'sess-1' },
   });
+}
+
+function userMessageUpdated(id: string, eventId: string) {
+  return {
+    id: eventId,
+    type: 'message.updated' as const,
+    properties: {
+      sessionID: 'sess-1',
+      info: {
+        id,
+        sessionID: 'sess-1',
+        role: 'user' as const,
+        time: { created: 0 },
+        agent: 'build',
+        model: { providerID: 'openai', modelID: 'gpt-5.5' },
+      },
+    },
+  };
 }
 
 /** The server's on-stream acknowledgement that the active turn is running — always precedes the
@@ -385,6 +406,59 @@ describe('OpenCodeAdapter.consumeEvents', () => {
       'mcp__notion__search_pages',
       'bash',
       'repo__prod_search_files',
+    ]);
+  });
+
+  it('keeps turn-level forks dark while the legacy branch path stays advertised', () => {
+    expect(new OpenCodeAdapter().historyCapabilities).toEqual({
+      list: true,
+      read: true,
+      resume: true,
+      forkAfterTurn: false,
+      branch: true,
+    });
+  });
+
+  it('mints exactly one preceding checkpoint per turn: the prompt’s own user message, first seen inside it', async () => {
+    const { adapter, events } = await makeAdapter();
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
+
+    // A user message outside any turn (a resumed session's straggler) cuts nothing.
+    client.stream.push(userMessageUpdated('msg-stale', 'e-stale'));
+    await drained();
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'first' }] });
+    pushBusy();
+    // The straggler re-emitted inside the turn, ahead of the prompt's own message: seen before
+    // the turn, so it is not this turn's cut.
+    client.stream.push(userMessageUpdated('msg-stale', 'e-stale-again'));
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1'));
+    // A mid-turn compaction materializes as a second user message, and a settled prompt can be
+    // re-emitted late (observed on 1.17.11): neither may move the cut past the turn's own prompt.
+    client.stream.push(userMessageUpdated('msg-compaction', 'e-compaction'));
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-again'));
+    pushIdle();
+    await vi.waitFor(() => expect(stops(events)).toHaveLength(1));
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'second' }] });
+    // The compaction message never minted, yet re-emitted in the next turn it is still not that
+    // turn's prompt.
+    client.stream.push(userMessageUpdated('msg-compaction', 'e-compaction-again'));
+    client.stream.push(userMessageUpdated('msg-user-1', 'e-u1-late'));
+    client.stream.push(userMessageUpdated('msg-user-2', 'e-u2'));
+    await drained();
+
+    expect(checkpoints).toEqual([
+      {
+        historyId: 'sess-1',
+        cursor: encodeHistoryBranchCursor('opencode', asHistoryId('sess-1'), 'msg-user-1'),
+        turn: 'preceding',
+      },
+      {
+        historyId: 'sess-1',
+        cursor: encodeHistoryBranchCursor('opencode', asHistoryId('sess-1'), 'msg-user-2'),
+        turn: 'preceding',
+      },
     ]);
   });
 

@@ -1,7 +1,11 @@
 import type { AgentEvent, AgentHistoryId } from '@linkcode/schema';
 import type { Session } from '@opencode-ai/sdk/v2';
 import { noop } from 'foxts/noop';
+import { wait } from 'foxts/wait';
 import { describe, expect, it, vi } from 'vitest';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../history-branch';
+import { asHistoryId } from '../history-util';
 import { OpenCodeAdapter } from '../native/opencode';
 import type { OpencodeHistoryServerLike } from '../native/opencode/history-server';
 import { FakeEventStream } from './fake-event-stream';
@@ -297,7 +301,7 @@ describe('OpenCodeAdapter.readHistory', () => {
   });
 });
 
-function makeLiveClient(resumedSession: Session | null) {
+function makeLiveClient(resumedSession: Session | null, userMessageIds: string[] = []) {
   const stream = new FakeEventStream();
   return {
     stream,
@@ -306,11 +310,37 @@ function makeLiveClient(resumedSession: Session | null) {
       get: vi.fn(() =>
         Promise.resolve(resumedSession ? { data: resumedSession } : { error: { status: 404 } }),
       ),
+      messages: vi.fn(() =>
+        Promise.resolve({
+          data: userMessageIds.map((id) => ({
+            info: { id, sessionID: resumedSession?.id, role: 'user' },
+            parts: [],
+          })),
+        }),
+      ),
       promptAsync: vi.fn(() => Promise.resolve({ data: null })),
     },
     command: { list: vi.fn(() => Promise.resolve({ data: [] })) },
     config: { get: vi.fn(() => Promise.resolve({ data: {} })) },
     event: { subscribe: vi.fn(() => Promise.resolve({ stream })) },
+  };
+}
+
+function userMessageUpdated(sessionID: string, id: string) {
+  return {
+    id: `e-${id}`,
+    type: 'message.updated' as const,
+    properties: {
+      sessionID,
+      info: {
+        id,
+        sessionID,
+        role: 'user' as const,
+        time: { created: 0 },
+        agent: 'build',
+        model: { providerID: 'openai', modelID: 'gpt-5.5' },
+      },
+    },
   };
 }
 
@@ -348,6 +378,40 @@ describe('OpenCodeAdapter.resumeHistory', () => {
     );
   });
 
+  it('never re-mints a resumed session’s settled prompts as fork checkpoints', async () => {
+    const resumed = makeSession({ id: 'ses-9', directory: '/tmp/original' });
+    const client = makeLiveClient(resumed, ['msg-old']);
+    sdkMock.createOpencode = () =>
+      Promise.resolve({ client, server: { url: 'http://fake', close: vi.fn() } });
+    const adapter = new OpenCodeAdapter();
+    adapter.onEvent(noop);
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
+    await adapter.resumeHistory(
+      { historyId: 'ses-9' as AgentHistoryId },
+      { kind: 'opencode', cwd: '/tmp/elsewhere' },
+    );
+    expect(client.session.messages).toHaveBeenCalledWith({
+      sessionID: 'ses-9',
+      directory: '/tmp/original',
+    });
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'go' }] });
+    // The settled prompt re-emitted AFTER the dispatch, before the new prompt's own message: it
+    // is already checkpointed, so the turn's one cut lands on the new prompt.
+    client.stream.push(userMessageUpdated('ses-9', 'msg-old'));
+    client.stream.push(userMessageUpdated('ses-9', 'msg-new'));
+    await wait(0);
+
+    expect(checkpoints).toEqual([
+      {
+        historyId: 'ses-9',
+        cursor: encodeHistoryBranchCursor('opencode', asHistoryId('ses-9'), 'msg-new'),
+        turn: 'preceding',
+      },
+    ]);
+  });
+
   it('rejects when the history id is unknown', async () => {
     const client = makeLiveClient(null);
     sdkMock.createOpencode = () =>
@@ -372,9 +436,11 @@ describe('OpenCodeAdapter.branchHistory', () => {
       directory: source.directory,
     });
     const fork = vi.fn(() => Promise.resolve({ data: child }));
+    const message = vi.fn(() => Promise.resolve({ data: { info: {}, parts: [] } }));
     sdkMock.createOpencodeClient = () => ({
       session: {
         get: vi.fn(() => Promise.resolve({ data: source })),
+        message,
         fork,
       },
     });
@@ -397,6 +463,11 @@ describe('OpenCodeAdapter.branchHistory', () => {
       { kind: 'opencode', cwd: '/different/repo' },
     );
 
+    expect(message).toHaveBeenCalledWith({
+      sessionID: 'ses-source',
+      messageID: 'msg-target',
+      directory: '/canonical/repo',
+    });
     expect(fork).toHaveBeenCalledWith({
       sessionID: 'ses-source',
       messageID: 'msg-target',
@@ -407,6 +478,60 @@ describe('OpenCodeAdapter.branchHistory', () => {
     expect(client.session.promptAsync).toHaveBeenCalledWith(
       expect.objectContaining({ sessionID: 'ses-child', directory: '/canonical/repo' }),
     );
+  });
+
+  it('refuses typed, without forking, when the checkpoint message is gone from the server', async () => {
+    const source = makeSession({ id: 'ses-source', directory: '/canonical/repo' });
+    const fork = vi.fn();
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ data: source })),
+        message: vi.fn(() =>
+          Promise.resolve({ error: { name: 'NotFoundError', data: { message: 'gone' } } }),
+        ),
+        fork,
+      },
+    });
+
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-source',
+            branchPoint: 'msg-vanished',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
+    expect(fork).not.toHaveBeenCalled();
+  });
+
+  it('refuses typed when the source session itself is unreadable', async () => {
+    sdkMock.createOpencodeClient = () => ({
+      session: {
+        get: vi.fn(() => Promise.resolve({ error: { name: 'NotFoundError' } })),
+        fork: vi.fn(),
+      },
+    });
+
+    await expect(
+      new HistoryTestAdapter().branchHistory(
+        {
+          historyId: 'ses-source' as AgentHistoryId,
+          cursor: JSON.stringify({
+            version: 1,
+            kind: 'opencode',
+            historyId: 'ses-source',
+            branchPoint: 'msg-target',
+          }),
+        },
+        { kind: 'opencode', cwd: '/tmp/repo' },
+      ),
+    ).rejects.toBeInstanceOf(HistoryCheckpointInvalidError);
   });
 
   it('rejects a cursor minted for another source before calling the provider', async () => {

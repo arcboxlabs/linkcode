@@ -1,6 +1,9 @@
 import type { AgentSession, AgentSessionEvent } from '@earendil-works/pi-coding-agent';
 import type { AgentEvent } from '@linkcode/schema';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { HistoryCheckpoint } from '../history-branch';
+import { encodeHistoryBranchCursor } from '../history-branch';
+import { asHistoryId } from '../history-util';
 import { PiAdapter } from '../native/pi';
 import { agentRuntimeProber } from '../probe';
 
@@ -14,6 +17,8 @@ const resources = {
 };
 
 const session = {
+  sessionId: 'pi-session-1',
+  sessionManager: { getLeafId: () => 'leaf-after-turn' },
   abort: vi.fn(),
   bindExtensions: vi.fn(),
   dispose: vi.fn(),
@@ -167,6 +172,43 @@ describe('PiAdapter lifecycle', () => {
       { type: 'stop', stopReason: 'end_turn' },
       { type: 'status', status: 'idle' },
     ]);
+  });
+
+  it('mints the session leaf as the settled turn’s fork checkpoint, before the stop', async () => {
+    const { adapter, events } = await startedAdapter();
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => {
+      checkpoints.push(checkpoint);
+      events.push({ type: 'title-update', title: 'checkpoint-marker' });
+    });
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hello' }] });
+
+    emit({ type: 'agent_end', messages: [assistant('stop')], willRetry: false });
+    emit({ type: 'agent_settled' });
+
+    expect(checkpoints).toEqual([
+      {
+        historyId: 'pi-session-1',
+        cursor: encodeHistoryBranchCursor('pi', asHistoryId('pi-session-1'), 'leaf-after-turn'),
+        turn: 'ending',
+      },
+    ]);
+    expect(events.map((event) => event.type)).toEqual(['status', 'title-update', 'stop', 'status']);
+  });
+
+  it('mints no checkpoint for an aborted or failed turn', async () => {
+    const { adapter } = await startedAdapter();
+    const checkpoints: HistoryCheckpoint[] = [];
+    adapter.onCheckpoint((checkpoint) => checkpoints.push(checkpoint));
+
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'hello' }] });
+    emit({ type: 'agent_end', messages: [assistant('error', 'boom')], willRetry: false });
+    emit({ type: 'agent_settled' });
+    await adapter.send({ type: 'prompt', content: [{ type: 'text', text: 'again' }] });
+    emit({ type: 'agent_end', messages: [assistant('aborted')], willRetry: false });
+    emit({ type: 'agent_settled' });
+
+    expect(checkpoints).toEqual([]);
   });
 
   it('unwinds a prompt rejected after announcing running', async () => {

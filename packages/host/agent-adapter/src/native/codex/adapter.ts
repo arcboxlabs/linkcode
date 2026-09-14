@@ -5,6 +5,7 @@ import type {
   AgentCommand,
   AgentHistoryBranchOptions,
   AgentHistoryCapabilities,
+  AgentHistoryId,
   AgentHistoryListOptions,
   AgentHistoryListResult,
   AgentHistoryReadOptions,
@@ -34,7 +35,7 @@ import { AUTH_FAILED_ERROR_CODE } from '../../adapter';
 import { BaseAgentAdapter } from '../../base';
 import type { AgentCredential } from '../../credential';
 import { codexEnv, readAgentCredential } from '../../credential';
-import { decodeHistoryBranchCursor } from '../../history-branch';
+import { decodeHistoryBranchCursor, HistoryCheckpointInvalidError } from '../../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -53,11 +54,13 @@ import type { CodexAppServerOptions } from './app-server';
 import { CodexAppServer, resolveCodexBinaryPath } from './app-server';
 import type { CodexSandboxMode } from './config';
 import { codexConfiguredModel, codexConfiguredSandbox } from './config';
+import type { CodexTranscriptSummary } from './history';
 import {
   codexHome,
   codexIndexEntryToSession,
   codexSummaryToSession,
   findCodexTranscript,
+  isCodexRolloutForkable,
   mapCodexHistoryEvents,
   readCodexIndex,
   readCodexTranscriptSummaries,
@@ -440,10 +443,13 @@ export function decisionFromOutcome(
  */
 export class CodexAdapter extends BaseAgentAdapter {
   readonly kind = 'codex' as const;
+  // `thread/fork {threadId, lastTurnId}` is live-verified inclusive on the 0.144.6 pin;
+  // paginated-mode rollouts go dark per history (see `branchHistory` and history.ts).
   override readonly historyCapabilities: AgentHistoryCapabilities = {
     list: true,
     read: true,
     resume: true,
+    forkAfterTurn: true,
     branch: true,
   };
 
@@ -592,6 +598,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     }
 
     const processEnvironment = await resolveCodexEnvironment(startOpts.cwd);
+    // A paginated rollout would fail thread/fork (and resume) with -32601 on the pinned
+    // app-server; refuse typed before spawning one.
+    const summary = await this.findTranscript(opts.historyId, codexHome(processEnvironment));
+    if (summary && !isCodexRolloutForkable(summary)) {
+      throw new HistoryCheckpointInvalidError(
+        `codex: thread ${opts.historyId} was written in ${summary.historyMode} history mode, which this codex app-server cannot fork`,
+      );
+    }
     const credentialEnv = codexEnv(readAgentCredential(startOpts.config));
     const serverEnvironment = credentialEnv
       ? { ...processEnvironment, ...credentialEnv }
@@ -603,10 +617,22 @@ export class CodexAdapter extends BaseAgentAdapter {
     });
     let childThreadId: string;
     try {
-      const response = await server.request('thread/fork', {
-        threadId: opts.historyId,
-        lastTurnId: branchPoint,
-      });
+      let response: unknown;
+      try {
+        response = await server.request('thread/fork', {
+          threadId: opts.historyId,
+          lastTurnId: branchPoint,
+        });
+      } catch (error) {
+        // A JSON-RPC refusal (unknown thread or turn) creates nothing; a dead connection rethrows.
+        if (isRecord(error) && typeof error.code === 'number') {
+          throw new HistoryCheckpointInvalidError(
+            `codex: thread/fork refused checkpoint ${branchPoint}: ${extractErrorMessage(error)}`,
+            { cause: error },
+          );
+        }
+        throw error;
+      }
       const thread = isRecord(response) ? recordField(response, 'thread') : undefined;
       childThreadId = thread ? (stringField(thread, 'id') ?? '') : '';
       if (!childThreadId) throw new Error('codex: thread/fork returned no thread id');
@@ -902,6 +928,14 @@ export class CodexAdapter extends BaseAgentAdapter {
     environment: NodeJS.ProcessEnv,
   ): Promise<{ model?: string; effort?: EffortLevel }> {
     return codexConfiguredModel(environment);
+  }
+
+  /** Test seam — the rollout summary a fork pre-checks for the paginated history-mode wall. */
+  protected findTranscript(
+    historyId: AgentHistoryId,
+    home: string,
+  ): Promise<CodexTranscriptSummary | undefined> {
+    return findCodexTranscript(historyId, home);
   }
 
   private async openThread(): Promise<void> {
@@ -1359,6 +1393,8 @@ export class CodexAdapter extends BaseAgentAdapter {
     } else if (status === 'interrupted') {
       this.emitStop('cancelled');
     } else {
+      // `thread/fork {lastTurnId}` is inclusive: the completed turn's own id is the cut after it.
+      if (id && this.threadId) this.emitCheckpoint(asHistoryId(this.threadId), id);
       this.emitStop('end_turn');
     }
     this.teardown();

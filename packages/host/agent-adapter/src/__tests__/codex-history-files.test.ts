@@ -103,6 +103,20 @@ describe('codex rollout file reads', () => {
     });
   });
 
+  it('carries session_meta.history_mode on the summary (the fork pre-check reads it)', async () => {
+    const [meta, ...rest] = rolloutLines(THREAD_ID);
+    const paginated = JSON.parse(meta) as { payload: Record<string, unknown> };
+    paginated.payload.history_mode = 'paginated';
+    await writeRollout(`sessions/2026/08/01/rollout-2026-08-01T10-00-00-${THREAD_ID}.jsonl`, [
+      JSON.stringify(paginated),
+      ...rest,
+    ]);
+
+    const found = await findCodexTranscript(asHistoryId(THREAD_ID), home);
+    expect(found?.historyMode).toBe('paginated');
+    expect(found?.metadata?.historyMode).toBe('paginated');
+  });
+
   it('skips corrupt lines and ignores empty files', async () => {
     const path = await writeRollout(
       `sessions/2026/08/01/rollout-2026-08-01T10-00-00-${THREAD_ID}.jsonl`,

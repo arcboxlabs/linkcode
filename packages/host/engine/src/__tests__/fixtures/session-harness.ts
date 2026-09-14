@@ -1,4 +1,4 @@
-import type { AdapterFactory, AgentAdapter } from '@linkcode/agent-adapter';
+import type { AdapterFactory, AgentAdapter, HistoryCheckpoint } from '@linkcode/agent-adapter';
 import type {
   AgentCapabilities,
   AgentEvent,
@@ -43,6 +43,7 @@ export class FakeAdapter implements AgentAdapter {
   stopped = false;
   readonly sentInputs: AgentInput[] = [];
   private readonly listeners = new Set<(event: AgentEvent) => void>();
+  private readonly checkpointListeners = new Set<(checkpoint: HistoryCheckpoint) => void>();
 
   start(opts: StartOptions): Promise<void> {
     this.startedWith = opts;
@@ -88,6 +89,13 @@ export class FakeAdapter implements AgentAdapter {
     };
   }
 
+  onCheckpoint(cb: (checkpoint: HistoryCheckpoint) => void): () => void {
+    this.checkpointListeners.add(cb);
+    return () => {
+      this.checkpointListeners.delete(cb);
+    };
+  }
+
   stop(): Promise<void> {
     this.stopped = true;
     return Promise.resolve();
@@ -95,6 +103,10 @@ export class FakeAdapter implements AgentAdapter {
 
   emit(event: AgentEvent): void {
     for (const cb of this.listeners) cb(event);
+  }
+
+  emitCheckpoint(checkpoint: HistoryCheckpoint): void {
+    for (const cb of this.checkpointListeners) cb(checkpoint);
   }
 }
 

@@ -71,7 +71,11 @@ import type {
 import { AUTH_FAILED_ERROR_CODE, renderBrowserToolResult } from '../adapter';
 import { BaseAgentAdapter } from '../base';
 import { claudeCodeEnv, readAgentCredential } from '../credential';
-import { decodeHistoryBranchCursor, encodeHistoryBranchCursor } from '../history-branch';
+import {
+  decodeHistoryBranchCursor,
+  encodeHistoryBranchCursor,
+  HistoryCheckpointInvalidError,
+} from '../history-branch';
 import {
   asHistoryId,
   asMessageId,
@@ -454,6 +458,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
     list: true,
     read: true,
     resume: true,
+    forkAfterTurn: true,
     branch: true,
   };
 
@@ -462,6 +467,12 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   private processEnvironment: NodeJS.ProcessEnv | null = null;
   /** True from prompt dispatch until its terminal `result`; a Query EOF while set is a failed turn. */
   private turnActive = false;
+  /** Transcript row uuid of the turn's last main-agent assistant frame — a chain-correct inclusive
+   * fork cut on the expectation, unverified on a live multi-block turn, that the SDK streams one
+   * frame per persisted row. It is NOT the next user row's `parentUuid` whenever a Stop hook ran
+   * (every LinkCode query registers one): a `system/stop_hook_summary` row then sits between, so
+   * the cold-read cursor and this live checkpoint differ yet both fork validly. */
+  private lastAssistantUuid: string | undefined;
   /** Distinguishes an explicit adapter stop from an unexpected Query EOF. */
   private stopped = false;
   /** Session id to resume *once*, when the persistent Query starts from saved history — not updated
@@ -677,11 +688,19 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
   ): Promise<void> {
     const predecessor = decodeHistoryBranchCursor(opts.cursor, this.kind, opts.historyId);
     if (predecessor !== null) {
+      const root = await this.historyConfigRoot(startOpts);
+      // forkSession would throw on an unknown uuid too, but untyped; the raw transcript is the
+      // authority on whether the checkpoint row still exists (deleted or rewritten history).
+      const supplement = await this.readTranscriptSupplement(opts.historyId, root);
+      if (!supplement.parentUuidByUuid.has(predecessor)) {
+        throw new HistoryCheckpointInvalidError(
+          `claude-code: checkpoint ${predecessor} is no longer in transcript ${opts.historyId}`,
+        );
+      }
       const mod = await this.loadSdk(
         '@anthropic-ai/claude-agent-sdk',
         () => import('@anthropic-ai/claude-agent-sdk'),
       );
-      const root = await this.historyConfigRoot(startOpts);
       const fork = await claudeHistorySdk(mod, root).forkSession(opts.historyId, {
         upToMessageId: predecessor,
         dir: startOpts.cwd,
@@ -862,6 +881,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       parent_tool_use_id: null,
     };
     this.turnActive = true;
+    this.lastAssistantUuid = undefined;
     this.emitStatus('running');
     try {
       if (this.inputQueue) {
@@ -1420,6 +1440,7 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
       this.handleSubagentAssistant(msg.message, msg.parent_tool_use_id);
       return;
     }
+    this.lastAssistantUuid = msg.uuid;
     const message = msg.message;
     // Terminal API failures can arrive only as synthetic assistant text before a success result.
     if (msg.error && message.model === '<synthetic>') {
@@ -1561,6 +1582,9 @@ export class ClaudeCodeAdapter extends BaseAgentAdapter {
         cacheCreationTokens: numberField(usage, 'cache_creation_input_tokens'),
         totalCostUsd: msg.total_cost_usd,
       });
+      if (this.lastSessionRef && this.lastAssistantUuid) {
+        this.emitCheckpoint(asHistoryId(this.lastSessionRef), this.lastAssistantUuid);
+      }
       this.emitStop(mapClaudeStop(msg.stop_reason));
     } else if (cancelling) {
       // This non-success result is the fallout of our own onCancel()'s interrupt(), not a real
@@ -1846,8 +1870,9 @@ export interface ClaudeTranscriptSupplement {
    * summary, whose `parentUuid` is null — `logicalParentUuid` is ignored). In file (= chronological)
    * order; rows the SDK still returns (the preserved segment) are deduped by uuid at read time. */
   droppedRows: SessionMessage[];
-  /** Message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`, but Claude
-   * requires the predecessor message id when forking immediately before a historical prompt. */
+  /** Main-chain message uuid → raw transcript predecessor. The SDK projection strips `parentUuid`,
+   * but Claude requires the predecessor message id when forking immediately before a historical
+   * prompt. Sidechain rows are absent: `forkSession` drops them, so a cut through one is invalid. */
   parentUuidByUuid: Map<string, string | null>;
   /** tool_use_id → announce snapshot. Cursor pages can begin at the matching result row, after
    * the stateful mapper's in-page announce map has been reset. */
@@ -1893,7 +1918,9 @@ export function buildClaudeTranscriptSupplement(
     if (!isRecord(parsed) || typeof parsed.uuid !== 'string' || parsed.uuid.length === 0) continue;
     const row = parsed;
     const uuid = parsed.uuid;
-    parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
+    if (row.isSidechain !== true) {
+      parentUuidByUuid.set(uuid, typeof row.parentUuid === 'string' ? row.parentUuid : null);
+    }
     if (row.type === 'system' && row.subtype === 'compact_boundary') {
       boundaries += 1;
       const meta = isRecord(row.compactMetadata) ? row.compactMetadata : {};

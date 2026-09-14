@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { HistoryCheckpoint } from '@linkcode/agent-adapter';
 import type {
   ContentBlock,
   ConversationOperation,
@@ -84,6 +85,11 @@ export const TERMINAL_TURN_STATES = new Set<ConversationTurnState>([
 interface RunningTurn {
   readonly turn: ConversationTurn;
   sawError: boolean;
+  /** False while only tracked off the adapter's `running`, before the dispatch commits it. */
+  committed: boolean;
+  /** A settle that landed before the commit; the commit writes it behind its own row, a failed
+   * dispatch discards it with the turn. */
+  settledAs?: ConversationTurnState;
 }
 
 /**
@@ -95,6 +101,9 @@ interface RunningTurn {
 export class ConversationTurnService {
   /** The running turn per session; settles are addressed by the turn's own runId. */
   private readonly running = new Map<SessionId, RunningTurn>();
+  /** The persisted intent between its persist and its commit/failure; the adapter's `running`
+   * status promotes it to the running turn ({@link noteRunning}). */
+  private readonly dispatching = new Map<SessionId, PersistedTurnIntent>();
   /** When a turn last flipped terminal — the projection's cache-freshness bound: a provider
    * corpus captured before the newest settle may be missing that turn's rows. */
   private readonly settledAt = new Map<SessionId, number>();
@@ -134,6 +143,32 @@ export class ConversationTurnService {
     return storeOperation('conversation.bindings.list', () => this.store.listBindings(turnId));
   }
 
+  /** A binding derived from a cold read (`capturedFrom: 'replay'`); the store keeps an existing
+   * live capture over it. */
+  saveReplayBinding(binding: ProviderTurnBinding): Effect.Effect<void, OperationError> {
+    return storeOperation('conversation.binding.save', () => this.store.saveBinding(binding));
+  }
+
+  /** The turn's user-row content from host truth; undefined for migrated null-prompt turns. */
+  hostUserContent(
+    turn: ConversationTurn,
+  ): Effect.Effect<ContentBlock[] | undefined, OperationError> {
+    const input = turn.input;
+    if (input.type === 'command' || input.type === 'shell-command') {
+      return Effect.succeed([{ type: 'text' as const, text: turnInputText(input) }]);
+    }
+    if (input.promptId === null) return Effect.undefined;
+    return this.getPrompt(input.promptId).pipe(
+      Effect.map((prompt) => {
+        if (!prompt) return;
+        // attachment_ref blocks join the projection when the attachment store lands.
+        return prompt.blocks.flatMap((block) =>
+          block.type === 'text' ? [{ type: 'text' as const, text: block.text }] : [],
+        );
+      }),
+    );
+  }
+
   deleteSession(sessionId: SessionId): Effect.Effect<void, OperationError> {
     return storeOperation('conversation.delete-session', () =>
       this.store.deleteSession(sessionId),
@@ -141,6 +176,7 @@ export class ConversationTurnService {
       Effect.tap(() =>
         Effect.sync(() => {
           this.running.delete(sessionId);
+          this.dispatching.delete(sessionId);
           this.settledAt.delete(sessionId);
         }),
       ),
@@ -198,8 +234,20 @@ export class ConversationTurnService {
           ),
         ),
       );
-      return { turn: persisted, operation };
+      const intent = { turn: persisted, operation };
+      this.dispatching.set(spec.sessionId, intent);
+      return intent;
     });
+  }
+
+  /** The adapter announced `running` for `runId`'s dispatching turn: track it in memory only. A
+   * whole-turn send() (pi, grok) settles before it resolves — tracked late, its own stop would
+   * settle its predecessor. The durable commit stays with the dispatch resolution: an adapter that
+   * emits `running` and then rejects the send must resolve `failed`, never a phantom turn. */
+  noteRunning(sessionId: SessionId, runId: RunId): void {
+    const intent = this.dispatching.get(sessionId);
+    if (intent?.turn.runId !== runId) return;
+    this.track(intent.turn, false);
   }
 
   /** The provider accepted the dispatch: one transaction stores the success and flips the turn to
@@ -221,7 +269,7 @@ export class ConversationTurnService {
       Effect.flatMap((transitioned) =>
         transitioned
           ? Effect.sync(() => {
-              this.trackRunning(turn);
+              this.trackCommitted(turn);
               const graphRevision = this.records.commitGraphMove(turn.sessionId, turn.turnId);
               if (graphRevision !== undefined) {
                 this.transport.send(
@@ -271,8 +319,11 @@ export class ConversationTurnService {
         }
         return stored;
       }
-      const running = this.running.get(intent.turn.sessionId);
-      if (running?.turn.turnId === intent.turn.turnId) this.running.delete(intent.turn.sessionId);
+      const { sessionId, turnId } = intent.turn;
+      if (this.running.get(sessionId)?.turn.turnId === turnId) this.running.delete(sessionId);
+      if (this.dispatching.get(sessionId)?.turn.turnId === turnId) {
+        this.dispatching.delete(sessionId);
+      }
       return { ...operation, error };
     });
   }
@@ -338,6 +389,25 @@ export class ConversationTurnService {
     return this.runningFor(sessionId, runId)?.turn.turnId;
   }
 
+  /** Persist a live fork checkpoint as the binding of the turn it describes: `ending` → the turn
+   * `runId` is executing, `preceding` → that turn's parent (a root has none). A checkpoint from a
+   * run that is neither dispatching nor running a turn (a replaced adapter) binds nothing. */
+  bindLiveCheckpoint(sessionId: SessionId, runId: RunId, checkpoint: HistoryCheckpoint): void {
+    const dispatching = this.dispatching.get(sessionId)?.turn;
+    const turn =
+      dispatching?.runId === runId ? dispatching : this.runningFor(sessionId, runId)?.turn;
+    if (!turn) return;
+    const turnId = checkpoint.turn === 'ending' ? turn.turnId : turn.parentTurnId;
+    if (turnId === null) return;
+    this.saveBinding({
+      turnId,
+      runId,
+      historyId: checkpoint.historyId,
+      checkpoint: checkpoint.cursor,
+      capturedFrom: 'live',
+    });
+  }
+
   /** An adapter `error` while the run's turn is live; decides `failed` on a stop-less settle. */
   noteError(sessionId: SessionId, runId: RunId): void {
     const entry = this.runningFor(sessionId, runId);
@@ -361,9 +431,16 @@ export class ConversationTurnService {
     );
   }
 
+  /** The first settle stands. Before the durable commit landed it is only recorded here: the
+   * commit's own `running` row must not land over the terminal state. */
   private settle(sessionId: SessionId, runId: RunId, state: ConversationTurnState): void {
     const entry = this.runningFor(sessionId, runId);
-    if (!entry) return;
+    if (!entry || entry.settledAs !== undefined) return;
+    if (!entry.committed) {
+      entry.settledAs = state;
+      this.settledAt.set(sessionId, Date.now());
+      return;
+    }
     this.running.delete(sessionId);
     this.persistTurnState(entry.turn, state);
   }
@@ -376,14 +453,51 @@ export class ConversationTurnService {
     return entry.turn.runId === runId ? entry : undefined;
   }
 
-  private trackRunning(turn: ConversationTurn): void {
+  /** The commit landed. A turn already tracked off the adapter's `running` keeps its entry (and
+   * error flag); one that settled meanwhile gets its terminal state written now, behind the row. */
+  private trackCommitted(turn: ConversationTurn): void {
+    const entry = this.running.get(turn.sessionId);
+    if (entry?.turn.turnId !== turn.turnId) {
+      this.track(turn, true);
+      return;
+    }
+    if (entry.settledAs === undefined) {
+      entry.committed = true;
+      return;
+    }
+    this.running.delete(turn.sessionId);
+    this.persistTurnState(turn, entry.settledAs);
+  }
+
+  private track(turn: ConversationTurn, committed: boolean): void {
     const stale = this.running.get(turn.sessionId);
     // A new dispatch was admitted, so an unsettled predecessor demonstrably ended; close it out —
     // as failed when an adapter error was seen during its run, never a guessed 'completed'.
     if (stale && stale.turn.turnId !== turn.turnId) {
-      this.persistTurnState(stale.turn, stale.sawError ? 'failed' : 'completed');
+      this.persistTurnState(
+        stale.turn,
+        stale.settledAs ?? (stale.sawError ? 'failed' : 'completed'),
+      );
     }
-    this.running.set(turn.sessionId, { turn, sawError: false });
+    this.running.set(turn.sessionId, { turn, sawError: false, committed });
+    if (this.dispatching.get(turn.sessionId)?.turn.turnId === turn.turnId) {
+      this.dispatching.delete(turn.sessionId);
+    }
+  }
+
+  /** Bindings are written off synchronous adapter callbacks, best-effort like turn settles. */
+  private saveBinding(binding: ProviderTurnBinding): void {
+    this.runTask(
+      storeOperation('conversation.binding.save', () => this.store.saveBinding(binding)).pipe(
+        Effect.catch((error) =>
+          Effect.logError(
+            error.publicMessage,
+            { operation: error.operation, turnId: binding.turnId },
+            error.cause,
+          ),
+        ),
+      ),
+    );
   }
 
   /** Settles run off synchronous adapter callbacks, so persistence is enqueued best-effort. */
@@ -402,6 +516,15 @@ export class ConversationTurnService {
       ),
     );
   }
+}
+
+/** How a command or shell turn reads as a user row. */
+export function turnInputText(
+  input: Extract<ConversationTurn['input'], { type: 'command' | 'shell-command' }>,
+): string {
+  return input.type === 'command'
+    ? `/${input.name}${input.arguments === undefined ? '' : ` ${input.arguments}`}`
+    : `$ ${input.command}`;
 }
 
 function storeOperation<A>(

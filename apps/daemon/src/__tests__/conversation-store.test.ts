@@ -209,7 +209,7 @@ describe('SQLite conversation store', () => {
     ).toEqual(prompt('p-1'));
   });
 
-  it('round-trips bindings and re-captures by (turn, history)', async () => {
+  it('round-trips bindings: replay rows re-capture and yield to a live one, which nothing overwrites', async () => {
     const { database } = await databaseWithSessions('s-1');
     const store = createConversationStore(database.client);
     await seedIntent(store);
@@ -220,18 +220,26 @@ describe('SQLite conversation store', () => {
       checkpoint: '{"uuid":"a"}',
       capturedFrom: 'live',
     });
+    // A cold read can land first; the live capture that follows replaces it.
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"early"}', capturedFrom: 'replay' });
     await store.saveBinding(live);
-    await store.saveBinding({ ...live, historyId: 'native-2', capturedFrom: 'replay' });
-    const recaptured = ProviderTurnBindingSchema.parse({
+    // Neither a later live capture nor a cold-read replay may move the first live cut.
+    await store.saveBinding(
+      ProviderTurnBindingSchema.parse({ ...live, runId: 'run-9', checkpoint: '{"uuid":"b"}' }),
+    );
+    await store.saveBinding({ ...live, checkpoint: '{"uuid":"c"}', capturedFrom: 'replay' });
+    const replay = ProviderTurnBindingSchema.parse({
       ...live,
-      runId: 'run-9',
-      checkpoint: '{"uuid":"b"}',
+      historyId: 'native-2',
+      capturedFrom: 'replay',
     });
+    await store.saveBinding(replay);
+    const recaptured = { ...replay, checkpoint: '{"uuid":"d"}' };
     await store.saveBinding(recaptured);
 
     expect(
       await createConversationStore(database.client).listBindings(TurnIdSchema.parse('t-prompted')),
-    ).toEqual([recaptured, { ...live, historyId: 'native-2', capturedFrom: 'replay' }]);
+    ).toEqual([live, recaptured]);
   });
 
   it('round-trips operations through every state', async () => {
