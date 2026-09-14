@@ -384,8 +384,43 @@ describe('conversation projection attribution gate', () => {
   }
 
   function placeholderTurnIds(events: readonly ConversationReadItem[]): TurnId[] {
-    return events.flatMap((item) => (!('event' in item) ? [item.turnId] : []));
+    return events.flatMap((item) => ('event' in item ? [] : [item.turnId]));
   }
+
+  it.each(['complete', 'evicted', 'gap', 'wrong-run', 'wrong-epoch', 'no-stop'] as const)(
+    'replays unavailable settled history only from a complete journal: %s',
+    async (condition) => {
+      const turnId = 'turn-retained' as TurnId;
+      const journals = new ConversationLiveJournals(
+        Number.MAX_SAFE_INTEGER,
+        condition === 'evicted' ? 2 : 100,
+      );
+      const journal = journals.open(sessionId);
+      journal.append(stamped(1, turnId, providerUser('u-a', 'a').event));
+      journal.append(
+        stamped(condition === 'gap' ? 3 : 2, turnId, providerAnswer('ans-a', 'answer a').event),
+      );
+      if (condition !== 'no-stop') {
+        journal.append({
+          ...stamped(3, turnId, { type: 'stop', stopReason: 'end_turn' }),
+          ...(condition === 'wrong-run' && { runId: 'other-run' as RunId }),
+          ...(condition === 'wrong-epoch' && { epoch: 4 }),
+        });
+      }
+      const { service, store } = await makeService({
+        journals,
+        record: makeRecord(turnId, true),
+        historyEvents: [],
+      });
+      await store.saveTurn(shellTurn(turnId, null, 'a', 'completed'));
+      const read = await Effect.runPromise(service.read({ sessionId }));
+      expect(answers(read.events)).toEqual(condition === 'complete' ? [['ans-a', turnId]] : []);
+      expect(placeholderTurnIds(read.events)).toEqual(condition === 'complete' ? [] : [turnId]);
+      expect(
+        read.events.filter((item) => 'event' in item && item.event.type === 'user-message'),
+      ).toHaveLength(1);
+    },
+  );
 
   it('never attributes positionally on an inactive sibling lineage — even an identical retry', async () => {
     const { service, store } = await makeService({

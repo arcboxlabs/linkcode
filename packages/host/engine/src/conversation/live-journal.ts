@@ -18,7 +18,7 @@ interface JournalEntry {
 }
 
 const DEFAULT_JOURNAL_BYTE_CAP = 10 * 1024 * 1024;
-const DEFAULT_JOURNAL_EVENT_CAP = 10_000;
+const DEFAULT_JOURNAL_EVENT_CAP = 10000;
 /** Distinct evicted in-flight streams remembered per journal; past it every retained chunk is
  * treated as headless (an extreme-storm degradation, never unbounded growth). */
 const EVICTED_CHUNK_KEY_CAP = 1024;
@@ -83,6 +83,27 @@ export class ConversationLiveJournal {
 
   snapshot(): JournaledEvent[] {
     return this.entries.map(({ event }) => event);
+  }
+
+  /** A settled turn is replayable only while its entire start-to-stop interval is retained. */
+  completedTurn(turnId: TurnId, runId: RunId): JournaledEvent[] | undefined {
+    const start = this.entries.findIndex(
+      ({ event }) =>
+        event.turnId === turnId && event.runId === runId && event.event.type === 'user-message',
+    );
+    if (start < 0) return;
+    const first = this.entries[start].event;
+    const events: JournaledEvent[] = [];
+    let seq = first.seq;
+    for (let i = start, len = this.entries.length; i < len; i++) {
+      const entry = this.entries[i].event;
+      if (entry.epoch !== first.epoch || entry.seq !== seq) return;
+      seq += 1;
+      if (entry.turnId !== turnId) continue;
+      if (entry.runId !== runId) return;
+      if (entry.event.type !== 'user-message') events.push(entry);
+      if (entry.event.type === 'stop') return events;
+    }
   }
 
   append(event: JournaledEvent): void {

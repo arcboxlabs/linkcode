@@ -20,6 +20,7 @@ import {
   TurnIdSchema,
 } from '@linkcode/schema';
 import { Effect } from 'effect';
+import { appendArrayInPlace } from 'foxts/append-array-in-place';
 import { OperationError, RequestError } from '../failure';
 import type { HistoryService } from '../session/history-service';
 import { promptContentFingerprint } from '../session/live-session';
@@ -68,7 +69,7 @@ interface ProviderPartition {
  * Composes the root→leaf conversation projection: user rows from the durable ConversationStore
  * (host truth — never provider history, never the journal), assistant/tool events from provider
  * history, the live tail from the bounded live journal merged by `(epoch, seq)` stamp. Provider
- * lossiness or read failure degrades a turn to the prompt-only placeholder, never a broken read.
+ * lossiness uses a complete retained live turn, or a prompt-only placeholder after eviction.
  */
 export class ConversationProjectionService {
   constructor(
@@ -190,19 +191,18 @@ export class ConversationProjectionService {
     });
   }
 
-  /** Host user rows for every path turn, provider assistant/tool events under the attribution
-   * gate, placeholders where provider content is unavailable or unverifiable. */
+  /** Host user rows, attributed provider output, then complete retained turns or placeholders. */
   private composeDurable(
     record: SessionRecord,
     path: ConversationTurn[],
     isActiveLineage: boolean,
   ): Effect.Effect<ConversationReadItem[], OperationError> {
-    const { records } = this;
+    const { records, journals } = this;
     const readProviderEvents = this.readProviderEvents.bind(this);
     const hostUserContent = this.hostUserContent.bind(this);
     return Effect.gen(function* () {
       const items: ConversationReadItem[] = [];
-      const contents: (ContentBlock[] | undefined)[] = [];
+      const contents: Array<ContentBlock[] | undefined> = [];
       for (let i = 0, len = path.length; i < len; i++) {
         contents.push(yield* hostUserContent(path[i]));
       }
@@ -216,7 +216,7 @@ export class ConversationProjectionService {
       if (isActiveLineage && historyId !== undefined && expectsProvider.length > 0) {
         const corpus = yield* readProviderEvents(record, historyId);
         if (corpus !== undefined) {
-          const hostFingerprints: (string | undefined)[] = [];
+          const hostFingerprints: Array<string | undefined> = [];
           for (let i = 0, len = path.length; i < len; i++) {
             const turn = path[i];
             if (!TERMINAL_TURN_STATES.has(turn.state) || turn.state === 'failed') continue;
@@ -245,12 +245,17 @@ export class ConversationProjectionService {
         if (turn.state === 'failed') continue; // nothing durable ran; the state badge is the story
         const partition = attributed[partitionIndex];
         partitionIndex += 1;
-        if (partition !== undefined) {
+        if (partition === undefined) {
+          const retained = journals.get(record.sessionId)?.completedTurn(turn.turnId, turn.runId);
+          if (retained === undefined) {
+            items.push({ type: 'history-unavailable', turnId: turn.turnId, runId: turn.runId });
+          } else {
+            appendArrayInPlace(items, retained);
+          }
+        } else {
           for (let j = 0, restLen = partition.rest.length; j < restLen; j++) {
             items.push(projectedItem(turn, partition.rest[j]));
           }
-        } else {
-          items.push({ type: 'history-unavailable', turnId: turn.turnId, runId: turn.runId });
         }
       }
       return items;
