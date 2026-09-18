@@ -998,8 +998,8 @@ importers:
         specifier: ^0.144.6
         version: 0.144.6
       '@opencode-ai/sdk':
-        specifier: ^1.18.3
-        version: 1.18.3
+        specifier: ^1.18.21
+        version: 1.18.21
       cross-spawn:
         specifier: ^7.0.6
         version: 7.0.6
@@ -3848,8 +3848,8 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opencode-ai/sdk@1.18.3':
-    resolution: {integrity: sha512-Mevo4e6kQwbvto9E+42KSIVMhp+JBu+SwQhC5AomAvrV6Xkio3U249T+xDILDCXhl5Z/Hi/DlAuVLzpGnuh0gg==}
+  '@opencode-ai/sdk@1.18.21':
+    resolution: {integrity: sha512-k6iHQ5C8wOPglk+LgFyYnst168cGMQYumgpbVoeXJ+iC1AtvwD5zmjuF8CxMze/y9G1K2bOeO6p9yRvA7eHZLA==}
 
   '@opentelemetry/api-logs@0.214.0':
     resolution: {integrity: sha512-40lSJeqYO8Uz2Yj7u94/SJWE/wONa7rmMKjI1ZcIjgf3MHNHv1OZUCrCETGuaRF62d5pQD1wKIW+L4lmSMTzZA==}
@@ -14207,7 +14207,7 @@ snapshots:
   '@openai/codex@0.144.6-win32-x64':
     optional: true
 
-  '@opencode-ai/sdk@1.18.3':
+  '@opencode-ai/sdk@1.18.21':
     dependencies:
       cross-spawn: 7.0.6
 
