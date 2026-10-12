@@ -123,7 +123,7 @@ jobs:
           - name: Upload GitHub Release assets
             id: release-assets
             if: ${{ github.event_name == 'push' || inputs.dry_run == false }}
-            uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+            uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
             with:
               tag_name: ${{ steps.meta.outputs.tag }}
               # release-please creates this draft before the tag push. Keep it private while the
@@ -216,7 +216,7 @@ jobs:
         # App installation token may be refused when opening the PR on microsoft/winget-pkgs.
         if: ${{ steps.winget-token.outputs.token != '' }}
         continue-on-error: true
-        uses: vedantmgoyal9/winget-releaser@4ffc7888bffd451b357355dc214d43bb9f23917e # v2
+        uses: vedantmgoyal9/winget-releaser@b7370d4d152efdce803a26cc6ca9eee58cb2ad54 # v2
         with:
           identifier: ArcBox.LinkCode
           release-tag: ${{ steps.meta.outputs.tag }}
