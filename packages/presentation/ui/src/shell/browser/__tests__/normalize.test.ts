@@ -23,6 +23,9 @@ describe('isAllowedBrowserUrl', () => {
   it('allows only http(s)', () => {
     expect(isAllowedBrowserUrl('http://a.localhost')).toBe(true);
     expect(isAllowedBrowserUrl('https://example.com')).toBe(true);
+    expect(isAllowedBrowserUrl('HTTP://example.com')).toBe(true);
+    expect(isAllowedBrowserUrl('HTTPS://example.com')).toBe(true);
+    expect(isAllowedBrowserUrl('hTtPs://example.com')).toBe(true);
     expect(isAllowedBrowserUrl('file:///etc/passwd')).toBe(false);
     expect(isAllowedBrowserUrl('javascript:alert(1)')).toBe(false);
   });
