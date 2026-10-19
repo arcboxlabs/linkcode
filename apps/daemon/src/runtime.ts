@@ -161,7 +161,8 @@ function httpUrl(host: string | undefined, port: number): string {
 }
 
 function clientHost(host: string | undefined): string {
-  return !host || host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+  const advertisedHost = !host || host === '0.0.0.0' || host === '::' ? '127.0.0.1' : host;
+  return advertisedHost.includes(':') ? `[${advertisedHost}]` : advertisedHost;
 }
 
 function isAddrInUse(err: unknown): boolean {

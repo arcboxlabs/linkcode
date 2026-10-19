@@ -3,6 +3,7 @@
 const LOOPBACK_AUTHORITY_RE =
   /^(?:(?:[\w-]+\.)*localhost|\d{1,3}(?:\.\d{1,3}){3}|\[[\d.:a-f]+\])(?::\d+)?(?:[#/?]|$)/i;
 const SCHEME_RE = /^[a-z][\d+.a-z-]*:/i;
+const HTTP_URL_RE = /^https?:\/\//i;
 
 /** Address-bar input → navigable URL (paseo's normalization rules). */
 export function normalizeBrowserUrl(value: string): string {
@@ -16,5 +17,5 @@ export function normalizeBrowserUrl(value: string): string {
 
 /** The in-app browser loads web content only. */
 export function isAllowedBrowserUrl(url: string): boolean {
-  return url.startsWith('http://') || url.startsWith('https://');
+  return HTTP_URL_RE.test(url);
 }
