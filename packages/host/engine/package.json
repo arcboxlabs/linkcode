@@ -18,11 +18,11 @@
     "@linkcode/schema": "workspace:*",
     "@linkcode/transport": "workspace:*",
     "@microsoft/antissrf": "^1.0.0",
-    "acorn": "^8.17.0",
+    "acorn": "^8.19.0",
     "croner": "^10.0.1",
-    "effect": "4.0.0-beta.98",
+    "effect": "4.0.3",
     "foxts": "^5.9.1",
-    "restty": "^0.2.6",
+    "restty": "^0.3.0",
     "zod": "catalog:"
   },
   "devDependencies": {
