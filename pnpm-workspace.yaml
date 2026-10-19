@@ -52,30 +52,30 @@ catalog:
   # the 6.0 API re-export (ships a `tsc6` binary). Native TypeScript 7 provides the `tsc` binary used
   # for typecheck/build via the root `@typescript/native` devDependency (npm:typescript@7).
   typescript: "npm:@typescript/typescript6@^6.0.2"
-  "@types/node": ^26.1.1
+  "@types/node": ^26.6.5
 
   # Data contracts
-  zod: ^4.4.3
+  zod: ^4.6.6
 
   # React for web / desktop renderers. Canary pin (Next-production channel) for the stable-track
   # `ViewTransition` component (CODE-457); drop back to latest once 19.3 reaches stable. The
   # export is untyped by @types/react — see the local module augmentation in workbench.
   react: 19.3.0-canary-96fcba90-20260728
   react-dom: 19.3.0-canary-96fcba90-20260728
-  react-router: ^8.3.0
+  react-router: ^8.4.0
   "@types/react": ^19.2.17
   "@types/react-dom": ^19.2.3
 
   # Client data layer
-  swr: ^2.4.2
-  use-intl: ^4.13.3
-  zustand: ^5.0.14
-  lucide-react: ^1.25.0
+  swr: ^2.5.1
+  use-intl: ^4.14.9
+  zustand: ^5.0.15
+  lucide-react: ^1.55.0
 
   # Web build
-  vite: ^8.1.5
-  "@vitejs/plugin-react": ^6.0.4
-  "@rolldown/plugin-babel": ^0.2.3
+  vite: ^8.3.4
+  "@vitejs/plugin-react": ^6.1.2
+  "@rolldown/plugin-babel": ^0.2.4
   babel-plugin-react-compiler: ^1.0.0
 
   # Styling for web / desktop renderers
@@ -88,13 +88,13 @@ catalog:
   electron-builder: ^26.15.3
 
   # Server / communication
-  ws: ^8.21.1
-  "@types/ws": ^8.18.1
-  socket.io: ^4.8.3
-  socket.io-client: ^4.8.3
+  ws: ^8.22.0
+  "@types/ws": ^8.18.2
+  socket.io: ^4.8.4
+  socket.io-client: ^4.8.4
 
   # Build / runtime tools
-  tsx: ^4.23.0
+  tsx: ^4.23.15
   tsup: ^8.5.1
 
   # Testing
@@ -103,8 +103,8 @@ catalog:
   "@svgr/core": ^8.1.0
   "@svgr/plugin-jsx": ^8.1.0
   "@proj-airi/lobe-icons": ^1.0.19
-  "@iconify-json/material-icon-theme": ^1.2.69
-  "@iconify-json/simple-icons": ^1.2.92
+  "@iconify-json/material-icon-theme": ^1.2.71
+  "@iconify-json/simple-icons": ^1.2.99
 
 minimumReleaseAgeExclude:
   # React canary snapshots publish daily; the renderers pin one exact snapshot (CODE-457).
